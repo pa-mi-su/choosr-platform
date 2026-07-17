@@ -91,15 +91,6 @@ export type Database = {
         Args: { p_session_id: string };
         Returns: undefined;
       };
-      create_session: {
-        Args: { p_region?: string; p_item_ids: string[] };
-        Returns: {
-          session_id: string;
-          access_code: string;
-          invite_token: string;
-          expires_at: string;
-        }[];
-      };
       create_decision_session: {
         Args: {
           p_mode: DecisionMode;
@@ -124,10 +115,6 @@ export type Database = {
           round_number: number;
           expires_at: string;
         }[];
-      };
-      start_new_round: {
-        Args: { p_session_id: string; p_item_ids: string[] };
-        Returns: number;
       };
       start_decision_round: {
         Args: { p_session_id: string; p_items: Json };

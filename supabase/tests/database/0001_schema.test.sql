@@ -28,12 +28,12 @@ select ok(
   'matches has RLS enabled'
 );
 
-select has_function('public', 'create_session', array['text[]', 'text']);
+select has_function('public', 'validate_decision_deck', array['text', 'jsonb']);
 select has_function('public', 'create_decision_session', array['text', 'jsonb', 'text']);
 select has_function('public', 'join_session', array['text', 'text']);
 select has_function('public', 'touch_presence', array['uuid']);
 select has_function('public', 'submit_swipe', array['uuid', 'integer', 'text', 'text']);
-select has_function('public', 'start_new_round', array['uuid', 'text[]']);
+select hasnt_function('public', 'create_session', array['text[]', 'text']);
 select has_function('public', 'start_decision_round', array['uuid', 'jsonb']);
 select has_function('public', 'cancel_session', array['uuid']);
 

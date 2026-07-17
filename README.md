@@ -86,7 +86,9 @@ npm run supabase:test
 - Clients have no direct INSERT, UPDATE, or DELETE grants on application tables.
 - Individual swipe rows can only be selected by the participant who created them.
 
-The revised approved direction is documented in `docs/PRODUCT_CHARTER.md`.
+The revised approved direction is documented in `docs/PRODUCT_CHARTER.md`. The latest
+architecture, SOLID, security, and release-readiness review is in
+`docs/ENGINEERING_AUDIT.md`.
 
 ## Identifiers
 

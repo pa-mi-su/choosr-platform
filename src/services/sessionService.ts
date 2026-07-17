@@ -8,6 +8,7 @@ import type {
 } from '../types/domain';
 import type { Json, SessionStatus } from '../types/database';
 import { ensureAnonymousSession } from './anonymousAuth';
+import { parseDecisionItem } from './decisionItemParser';
 
 export type RoomCredentials = {
   sessionId: string;
@@ -98,7 +99,7 @@ export async function loadDecisionDeck(
   if (error) {
     throw error;
   }
-  return data.map(row => row.item_payload as DecisionItem);
+  return data.map(row => parseDecisionItem(row.item_payload));
 }
 
 export async function submitDecision(input: {

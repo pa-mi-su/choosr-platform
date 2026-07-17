@@ -11,7 +11,15 @@ set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000001';
 
 create temporary table test_room as
 select *
-from public.create_session(array['past-lives', 'arrival', 'spiderverse'], 'US');
+from public.create_decision_session(
+  'watch',
+  '[
+    {"id":"past-lives","mode":"watch","title":"Past Lives","kicker":"FILM","meta":"2023","description":"Drama","background":"#20344A","accent":"#F0B7A4","tags":["Drama"]},
+    {"id":"arrival","mode":"watch","title":"Arrival","kicker":"FILM","meta":"2016","description":"Science fiction","background":"#39464C","accent":"#E9D9BE","tags":["Sci-Fi"]},
+    {"id":"spiderverse","mode":"watch","title":"Into the Spider-Verse","kicker":"FILM","meta":"2018","description":"Animation","background":"#422B61","accent":"#EF4B65","tags":["Animation"]}
+  ]'::jsonb,
+  'US'
+);
 
 select is(
   (select count(*) from public.sessions),
@@ -35,8 +43,8 @@ select is(
 );
 select matches(
   (select access_code from test_room),
-  '^[A-F0-9]{8}$',
-  'room has an eight-character fallback code'
+  '^[A-HJ-NP-Z2-9]{8}$',
+  'room has an unambiguous 40-bit fallback code'
 );
 select is(
   length((select invite_token from test_room)),

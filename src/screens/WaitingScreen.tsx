@@ -7,7 +7,7 @@ import { modeById } from '../data/decisions';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Waiting'>;
-const code = 'MOON42';
+const code = 'DATE42AB';
 export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const mode = modeById[route.params.mode];
   const searchArea = route.params.searchArea;

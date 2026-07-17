@@ -51,7 +51,7 @@ Included:
 - No Expo packages, runtime, Go, or EAS
 - Exactly two participants: host and partner
 - Invisible anonymous authentication
-- Temporary private rooms and eight-character fallback codes
+- Temporary private rooms and unambiguous eight-character fallback codes
 - Native invitation sharing and future universal links
 - One identical ordered deck per round
 - Private left/right decisions

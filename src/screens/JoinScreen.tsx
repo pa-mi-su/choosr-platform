@@ -6,6 +6,9 @@ import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Join'>;
+const ROOM_CODE_LENGTH = 8;
+const ROOM_CODE_PATTERN = /[^A-HJ-NP-Z2-9]/g;
+
 export function JoinScreen({ navigation }: Props): React.JSX.Element {
   const [code, setCode] = useState('');
   return (
@@ -33,16 +36,17 @@ export function JoinScreen({ navigation }: Props): React.JSX.Element {
           accessibilityLabel="Room code"
           autoCapitalize="characters"
           autoCorrect={false}
-          maxLength={6}
-          placeholder="MOON42"
+          maxLength={ROOM_CODE_LENGTH}
+          placeholder="DATE42AB"
           placeholderTextColor={colors.faint}
           selectionColor={colors.primary}
           value={code}
           onChangeText={value =>
-            setCode(value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+            setCode(value.toUpperCase().replace(ROOM_CODE_PATTERN, ''))
           }
           onSubmitEditing={() =>
-            code.length >= 4 && navigation.replace('Swipe', { mode: 'watch' })
+            code.length === ROOM_CODE_LENGTH &&
+            navigation.replace('Swipe', { mode: 'watch' })
           }
           style={styles.input}
         />
@@ -50,7 +54,7 @@ export function JoinScreen({ navigation }: Props): React.JSX.Element {
       <View>
         <Button
           label="Join room"
-          disabled={code.length < 4}
+          disabled={code.length !== ROOM_CODE_LENGTH}
           onPress={() => navigation.replace('Swipe', { mode: 'watch' })}
         />
         <Text style={styles.note}>

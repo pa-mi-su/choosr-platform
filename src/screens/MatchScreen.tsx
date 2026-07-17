@@ -17,6 +17,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Match'>;
 export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
   const { item, searchArea } = route.params;
   const mode = modeById[item.mode];
+  const action = item.action;
   const scale = useSharedValue(0.82);
   const opacity = useSharedValue(0);
   useEffect(() => {
@@ -53,10 +54,10 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         </View>
       </View>
       <View style={styles.actions}>
-        {item.action ? (
+        {action ? (
           <Button
-            label={item.action.label}
-            onPress={() => Linking.openURL(item.action!.url)}
+            label={action.label}
+            onPress={() => Linking.openURL(action.url)}
           />
         ) : null}
         <Button

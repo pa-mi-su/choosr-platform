@@ -1,2 +1,2 @@
--- Choosr creates session-specific decks through create_session().
+-- Choosr creates session-specific decks through create_decision_session().
 -- No global seed data is required for the initial schema.

@@ -3,7 +3,7 @@ create extension if not exists pgcrypto with schema extensions;
 create table public.sessions (
   id uuid primary key default gen_random_uuid(),
   access_code text not null unique
-    constraint sessions_access_code_format check (access_code ~ '^[A-F0-9]{8}$'),
+    constraint sessions_access_code_format check (access_code ~ '^[A-HJ-NP-Z2-9]{8}$'),
   invite_token_hash text not null unique,
   host_user_id uuid not null references auth.users(id) on delete cascade,
   mode text not null default 'watch'
@@ -149,76 +149,76 @@ grant select on public.session_items to authenticated;
 grant select on public.swipes to authenticated;
 grant select on public.matches to authenticated;
 
-create function public.create_session(
-  p_item_ids text[],
-  p_region text default 'US'
-)
-returns table (
-  session_id uuid,
-  access_code text,
-  invite_token text,
-  expires_at timestamptz
-)
+create function public.validate_decision_deck(p_mode text, p_items jsonb)
+returns void
 language plpgsql
-security definer
+immutable
 set search_path = ''
 as $$
 declare
-  v_user_id uuid := (select auth.uid());
-  v_session_id uuid;
-  v_access_code text;
-  v_invite_token text;
-  v_expires_at timestamptz;
-  v_region text := upper(btrim(p_region));
-  v_item_count integer := coalesce(array_length(p_item_ids, 1), 0);
+  v_item_count integer;
 begin
-  if v_user_id is null then
-    raise exception using errcode = '42501', message = 'authentication_required';
+  if p_mode is null or p_mode not in ('watch', 'eat', 'do') then
+    raise exception using errcode = '22023', message = 'invalid_decision_mode';
   end if;
-  if v_region !~ '^[A-Z]{2}$' then
-    raise exception using errcode = '22023', message = 'invalid_region';
+  if p_items is null or jsonb_typeof(p_items) <> 'array' then
+    raise exception using errcode = '22023', message = 'deck_must_be_an_array';
   end if;
+  if octet_length(p_items::text) > 131072 then
+    raise exception using errcode = '22023', message = 'deck_payload_too_large';
+  end if;
+
+  v_item_count := jsonb_array_length(p_items);
   if v_item_count < 1 or v_item_count > 100 then
     raise exception using errcode = '22023', message = 'deck_size_out_of_range';
   end if;
-  if exists (select 1 from unnest(p_item_ids) item where item is null or btrim(item) = '') then
+  if exists (
+    select 1
+    from jsonb_array_elements(p_items) item
+    where jsonb_typeof(item) <> 'object'
+      or nullif(btrim(item->>'id'), '') is null
+      or length(item->>'id') > 200
+      or nullif(btrim(item->>'title'), '') is null
+      or length(item->>'title') > 160
+      or item->>'mode' is distinct from p_mode
+      or nullif(btrim(item->>'kicker'), '') is null
+      or length(item->>'kicker') > 80
+      or nullif(btrim(item->>'meta'), '') is null
+      or length(item->>'meta') > 240
+      or nullif(btrim(item->>'description'), '') is null
+      or length(item->>'description') > 2000
+      or (item->>'background' ~ '^#[0-9A-Fa-f]{6}$') is distinct from true
+      or (item->>'accent' ~ '^#[0-9A-Fa-f]{6}$') is distinct from true
+      or case
+        when jsonb_typeof(item->'tags') is distinct from 'array' then true
+        else jsonb_array_length(item->'tags') > 12
+          or exists (
+            select 1
+            from jsonb_array_elements(item->'tags') tag
+            where jsonb_typeof(tag) <> 'string'
+              or length(tag #>> '{}') > 40
+          )
+      end
+      or (
+        item ? 'action'
+        and (
+          jsonb_typeof(item->'action') is distinct from 'object'
+          or nullif(btrim(item#>>'{action,label}'), '') is null
+          or length(item#>>'{action,label}') > 120
+          or nullif(btrim(item#>>'{action,url}'), '') is null
+          or length(item#>>'{action,url}') > 2048
+          or item#>>'{action,url}' !~ '^https://'
+        )
+      )
+  ) then
     raise exception using errcode = '22023', message = 'invalid_deck_item';
   end if;
-  if (select count(distinct item) from unnest(p_item_ids) item) <> v_item_count then
+  if (
+    select count(distinct item->>'id')
+    from jsonb_array_elements(p_items) item
+  ) <> v_item_count then
     raise exception using errcode = '22023', message = 'duplicate_deck_item';
   end if;
-
-  loop
-    v_access_code := upper(substr(encode(extensions.gen_random_bytes(5), 'hex'), 1, 8));
-    v_invite_token := encode(extensions.gen_random_bytes(24), 'hex');
-    begin
-      insert into public.sessions (
-        access_code,
-        invite_token_hash,
-        host_user_id,
-        region
-      ) values (
-        v_access_code,
-        encode(extensions.digest(v_invite_token, 'sha256'), 'hex'),
-        v_user_id,
-        v_region
-      )
-      returning id, public.sessions.expires_at
-      into v_session_id, v_expires_at;
-      exit;
-    exception when unique_violation then
-      null;
-    end;
-  end loop;
-
-  insert into public.participants (session_id, auth_user_id, role)
-  values (v_session_id, v_user_id, 'host');
-
-  insert into public.session_items (session_id, round, item_id, position)
-  select v_session_id, 1, item, ordinal::integer
-  from unnest(p_item_ids) with ordinality as deck(item, ordinal);
-
-  return query select v_session_id, v_access_code, v_invite_token, v_expires_at;
 end;
 $$;
 
@@ -241,47 +241,42 @@ declare
   v_user_id uuid := (select auth.uid());
   v_session_id uuid;
   v_access_code text;
+  v_access_code_bytes bytea;
   v_invite_token text;
   v_expires_at timestamptz;
   v_mode text := lower(btrim(p_mode));
   v_region text := upper(btrim(p_region));
-  v_item_count integer;
 begin
   if v_user_id is null then
     raise exception using errcode = '42501', message = 'authentication_required';
   end if;
-  if v_mode not in ('watch', 'eat', 'do') then
-    raise exception using errcode = '22023', message = 'invalid_decision_mode';
-  end if;
   if v_region !~ '^[A-Z]{2}$' then
     raise exception using errcode = '22023', message = 'invalid_region';
   end if;
-  if jsonb_typeof(p_items) <> 'array' then
-    raise exception using errcode = '22023', message = 'deck_must_be_an_array';
-  end if;
+  perform public.validate_decision_deck(v_mode, p_items);
+  perform pg_advisory_xact_lock(hashtextextended(v_user_id::text, 0));
 
-  v_item_count := jsonb_array_length(p_items);
-  if v_item_count < 1 or v_item_count > 100 then
-    raise exception using errcode = '22023', message = 'deck_size_out_of_range';
-  end if;
-  if exists (
-    select 1
-    from jsonb_array_elements(p_items) item
-    where jsonb_typeof(item) <> 'object'
-      or nullif(btrim(item->>'id'), '') is null
-      or nullif(btrim(item->>'title'), '') is null
-  ) then
-    raise exception using errcode = '22023', message = 'invalid_deck_item';
-  end if;
   if (
-    select count(distinct item->>'id')
-    from jsonb_array_elements(p_items) item
-  ) <> v_item_count then
-    raise exception using errcode = '22023', message = 'duplicate_deck_item';
+    select count(*)
+    from public.sessions s
+    where s.host_user_id = v_user_id
+      and s.created_at >= now() - interval '24 hours'
+  ) >= 20 then
+    raise exception using errcode = '54000', message = 'session_creation_rate_limited';
   end if;
 
   loop
-    v_access_code := upper(substr(encode(extensions.gen_random_bytes(5), 'hex'), 1, 8));
+    v_access_code_bytes := extensions.gen_random_bytes(8);
+    select string_agg(
+      substr(
+        'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
+        (get_byte(v_access_code_bytes, byte_index) % 32) + 1,
+        1
+      ),
+      '' order by byte_index
+    )
+    into v_access_code
+    from generate_series(0, 7) as byte_index;
     v_invite_token := encode(extensions.gen_random_bytes(24), 'hex');
     begin
       insert into public.sessions (
@@ -568,51 +563,6 @@ begin
 end;
 $$;
 
-create function public.start_new_round(
-  p_session_id uuid,
-  p_item_ids text[]
-)
-returns integer
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_session public.sessions%rowtype;
-  v_next_round integer;
-  v_item_count integer := coalesce(array_length(p_item_ids, 1), 0);
-begin
-  if not public.is_session_participant(p_session_id) then
-    raise exception using errcode = '42501', message = 'not_a_session_participant';
-  end if;
-  if v_item_count < 1 or v_item_count > 100 then
-    raise exception using errcode = '22023', message = 'deck_size_out_of_range';
-  end if;
-  if exists (select 1 from unnest(p_item_ids) item where item is null or btrim(item) = '')
-     or (select count(distinct item) from unnest(p_item_ids) item) <> v_item_count then
-    raise exception using errcode = '22023', message = 'invalid_deck';
-  end if;
-
-  select s.* into v_session
-  from public.sessions s where s.id = p_session_id for update;
-
-  if v_session.status <> 'completed' then
-    raise exception using errcode = 'P0001', message = 'round_cannot_restart';
-  end if;
-
-  v_next_round := v_session.round_number + 1;
-  insert into public.session_items (session_id, round, item_id, position)
-  select p_session_id, v_next_round, item, ordinal::integer
-  from unnest(p_item_ids) with ordinality as deck(item, ordinal);
-
-  update public.sessions
-  set status = 'active', round_number = v_next_round
-  where id = p_session_id;
-
-  return v_next_round;
-end;
-$$;
-
 create function public.start_decision_round(
   p_session_id uuid,
   p_items jsonb
@@ -625,34 +575,14 @@ as $$
 declare
   v_session public.sessions%rowtype;
   v_next_round integer;
-  v_item_count integer;
 begin
   if not public.is_session_participant(p_session_id) then
     raise exception using errcode = '42501', message = 'not_a_session_participant';
   end if;
-  if jsonb_typeof(p_items) <> 'array' then
-    raise exception using errcode = '22023', message = 'deck_must_be_an_array';
-  end if;
-
-  v_item_count := jsonb_array_length(p_items);
-  if v_item_count < 1 or v_item_count > 100 then
-    raise exception using errcode = '22023', message = 'deck_size_out_of_range';
-  end if;
-  if exists (
-    select 1
-    from jsonb_array_elements(p_items) item
-    where jsonb_typeof(item) <> 'object'
-      or nullif(btrim(item->>'id'), '') is null
-      or nullif(btrim(item->>'title'), '') is null
-  ) or (
-    select count(distinct item->>'id')
-    from jsonb_array_elements(p_items) item
-  ) <> v_item_count then
-    raise exception using errcode = '22023', message = 'invalid_deck';
-  end if;
-
   select s.* into v_session
   from public.sessions s where s.id = p_session_id for update;
+
+  perform public.validate_decision_deck(v_session.mode, p_items);
 
   if v_session.status <> 'completed' then
     raise exception using errcode = 'P0001', message = 'round_cannot_restart';
@@ -724,24 +654,21 @@ $$;
 
 revoke all on function public.is_session_participant(uuid, uuid) from public;
 revoke all on function public.participant_id_for_user(uuid, uuid) from public;
-revoke all on function public.create_session(text[], text) from public;
+revoke all on function public.validate_decision_deck(text, jsonb) from public;
 revoke all on function public.create_decision_session(text, jsonb, text) from public;
 revoke all on function public.join_session(text, text) from public;
 revoke all on function public.touch_presence(uuid) from public;
 revoke all on function public.submit_swipe(uuid, integer, text, text) from public;
-revoke all on function public.start_new_round(uuid, text[]) from public;
 revoke all on function public.start_decision_round(uuid, jsonb) from public;
 revoke all on function public.cancel_session(uuid) from public;
 revoke all on function public.cleanup_expired_sessions() from public;
 
 grant execute on function public.is_session_participant(uuid, uuid) to authenticated;
 grant execute on function public.participant_id_for_user(uuid, uuid) to authenticated;
-grant execute on function public.create_session(text[], text) to authenticated;
 grant execute on function public.create_decision_session(text, jsonb, text) to authenticated;
 grant execute on function public.join_session(text, text) to authenticated;
 grant execute on function public.touch_presence(uuid) to authenticated;
 grant execute on function public.submit_swipe(uuid, integer, text, text) to authenticated;
-grant execute on function public.start_new_round(uuid, text[]) to authenticated;
 grant execute on function public.start_decision_round(uuid, jsonb) to authenticated;
 grant execute on function public.cancel_session(uuid) to authenticated;
 
