@@ -1,62 +1,351 @@
 # Choosr Platform
 
-Choosr helps a couple decide what to watch, what to eat, or what to do. One person
-creates a private room, invites their partner, and both swipe independently through
-the same decision deck. The first option they both like becomes the match.
+Choosr is a private, real-time decision app for exactly two people. One person creates a
+temporary room, shares an eight-character code, and both people independently accept or
+pass on the same ordered options. Choosr reveals only the first option both people accept.
 
-This is a React Native Community CLI project with complete native Xcode and Gradle
-projects. It does not use Expo.
+The initial decision modes are:
 
-## Current status
+- **Watch:** choose a movie together.
+- **Eat:** match on a cuisine, then open a local Maps search.
+- **Do:** match on an activity, then find it nearby.
 
-The mobile MVP includes Watch, Eat, and Do mode selection; real host and join flows;
-native invitation sharing; generic decision cards; accessible controls; key-free Maps
-handoff for local matches; private persisted swipes; and authoritative match/no-match outcomes.
+Choosr is a React Native Community CLI application with standard native iOS and Android
+projects. It does **not** use Expo, Expo Go, EAS, or an Expo runtime.
 
-The Phase 2 foundation now includes a Supabase React Native client, persisted anonymous
-sessions, a five-table PostgreSQL schema, decision modes, immutable item snapshots, Row
-Level Security, authenticated database functions, Realtime configuration, a protected
-content-provider Edge Function, pgTAP coverage, Realtime room updates, reconnect recovery,
-and a polling fallback. The hosted project must receive the migration before physical
-devices can use the room flow.
+## Engineering status
+
+The real two-device client flow is implemented:
+
+- Invisible, persisted anonymous authentication
+- Server-generated private rooms and unambiguous room codes
+- Exactly one host and one partner per room
+- One immutable, ordered decision deck shared by both people
+- Private, persisted left/right decisions
+- Database-authoritative mutual matches and no-match outcomes
+- Supabase Realtime updates with a three-second polling fallback
+- Reconnection-safe deck resumption from persisted swipe state
+- Synchronized subsequent rounds
+- Native invitation sharing and key-free Maps handoff
+- Watch, Eat, and Do fallback decks
+
+The database implementation passes 52 pgTAP assertions, and the room lifecycle has been
+verified locally using two independent Supabase clients from room creation through an
+authoritative match.
+
+> **Hosted deployment required:** the tested migration in `supabase/migrations/` must be
+> deployed to the hosted Supabase project before physical devices can create or join rooms.
+> Confirm that `.env` contains the current, resolvable project URL and publishable key.
+
+## Technology stack
+
+| Layer                  | Technology                            | Responsibility                                                              |
+| ---------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
+| Mobile runtime         | React Native 0.86, React 19.2         | Shared application and UI runtime for iOS and Android                       |
+| Language               | TypeScript 5.8                        | Domain types, navigation contracts, services, and screens                   |
+| Native projects        | Xcode/CocoaPods and Gradle/Kotlin     | Standard iOS and Android builds, signing, icons, and platform configuration |
+| Navigation             | React Navigation native stack         | Typed screen flow and native navigation transitions                         |
+| Interaction            | Gesture Handler, Reanimated, Worklets | Swipe gestures and match animations                                         |
+| Device storage         | AsyncStorage                          | Persists the anonymous Supabase session across launches                     |
+| Backend client         | Supabase JS                           | Auth, PostgREST reads, RPC writes, Realtime, and Edge Function calls        |
+| Identity               | Supabase anonymous Auth               | Unique device-scoped identity without visible accounts                      |
+| Database               | PostgreSQL with Row Level Security    | Rooms, participants, frozen decks, private swipes, and matches              |
+| Write boundary         | PostgreSQL security-definer RPCs      | Validated, transactional state changes without direct table writes          |
+| Live updates           | Supabase Realtime/Postgres Changes    | Room activation, participant, match, and round notifications                |
+| Recovery               | Three-second client polling           | Correctness fallback for missed or disconnected Realtime events             |
+| Provider boundary      | Supabase Edge Functions               | Keeps TMDB and Google Places credentials out of mobile binaries             |
+| Watch provider         | TMDB adapter                          | Normalized movie discovery when server credentials are configured           |
+| Local provider         | Google Places adapter                 | Normalized nearby Eat/Do results when server credentials are configured     |
+| Zero-key local handoff | Google Maps HTTPS search URLs         | Opens nearby results after a cuisine or activity match                      |
+| App tests              | Jest, React Test Renderer             | Domain, parser, room-state, navigation-root, and deck behavior              |
+| Database tests         | pgTAP, Supabase CLI                   | Schema, RLS, grants, validation, two-person flow, and atomic matching       |
+| Code quality           | ESLint, Prettier, TypeScript          | Static analysis, formatting, and compile-time verification                  |
+
+## System architecture
+
+```mermaid
+flowchart LR
+    Host["Host device"] -->|"Anonymous Auth + RPC"| API["Supabase API"]
+    Partner["Partner device"] -->|"Anonymous Auth + RPC"| API
+    API --> RPC["Security-definer PostgreSQL functions"]
+    RPC --> DB[("PostgreSQL + RLS")]
+    DB --> RT["Supabase Realtime"]
+    RT --> Host
+    RT --> Partner
+    Host -->|"Recovery reads every 3 seconds"| DB
+    Partner -->|"Recovery reads every 3 seconds"| DB
+    Host -.->|"Optional live deck"| Edge["build-deck Edge Function"]
+    Edge --> TMDB["TMDB"]
+    Edge --> Places["Google Places"]
+```
+
+The mobile client is untrusted. It may read only data allowed by RLS and cannot directly
+insert, update, or delete application-table rows. All writes cross validated database
+function boundaries.
+
+## End-to-end room lifecycle
+
+### 1. Host creates a room
+
+1. The host selects Watch, Eat, or Do.
+2. Eat and Do optionally collect a city, neighborhood, or postal code.
+3. `WaitingScreen` builds the current normalized deck.
+4. `ensureAnonymousSession()` restores or creates an anonymous Supabase identity.
+5. `create_decision_session` validates the complete deck in PostgreSQL.
+6. The database creates the session, host participant, and ordered `session_items` rows in
+   one transaction.
+7. The database returns the room UUID, eight-character code, one-time invite token, and
+   expiration timestamp.
+8. The UI remains in the waiting state with one participant. There is no local timer or
+   simulated partner.
+
+### 2. Partner joins
+
+1. A different device enters the room code.
+2. The second device receives its own anonymous identity.
+3. `join_session` locks and validates the room.
+4. The function rejects expired, active, full, invalid, and third-participant joins.
+5. The database inserts the unique `partner` role and changes the room from `waiting` to
+   `active`.
+6. Realtime or the polling fallback refreshes the host screen.
+7. The host is shown **Partner joined** only when the database reports `active` and exactly
+   two participant rows exist.
+
+### 3. Both people swipe privately
+
+1. Each client loads the same `session_items` snapshot, ordered by `position`.
+2. Each client reads only its own previously persisted swipe IDs.
+3. Reopened sessions resume at the first item without a stored swipe.
+4. Every decision calls `submit_swipe`; the mobile app never writes `swipes` directly.
+5. A participant cannot change an already submitted decision.
+6. The partner cannot query the other person's swipe rows because of RLS.
+
+### 4. The database resolves the outcome
+
+`submit_swipe` locks the session and resolves the result atomically:
+
+- **next:** this participant has more items.
+- **waiting:** this participant finished but the other person has not.
+- **match:** both participants accepted the same item; one unique match is persisted.
+- **no-match:** both participants exhausted the deck without a mutual acceptance.
+
+Both devices listen for session and match changes. If a WebSocket event is missed, the
+polling fallback reads the authoritative state and navigates to the same outcome.
+
+### 5. Another round
+
+After a no-match result, either participant can call `start_decision_round`. The database
+increments the round under a session lock, freezes the next deck, and returns the room to
+`active`. The other client follows automatically through Realtime or polling. The current
+fallback implementation reuses the previous normalized deck; provider-backed fresh-deck
+generation is a remaining integration task.
+
+## Client architecture
+
+### Navigation
+
+The typed stack lives in `src/navigation/AppNavigator.tsx` and
+`src/types/navigation.ts`:
+
+```text
+Home
+├── ModeSelect
+│   ├── Waiting (Watch)
+│   └── LocalSetup → Waiting (Eat/Do)
+└── Join
+
+Waiting / Join → Swipe → Match
+                       └→ NoMatch → next round
+```
+
+Room-bound navigation parameters always include the server session ID and round number.
+The client does not infer room identity from a local singleton.
+
+### Service boundaries
+
+- `src/lib/supabase.ts` constructs the single configured Supabase client and manages token
+  auto-refresh with React Native app state.
+- `src/services/anonymousAuth.ts` owns invisible session restoration and creation.
+- `src/services/sessionService.ts` is the room persistence boundary: room RPCs, allowed
+  reads, presence touches, and Realtime channel lifecycle.
+- `src/services/roomFlow.ts` contains pure room-state routing, reconnection indexing, code
+  normalization, and safe user-facing error mapping.
+- `src/services/deckService.ts` contains preview and provider-backed deck access.
+- `src/services/decisionItemParser.ts` validates untrusted JSON loaded from PostgreSQL.
+- `src/data/decisions.ts` defines decision modes and deterministic fallback decks.
+
+Screens coordinate rendering and user actions; authorization, persistence, outcome logic,
+and provider normalization remain outside presentation components.
+
+### Reconnection behavior
+
+AsyncStorage persists the Supabase anonymous session. On entry to `SwipeScreen`, the app
+loads three pieces of server state in parallel:
+
+1. The immutable deck for the current round
+2. The current participant's own submitted item IDs
+3. The authoritative session/match outcome
+
+The first unswiped item becomes the current card. If all local decisions are already
+stored, the app renders a waiting state until the room becomes matched or completed.
+
+## Database model
+
+| Table           | Purpose                                             | Important constraints                                       |
+| --------------- | --------------------------------------------------- | ----------------------------------------------------------- |
+| `sessions`      | Room mode, state, host, round, code, and expiration | Unique access code and invite hash; valid state/mode checks |
+| `participants`  | The two anonymous identities in a room              | Unique user per room; unique `host` and `partner` roles     |
+| `session_items` | Frozen normalized deck for a round                  | Unique item and position within each room/round             |
+| `swipes`        | Private participant decisions                       | Unique participant/round/item; direction is left or right   |
+| `matches`       | Authoritative mutual acceptance                     | At most one match per session                               |
+
+The normalized `DecisionItem` payload is stored with each room item so both devices see
+the same title, metadata, tags, colors, action URL, and ordering even if a provider changes
+later.
+
+## Database functions
+
+| Function                   | Responsibility                                                        |
+| -------------------------- | --------------------------------------------------------------------- |
+| `validate_decision_deck`   | Bounds payload size/count and validates every normalized item         |
+| `create_decision_session`  | Creates room, host, code/token, and first frozen deck                 |
+| `join_session`             | Atomically admits only the second participant                         |
+| `touch_presence`           | Updates the current participant's `last_seen_at`                      |
+| `submit_swipe`             | Persists an immutable decision and resolves match/no-match atomically |
+| `start_decision_round`     | Creates a synchronized next round after completion                    |
+| `cancel_session`           | Lets the host cancel a waiting or active room                         |
+| `cleanup_expired_sessions` | Marks expired rooms and deletes old expired data                      |
+
+Mutating RPCs use `security definer` with an empty search path, explicitly authenticate
+`auth.uid()`, validate membership and input, and acquire row/advisory locks where needed.
+
+## Security and privacy model
+
+- Users see no account UI, but every installation has a real anonymous Auth identity.
+- Only the Supabase URL and publishable key may exist in the mobile environment.
+- `.env`, generated environment modules, provider secrets, signing files, and service-role
+  keys are ignored and must never be committed.
+- RLS is enabled on all five application tables.
+- Authenticated clients have no direct `INSERT`, `UPDATE`, or `DELETE` grants.
+- Session membership gates room, participant, deck, and match reads.
+- Swipe reads are restricted to the participant who created them.
+- Invite tokens are returned once and only SHA-256 hashes are stored.
+- Manual room codes use an unambiguous 32-character alphabet and carry 40 bits of entropy.
+- Room creation is limited to 20 rooms per identity per rolling 24 hours.
+- Rooms expire after 24 hours by default.
+- Provider credentials remain server-side as Supabase Edge Function secrets.
+- Persisted action URLs must use HTTPS.
+
+Before a public launch, enable CAPTCHA/abuse controls for anonymous sign-in and manual-code
+joining, schedule expiration cleanup, and complete a formal privacy review.
+
+## Content and provider strategy
+
+The mobile room flow currently uses normalized fallback decks from `src/data/decisions.ts`.
+This keeps local development and zero-cost testing deterministic.
+
+`supabase/functions/build-deck` is the protected live-provider boundary:
+
+- `watch` uses `TMDB_API_READ_TOKEN`.
+- `eat` and `do` use `GOOGLE_PLACES_API_KEY`.
+- Provider-specific records are converted into the generic `DecisionItem` contract.
+- Secrets are Supabase secrets, never mobile `.env` values.
+- Google Places fields are intentionally minimized to control SKU/cost exposure.
+
+`fetchLiveDecisionDeck()` exists in the mobile service layer, but host room creation does
+not yet call it. Provider quotas, attribution, graceful fallbacks, and this final UI wiring
+must be completed before live discovery is considered production-ready.
+
+## Repository map
+
+```text
+choosr-platform/
+├── App.tsx                         # Native app root and providers
+├── src/
+│   ├── components/                 # Shared UI, artwork, and swipe card
+│   ├── data/                       # Decision modes and fallback decks
+│   ├── lib/                        # Supabase client configuration
+│   ├── navigation/                 # Typed native-stack navigator
+│   ├── screens/                    # Host, join, swipe, match, and no-match UI
+│   ├── services/                   # Auth, rooms, deck, parsing, and pure flow logic
+│   ├── theme.ts                    # Shared visual tokens
+│   └── types/                      # Domain, database, and navigation contracts
+├── ios/                            # Native Xcode workspace/project and assets
+├── android/                        # Native Gradle project and adaptive assets
+├── supabase/
+│   ├── migrations/                 # Versioned PostgreSQL source of truth
+│   ├── tests/database/             # pgTAP security and lifecycle tests
+│   ├── functions/build-deck/       # Protected provider adapters
+│   └── config.toml                 # Local Supabase configuration
+├── __tests__/                      # Jest application tests
+├── assets/brand/                   # App-icon master assets and rules
+├── docs/                           # Product, engineering, and visual direction
+└── scripts/generate-env.mjs        # Validated mobile env code generation
+```
 
 ## Requirements
 
-- Node.js 24 (`.nvmrc` included; React Native 0.86 requires Node 22.11+)
+- macOS for iOS development
+- Node.js 24 (`.nvmrc` is included; React Native requires Node 22.11 or newer)
+- npm
 - Xcode and CocoaPods
 - Android Studio, Android SDK, and Java 21
+- Docker Desktop for local Supabase
+- Supabase CLI access for hosted deployment
 
-## Install and run
+## Initial setup
 
 ```sh
+git clone git@github.com:pa-mi-su/choosr-platform.git
+cd choosr-platform
 nvm use
 npm install
-cd ios && pod install && cd ..
+cp .env.example .env
+cd ios
+pod install
+cd ..
+```
+
+Add only the mobile-safe hosted values to `.env`:
+
+```dotenv
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+```
+
+`npm start`, `npm run ios`, and `npm run android` run `scripts/generate-env.mjs` first.
+The script validates these values and writes an ignored, mode-`0600`
+`src/config/generatedEnv.ts`. Do not edit or commit that generated file.
+
+## Run the mobile app
+
+Start Metro:
+
+```sh
 npm start
 ```
 
-In another terminal:
+Then, in another terminal:
 
 ```sh
 npm run ios
 npm run android
 ```
 
-Rooms require two distinct anonymous device identities. The host remains on the waiting
-screen until a second device joins with the generated code. Watch, Eat, and Do fallback
-decks live under `src/data`; live adapters are in `supabase/functions/build-deck` and
-activate after server-side provider credentials are configured.
+For a physical iPhone, open `ios/Choosr.xcworkspace`, select the Choosr target, choose an
+Apple development team under Signing & Capabilities, select the connected phone, and run.
+Open the workspace—not the `.xcodeproj`—because CocoaPods dependencies are workspace-owned.
 
-Before starting Metro or a native build, create `.env` from `.env.example`. Only the
-Supabase project URL and publishable key belong in the mobile configuration. The npm
-scripts generate an ignored `src/config/generatedEnv.ts` module so the Community CLI
-build can consume `.env` without Expo.
+Two-device testing requires separate application storage/anonymous identities. A simulator
+and a physical iPhone, two simulators with separate data, or iOS and Android are valid
+pairings. Entering a host's code on the same anonymous identity is intentionally rejected by
+the UI.
 
-## Local Supabase
+## Local Supabase development
 
-Docker Desktop is required for the local backend. Supabase's local development services
-use shared development credentials and may publish ports on every network interface, so
-run them only on a trusted network and stop them when testing is complete.
+Docker Desktop is required. Local Supabase development credentials are public defaults,
+and services may bind to all network interfaces. Use them only on a trusted network and
+stop the stack after testing.
 
 ```sh
 npm run supabase:start
@@ -66,34 +355,144 @@ npm run supabase:test
 npm run supabase:stop
 ```
 
-Database migrations and tests live under `supabase/`. See `supabase/README.md` for the
-security model and hosted deployment checklist.
+`supabase db reset --local` recreates the database, applies every migration, and seeds the
+empty development seed. Database schema changes must be made as new migrations; do not make
+dashboard-only production schema changes.
 
 ## Verification
+
+Run the complete application checks:
 
 ```sh
 npm run typecheck
 npm run lint
 npm test -- --runInBand
+npm audit --audit-level=high
+```
+
+With local Supabase running:
+
+```sh
+npm run supabase:reset
 npm run supabase:lint
 npm run supabase:test
 ```
 
-## Security
+Native build verification:
 
-- Never commit `.env`, signing keys, service-role keys, or store credentials.
-- Only a Supabase publishable key belongs in the mobile client.
-- TMDB and Google Places access are proxied through a Supabase Edge Function.
-- Deployed sessions use Row Level Security and expire automatically.
-- Clients have no direct INSERT, UPDATE, or DELETE grants on application tables.
-- Individual swipe rows can only be selected by the participant who created them.
+```sh
+cd android
+ANDROID_HOME=/absolute/path/to/Android/sdk \
+ANDROID_SDK_ROOT=/absolute/path/to/Android/sdk \
+./gradlew assembleDebug
+```
 
-The revised approved direction is documented in `docs/PRODUCT_CHARTER.md`. The latest
-architecture, SOLID, security, and release-readiness review is in
-`docs/ENGINEERING_AUDIT.md`. Brand references, palette, and app-icon rules are in
-`docs/VISUAL_DIRECTION.md`.
+```sh
+xcodebuild \
+  -workspace ios/Choosr.xcworkspace \
+  -scheme Choosr \
+  -configuration Debug \
+  -sdk iphonesimulator \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+```
 
-## Identifiers
+## Hosted Supabase deployment
 
-- iOS: `com.choosr.app`
-- Android: `com.choosr.app`
+Authenticate and link the CLI to the intended project:
+
+```sh
+npx supabase login
+npx supabase projects list
+npx supabase link --project-ref YOUR_PROJECT_REF
+npx supabase migration list
+```
+
+Review and deploy migrations:
+
+```sh
+npx supabase db push --dry-run
+npx supabase db push
+```
+
+Configure optional server-only provider secrets and deploy the function:
+
+```sh
+npx supabase secrets set TMDB_API_READ_TOKEN=...
+npx supabase secrets set GOOGLE_PLACES_API_KEY=...
+npx supabase functions deploy build-deck
+```
+
+Never paste a database password, access token, provider credential, secret key, or
+service-role key into `.env`, source code, documentation, issues, or commit history.
+
+After deployment, verify:
+
+1. Anonymous sign-ins are enabled.
+2. The project URL in `.env` resolves and matches the linked project.
+3. The migration appears in `supabase migration list` for both local and remote.
+4. Realtime publication includes `sessions`, `participants`, and `matches`.
+5. One device remains waiting until a second distinct device joins.
+6. A third identity is rejected.
+7. Both devices receive the same ordered deck.
+8. Individual swipe rows remain private.
+9. Mutual acceptance opens the same match on both devices.
+
+## Common troubleshooting
+
+### Metro says `EADDRINUSE` on port 8081
+
+Another Metro server may already be running. Confirm it belongs to this repository before
+starting another process:
+
+```sh
+curl http://127.0.0.1:8081/status
+lsof -nP -iTCP:8081 -sTCP:LISTEN
+```
+
+`packager-status:running` plus a process rooted in this repository means Metro is ready.
+
+### Android cannot find the SDK
+
+Set `ANDROID_HOME` and `ANDROID_SDK_ROOT` to the installed SDK path or add an ignored
+`android/local.properties` containing the correct `sdk.dir`.
+
+### iOS builds the wrong project
+
+Use `ios/Choosr.xcworkspace`. The `.xcodeproj` does not include the installed Pods graph.
+
+### Room creation shows a network error
+
+Confirm that:
+
+- `.env` contains the current hosted URL and publishable key.
+- The hostname resolves from the device's network.
+- Anonymous Auth is enabled.
+- The migration has been deployed.
+- The project is healthy and not paused.
+
+## Current limitations and release blockers
+
+- The hosted Supabase migration still needs to be authenticated, linked, and deployed.
+- Live provider deck creation is not yet wired into the host screen.
+- Subsequent fallback rounds currently reuse the prior normalized deck.
+- Universal/app links and a hosted invite fallback page are not implemented.
+- Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
+- Automated expiration cleanup still needs a hosted schedule.
+- Physical iPhone/iPhone, Android/Android, and cross-platform acceptance matrices remain.
+- Provider quotas, attribution, licensing checks, and production fallback behavior remain.
+- Privacy/terms pages, crash reporting, production signing, CI/CD, and store submission remain.
+
+## Product and engineering documents
+
+- `docs/PRODUCT_CHARTER.md` — approved MVP scope and product contract
+- `docs/ENGINEERING_AUDIT.md` — architecture, SOLID, security, and release audit
+- `docs/VISUAL_DIRECTION.md` — brand references, palette, icon, and motion rules
+- `supabase/README.md` — backend security model and deployment checklist
+- `assets/brand/README.md` — app-icon sources and export rules
+
+## Application identifiers
+
+- iOS bundle identifier: `com.choosr.app`
+- Android application ID: `com.choosr.app`
