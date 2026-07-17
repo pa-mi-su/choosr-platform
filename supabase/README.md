@@ -14,16 +14,21 @@ schema changes only through the dashboard; create and test a migration here firs
 - The unique match constraint and session row lock prevent duplicate matches.
 - Invite tokens are stored as SHA-256 hashes; plaintext tokens are returned once.
 - Expiration and cleanup logic is database-owned.
+- Anonymous cleanup tracks actual room activity and preserves identities in live rooms.
 
 ## Files
 
 - `migrations/20260717134500_initial_choosr_schema.sql`: tables, decision modes,
   immutable item snapshots, RLS, functions, grants, and Realtime publications.
+- `migrations/20260717162000_schedule_data_retention.sql`: private activity ledger,
+  guarded anonymous-user retention, and two Supabase Cron jobs.
 - `tests/database/0001_schema.test.sql`: structural and privilege assertions.
 - `tests/database/0002_session_flow.test.sql`: host/partner flow, third-user
   rejection, private swipe visibility, and atomic match behavior.
 - `tests/database/0003_decision_modes.test.sql`: multi-mode rooms, frozen payloads,
   validation, and stable item ordering.
+- `tests/database/0004_retention.test.sql`: Cron registration, retention boundaries,
+  permanent-user safety, and live-room protection.
 - `functions/build-deck`: authenticated TMDB and Google Places provider adapter.
 - `seed.sql`: intentionally empty because decks are session-specific.
 
@@ -50,6 +55,6 @@ npm run supabase:stop
 8. Run database lint and pgTAP tests against the linked project.
 9. Verify no secret/service-role key exists in the mobile configuration or Git.
 
-The initial migration is deployed to the hosted Choosr project and has passed hosted
+Both migrations are deployed to the hosted Choosr project. The room implementation has passed hosted
 host/partner/third-user, private-swipe RLS, authoritative-match, and Realtime verification.
 Continue to treat migrations in this directory as the source of truth for future changes.

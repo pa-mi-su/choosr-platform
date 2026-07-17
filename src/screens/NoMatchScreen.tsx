@@ -1,16 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
+import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
 import {
   loadDecisionRoom,
   loadDecisionDeck,
   startDecisionRound,
-  subscribeToRoom,
-  unsubscribeFromRoom,
 } from '../services/sessionService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
@@ -39,18 +38,11 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
     }
   }, [navigation, searchArea, sessionId]);
 
-  useEffect(() => {
-    const channel = subscribeToRoom(sessionId, () => {
-      followRestart().catch(() => undefined);
-    });
-    const poll = setInterval(() => {
-      followRestart().catch(() => undefined);
-    }, 3000);
-    return () => {
-      clearInterval(poll);
-      unsubscribeFromRoom(channel).catch(() => undefined);
-    };
-  }, [followRestart, sessionId]);
+  useRoomSync({
+    sessionId,
+    tables: ['sessions'],
+    refresh: followRestart,
+  });
 
   const restart = async () => {
     setRestarting(true);

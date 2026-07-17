@@ -23,13 +23,15 @@ The real two-device client flow is implemented:
 - One immutable, ordered decision deck shared by both people
 - Private, persisted left/right decisions
 - Database-authoritative mutual matches and no-match outcomes
-- Supabase Realtime updates with a three-second polling fallback
+- Screen-scoped Supabase Realtime with a 15-second recovery poll
+- Background-aware synchronization and one-minute presence heartbeats
+- Database-scheduled room and inactive anonymous-user retention
 - Reconnection-safe deck resumption from persisted swipe state
 - Synchronized subsequent rounds
 - Native invitation sharing and key-free Maps handoff
 - Watch, Eat, and Do fallback decks
 
-The database implementation passes 52 pgTAP assertions. The migration is deployed to the
+The database implementation passes 62 pgTAP assertions. Both migrations are deployed to the
 hosted Supabase project, where the room lifecycle has been verified using independent
 host, partner, and third-user clients. Hosted checks cover room activation, third-user
 rejection, private-swipe RLS, authoritative matching, and participant/match Realtime events.
@@ -49,7 +51,8 @@ rejection, private-swipe RLS, authoritative matching, and participant/match Real
 | Database               | PostgreSQL with Row Level Security    | Rooms, participants, frozen decks, private swipes, and matches              |
 | Write boundary         | PostgreSQL security-definer RPCs      | Validated, transactional state changes without direct table writes          |
 | Live updates           | Supabase Realtime/Postgres Changes    | Room activation, participant, match, and round notifications                |
-| Recovery               | Three-second client polling           | Correctness fallback for missed or disconnected Realtime events             |
+| Recovery               | 15-second active-only polling         | Low-traffic fallback for missed or disconnected Realtime events             |
+| Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup               |
 | Provider boundary      | Supabase Edge Functions               | Keeps TMDB and Google Places credentials out of mobile binaries             |
 | Watch provider         | TMDB adapter                          | Normalized movie discovery when server credentials are configured           |
 | Local provider         | Google Places adapter                 | Normalized nearby Eat/Do results when server credentials are configured     |
@@ -69,8 +72,8 @@ flowchart LR
     DB --> RT["Supabase Realtime"]
     RT --> Host
     RT --> Partner
-    Host -->|"Recovery reads every 3 seconds"| DB
-    Partner -->|"Recovery reads every 3 seconds"| DB
+    Host -->|"Active-only recovery reads every 15 seconds"| DB
+    Partner -->|"Active-only recovery reads every 15 seconds"| DB
     Host -.->|"Optional live deck"| Edge["build-deck Edge Function"]
     Edge --> TMDB["TMDB"]
     Edge --> Places["Google Places"]
@@ -165,6 +168,8 @@ The client does not infer room identity from a local singleton.
 - `src/services/anonymousAuth.ts` owns invisible session restoration and creation.
 - `src/services/sessionService.ts` is the room persistence boundary: room RPCs, allowed
   reads, presence touches, and Realtime channel lifecycle.
+- `src/hooks/useRoomSync.ts` centralizes screen-scoped subscriptions, slow fallback polling,
+  presence cadence, and background/foreground behavior.
 - `src/services/roomFlow.ts` contains pure room-state routing, reconnection indexing, code
   normalization, and safe user-facing error mapping.
 - `src/services/deckService.ts` contains preview and provider-backed deck access.
@@ -202,16 +207,17 @@ later.
 
 ## Database functions
 
-| Function                   | Responsibility                                                        |
-| -------------------------- | --------------------------------------------------------------------- |
-| `validate_decision_deck`   | Bounds payload size/count and validates every normalized item         |
-| `create_decision_session`  | Creates room, host, code/token, and first frozen deck                 |
-| `join_session`             | Atomically admits only the second participant                         |
-| `touch_presence`           | Updates the current participant's `last_seen_at`                      |
-| `submit_swipe`             | Persists an immutable decision and resolves match/no-match atomically |
-| `start_decision_round`     | Creates a synchronized next round after completion                    |
-| `cancel_session`           | Lets the host cancel a waiting or active room                         |
-| `cleanup_expired_sessions` | Marks expired rooms and deletes old expired data                      |
+| Function                        | Responsibility                                                        |
+| ------------------------------- | --------------------------------------------------------------------- |
+| `validate_decision_deck`        | Bounds payload size/count and validates every normalized item         |
+| `create_decision_session`       | Creates room, host, code/token, and first frozen deck                 |
+| `join_session`                  | Atomically admits only the second participant                         |
+| `touch_presence`                | Updates the current participant's `last_seen_at`                      |
+| `submit_swipe`                  | Persists an immutable decision and resolves match/no-match atomically |
+| `start_decision_round`          | Creates a synchronized next round after completion                    |
+| `cancel_session`                | Lets the host cancel a waiting or active room                         |
+| `cleanup_expired_sessions`      | Marks expired rooms and deletes old expired data                      |
+| `cleanup_stale_anonymous_users` | Removes identities inactive for 30 days, excluding live rooms         |
 
 Mutating RPCs use `security definer` with an empty search path, explicitly authenticate
 `auth.uid()`, validate membership and input, and acquire row/advisory locks where needed.
@@ -233,8 +239,11 @@ Mutating RPCs use `security definer` with an empty search path, explicitly authe
 - Provider credentials remain server-side as Supabase Edge Function secrets.
 - Persisted action URLs must use HTTPS.
 
-Before a public launch, enable CAPTCHA/abuse controls for anonymous sign-in and manual-code
-joining, schedule expiration cleanup, and complete a formal privacy review.
+Supabase Cron runs room cleanup hourly and inactive anonymous-user cleanup daily. A private
+activity ledger prevents the blanket age-based deletion recommended for disposable accounts
+from removing a long-lived Choosr user who recently used the app. Before a public launch,
+enable CAPTCHA/abuse controls for anonymous sign-in and manual-code joining, configure usage
+alerts, and complete a formal privacy review.
 
 ## Content and provider strategy
 
@@ -478,7 +487,7 @@ Confirm that:
 - Subsequent fallback rounds currently reuse the prior normalized deck.
 - Universal/app links and a hosted invite fallback page are not implemented.
 - Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
-- Automated expiration cleanup still needs a hosted schedule.
+- Retention Cron run history should be monitored after its first hourly and daily executions.
 - Physical iPhone/iPhone, Android/Android, and cross-platform acceptance matrices remain.
 - Provider quotas, attribution, licensing checks, and production fallback behavior remain.
 - Privacy/terms pages, crash reporting, production signing, CI/CD, and store submission remain.

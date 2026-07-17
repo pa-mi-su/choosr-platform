@@ -11,7 +11,19 @@ export async function ensureAnonymousSession(): Promise<Session> {
   }
 
   if (existing.session) {
-    return existing.session;
+    const { data: verified, error: userError } = await supabase.auth.getUser();
+    if (!userError && verified.user) {
+      return existing.session;
+    }
+
+    if (userError && userError.status !== 401 && userError.status !== 403) {
+      throw userError;
+    }
+
+    // A scheduled retention job can remove an old anonymous identity while a
+    // device still has its expired local token. Clear it before recreating the
+    // zero-account identity.
+    await supabase.auth.signOut({ scope: 'local' });
   }
 
   const { data, error } = await supabase.auth.signInAnonymously();

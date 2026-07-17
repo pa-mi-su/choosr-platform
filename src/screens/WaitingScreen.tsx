@@ -4,14 +4,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { buildPreviewDeck, modeById } from '../data/decisions';
+import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
 import {
   cancelDecisionRoom,
   createDecisionRoom,
   loadDecisionRoom,
-  subscribeToRoom,
-  touchRoomPresence,
-  unsubscribeFromRoom,
   type DecisionRoom,
 } from '../services/sessionService';
 import { colors } from '../theme';
@@ -71,24 +69,12 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     }
   }, [sessionId]);
 
-  useEffect(() => {
-    if (!sessionId) {
-      return;
-    }
-    const channel = subscribeToRoom(sessionId, () => {
-      refreshRoom().catch(() => undefined);
-    });
-    touchRoomPresence(sessionId).catch(() => undefined);
-    refreshRoom().catch(() => undefined);
-    const poll = setInterval(() => {
-      refreshRoom().catch(() => undefined);
-      touchRoomPresence(sessionId).catch(() => undefined);
-    }, 3000);
-    return () => {
-      clearInterval(poll);
-      unsubscribeFromRoom(channel).catch(() => undefined);
-    };
-  }, [refreshRoom, sessionId]);
+  useRoomSync({
+    sessionId,
+    tables: ['sessions', 'participants'],
+    refresh: refreshRoom,
+    maintainPresence: true,
+  });
 
   const ready = room?.status === 'active' && room.participantCount === 2;
   const share = () => {

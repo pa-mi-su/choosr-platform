@@ -33,6 +33,8 @@ export type RoomOutcome = {
   matchedItemId: string | null;
 };
 
+export type RoomSubscriptionTable = 'sessions' | 'participants' | 'matches';
+
 const toItemPayload = (item: DecisionItem): Json => ({
   id: item.id,
   mode: item.mode,
@@ -242,11 +244,15 @@ export async function cancelDecisionRoom(sessionId: string): Promise<void> {
 
 export function subscribeToRoom(
   sessionId: string,
+  tables: readonly RoomSubscriptionTable[],
   onChange: () => void,
 ): RealtimeChannel {
-  return supabase
-    .channel(`room:${sessionId}`)
-    .on(
+  let channel = supabase.channel(
+    `room:${sessionId}:${[...tables].sort().join('-')}`,
+  );
+
+  if (tables.includes('sessions')) {
+    channel = channel.on(
       'postgres_changes',
       {
         event: '*',
@@ -255,8 +261,10 @@ export function subscribeToRoom(
         filter: `id=eq.${sessionId}`,
       },
       onChange,
-    )
-    .on(
+    );
+  }
+  if (tables.includes('participants')) {
+    channel = channel.on(
       'postgres_changes',
       {
         event: '*',
@@ -265,8 +273,10 @@ export function subscribeToRoom(
         filter: `session_id=eq.${sessionId}`,
       },
       onChange,
-    )
-    .on(
+    );
+  }
+  if (tables.includes('matches')) {
+    channel = channel.on(
       'postgres_changes',
       {
         event: '*',
@@ -275,8 +285,10 @@ export function subscribeToRoom(
         filter: `session_id=eq.${sessionId}`,
       },
       onChange,
-    )
-    .subscribe();
+    );
+  }
+
+  return channel.subscribe();
 }
 
 export async function unsubscribeFromRoom(channel: RealtimeChannel) {

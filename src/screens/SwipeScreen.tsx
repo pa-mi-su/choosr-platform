@@ -11,6 +11,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Brand, Button, Screen } from '../components/UI';
 import { SwipeCard } from '../components/SwipeCard';
 import { modeById } from '../data/decisions';
+import { useRoomSync } from '../hooks/useRoomSync';
 import {
   findFirstUnswipedIndex,
   getRoomDestination,
@@ -21,9 +22,6 @@ import {
   loadOwnSwipeItemIds,
   loadRoomOutcome,
   submitDecision,
-  subscribeToRoom,
-  touchRoomPresence,
-  unsubscribeFromRoom,
 } from '../services/sessionService';
 import { colors } from '../theme';
 import type { DecisionItem, SwipeDirection } from '../types/domain';
@@ -109,7 +107,6 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
         setFinished(false);
         setIndex(nextIndex);
       }
-      await touchRoomPresence(sessionId);
     } catch (cause) {
       setError(roomErrorMessage(cause));
     } finally {
@@ -121,19 +118,12 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
     load().catch(() => undefined);
   }, [load]);
 
-  useEffect(() => {
-    const channel = subscribeToRoom(sessionId, () => {
-      refreshOutcome().catch(() => undefined);
-    });
-    const poll = setInterval(() => {
-      refreshOutcome().catch(() => undefined);
-      touchRoomPresence(sessionId).catch(() => undefined);
-    }, 3000);
-    return () => {
-      clearInterval(poll);
-      unsubscribeFromRoom(channel).catch(() => undefined);
-    };
-  }, [refreshOutcome, sessionId]);
+  useRoomSync({
+    sessionId,
+    tables: ['sessions', 'matches'],
+    refresh: refreshOutcome,
+    maintainPresence: true,
+  });
 
   const item = deck[index];
   const swipe = useCallback(
