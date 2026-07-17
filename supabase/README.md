@@ -50,4 +50,6 @@ npm run supabase:stop
 8. Run database lint and pgTAP tests against the linked project.
 9. Verify no secret/service-role key exists in the mobile configuration or Git.
 
-The initial migration has not been pushed to the hosted project yet.
+The initial migration is deployed to the hosted Choosr project and has passed hosted
+host/partner/third-user, private-swipe RLS, authoritative-match, and Realtime verification.
+Continue to treat migrations in this directory as the source of truth for future changes.

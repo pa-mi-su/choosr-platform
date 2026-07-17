@@ -13,8 +13,9 @@ crosses a boundary. No Expo dependency or committed secret is present.
 
 This audit does **not** classify the app as production ready. The mobile screens now use
 anonymous Auth, server-created rooms, persisted private swipes, Realtime events, polling
-fallbacks, reconnect recovery, and authoritative matches. Hosted Supabase deployment,
-provider credentials, physical cross-device acceptance tests, and store-release work remain.
+fallbacks, reconnect recovery, and authoritative matches. The database migration is live
+and its hosted host/partner/third-user, RLS, match, and Realtime paths are verified.
+Provider credentials, physical cross-device acceptance tests, and store-release work remain.
 
 ## Design and SOLID review
 
@@ -51,6 +52,9 @@ real variation requires it.
    readiness and matches now come only from authenticated database state.
 9. Added reconnect-safe deck resumption, missed-event polling, automatic second-round
    synchronization, and user-facing network/room errors.
+10. Deployed the reviewed migration and verified hosted anonymous Auth, exact two-person
+    admission, private-swipe RLS, authoritative matching, and Realtime participant/match
+    notifications with independent clients.
 
 ## Security posture
 
@@ -66,8 +70,8 @@ real variation requires it.
 
 ## Remaining release blockers
 
-1. Authenticate the Supabase CLI, deploy migrations/functions, configure Realtime, and set
-   server-side provider secrets.
+1. Deploy the provider Edge Function and configure server-side provider secrets when live
+   content is enabled; keep the current key-free fallback decks until then.
 2. Put manual-code joins behind an abuse-controlled server boundary or equivalent rate
    limiting before a public launch; code entropy alone is not a complete abuse control.
 3. Configure provider quotas and graceful fallback behavior, and verify licensing and

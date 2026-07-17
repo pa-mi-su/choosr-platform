@@ -29,13 +29,10 @@ The real two-device client flow is implemented:
 - Native invitation sharing and key-free Maps handoff
 - Watch, Eat, and Do fallback decks
 
-The database implementation passes 52 pgTAP assertions, and the room lifecycle has been
-verified locally using two independent Supabase clients from room creation through an
-authoritative match.
-
-> **Hosted deployment required:** the tested migration in `supabase/migrations/` must be
-> deployed to the hosted Supabase project before physical devices can create or join rooms.
-> Confirm that `.env` contains the current, resolvable project URL and publishable key.
+The database implementation passes 52 pgTAP assertions. The migration is deployed to the
+hosted Supabase project, where the room lifecycle has been verified using independent
+host, partner, and third-user clients. Hosted checks cover room activation, third-user
+rejection, private-swipe RLS, authoritative matching, and participant/match Realtime events.
 
 ## Technology stack
 
@@ -400,6 +397,9 @@ xcodebuild \
 
 ## Hosted Supabase deployment
 
+The initial Choosr migration is deployed. Use this workflow for future migrations and for
+linking a fresh engineering checkout.
+
 Authenticate and link the CLI to the intended project:
 
 ```sh
@@ -474,7 +474,6 @@ Confirm that:
 
 ## Current limitations and release blockers
 
-- The hosted Supabase migration still needs to be authenticated, linked, and deployed.
 - Live provider deck creation is not yet wired into the host screen.
 - Subsequent fallback rounds currently reuse the prior normalized deck.
 - Universal/app links and a hosted invite fallback page are not implemented.
