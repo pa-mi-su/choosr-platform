@@ -130,7 +130,9 @@ function boundaries.
 - **no-match:** both participants exhausted the deck without a mutual acceptance.
 
 Both devices listen for session and match changes. If a WebSocket event is missed, the
-polling fallback reads the authoritative state and navigates to the same outcome.
+polling fallback reads the authoritative state and navigates to the same outcome. A match
+is terminal for the round: both clients automatically stop swiping, reveal the same final
+pick, and offer the relevant completion action (watch search or nearby Maps search).
 
 ### 5. Another round
 

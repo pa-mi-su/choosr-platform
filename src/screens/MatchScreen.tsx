@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { Linking, Share, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, {
   useAnimatedStyle,
@@ -10,6 +10,7 @@ import Animated, {
 import { Button, Screen } from '../components/UI';
 import { DecisionArtwork } from '../components/DecisionArtwork';
 import { modeById } from '../data/decisions';
+import { getMatchResultAction } from '../services/matchResult';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -17,7 +18,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Match'>;
 export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
   const { item } = route.params;
   const mode = modeById[item.mode];
-  const action = item.action;
+  const action = getMatchResultAction(item);
+  const [actionError, setActionError] = useState<string | null>(null);
   const scale = useSharedValue(0.82);
   const opacity = useSharedValue(0);
   useEffect(() => {
@@ -31,8 +33,8 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
   return (
     <Screen testID="match-screen" style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>YOU BOTH SAID YES</Text>
-        <Text style={styles.title}>It’s a match!</Text>
+        <Text style={styles.eyebrow}>DECISION MADE</Text>
+        <Text style={styles.title}>You found your match.</Text>
         <Text style={styles.subtitle}>{mode.matchSubtitle}</Text>
       </View>
       <Animated.View style={[styles.posterWrap, reveal]}>
@@ -44,7 +46,8 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
       <View style={styles.details}>
         <Text style={styles.movie}>{item.title}</Text>
         <Text style={styles.meta}>{item.meta}</Text>
-        <Text style={styles.available}>GOOD TO KNOW</Text>
+        <Text style={styles.description}>{item.description}</Text>
+        <Text style={styles.available}>FINAL PICK</Text>
         <View style={styles.providers}>
           {item.tags.map(tag => (
             <View key={tag} style={styles.provider}>
@@ -57,19 +60,19 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         {action ? (
           <Button
             label={action.label}
-            onPress={() => Linking.openURL(action.url)}
+            onPress={async () => {
+              setActionError(null);
+              try {
+                await Linking.openURL(action.url);
+              } catch {
+                setActionError('We couldn’t open that link. Please try again.');
+              }
+            }}
           />
         ) : null}
+        {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
         <Button
-          label="Share the match"
-          onPress={() =>
-            Share.share({
-              message: `We matched on ${item.title} with Choosr.`,
-            })
-          }
-        />
-        <Button
-          label="Start a new room"
+          label="Choose again"
           variant="secondary"
           onPress={() => {
             navigation.popToTop();
@@ -77,7 +80,7 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
           }}
         />
         <Button
-          label="Back home"
+          label="Done"
           variant="quiet"
           onPress={() => navigation.popToTop()}
         />
@@ -96,10 +99,11 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 40,
+    fontSize: 34,
     fontWeight: '900',
     letterSpacing: -1.7,
     marginTop: 4,
+    textAlign: 'center',
   },
   subtitle: { color: colors.muted, marginTop: 3 },
   posterWrap: { width: 214, height: 294, marginTop: 20 },
@@ -117,6 +121,14 @@ const styles = StyleSheet.create({
   details: { alignItems: 'center', marginTop: 24 },
   movie: { color: colors.text, fontSize: 23, fontWeight: '900' },
   meta: { color: colors.muted, fontSize: 12, marginTop: 5 },
+  description: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
+    maxWidth: 320,
+    textAlign: 'center',
+  },
   available: {
     color: colors.faint,
     fontSize: 9,
@@ -134,5 +146,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   providerText: { color: colors.text, fontSize: 10, fontWeight: '800' },
+  error: {
+    color: colors.danger,
+    fontSize: 12,
+    textAlign: 'center',
+  },
   actions: { width: '100%', gap: 8, marginTop: 'auto' },
 });
