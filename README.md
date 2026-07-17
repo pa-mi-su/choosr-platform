@@ -96,7 +96,9 @@ function boundaries.
    one transaction.
 7. The database returns the room UUID, eight-character code, one-time invite token, and
    expiration timestamp.
-8. The UI remains in the waiting state with one participant. There is no local timer or
+8. **Send invite** opens the native share sheet with a tokenized room link and manual-code
+   fallback for Messages, WhatsApp, and other installed messaging apps.
+9. The UI remains in the waiting state with one participant. There is no local timer or
    simulated partner.
 
 ### 2. Partner joins
@@ -110,6 +112,18 @@ function boundaries.
 6. Realtime or the polling fallback refreshes the host screen.
 7. The host is shown **Partner joined** only when the database reports `active` and exactly
    two participant rows exist.
+
+An installed app can instead open `choosr://join/<invite-token>`. The Join screen exchanges
+that capability token for room membership and skips manual entry. The database stores only
+the SHA-256 token hash. A future `https://join.choosr.app/...` universal/app-link gateway can
+add App Store, Play Store, and browser fallbacks without changing the room or participant
+model. The current MVP intentionally caps rooms at two; future groups can reuse the same
+room-link boundary with capacity, invite-use, and participant-role migrations.
+
+The scalable identity is therefore the room, not a phone-to-phone pairing: every device
+independently presents a room-scoped invitation, joins through the server, and receives its
+own participant row. Moving from couples to groups changes capacity and completion policy
+(for example, unanimous versus majority matches), not the native linking architecture.
 
 ### 3. Both people swipe privately
 
@@ -487,7 +501,8 @@ Confirm that:
 
 - Live provider deck creation is not yet wired into the host screen.
 - Subsequent fallback rounds currently reuse the prior normalized deck.
-- Universal/app links and a hosted invite fallback page are not implemented.
+- A branded HTTPS universal/app-link gateway and hosted install fallback page remain; the
+  installed-app `choosr://` room link and manual-code fallback are implemented.
 - Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
 - Retention Cron run history should be monitored after its first hourly and daily executions.
 - Physical iPhone/iPhone, Android/Android, and cross-platform acceptance matrices remain.

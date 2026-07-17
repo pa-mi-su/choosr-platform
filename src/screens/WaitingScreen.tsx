@@ -6,6 +6,7 @@ import { Brand, Button, Screen } from '../components/UI';
 import { buildPreviewDeck, modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
+import { buildRoomInvite } from '../services/roomInvite';
 import {
   cancelDecisionRoom,
   createDecisionRoom,
@@ -23,6 +24,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const [room, setRoom] = useState<DecisionRoom | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(true);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
   const creationStarted = useRef(false);
   const sessionId = room?.sessionId;
 
@@ -38,6 +40,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
         mode: mode.id,
         items: buildPreviewDeck(mode.id, searchArea),
       });
+      setInviteToken(credentials.inviteToken);
       setRoom({
         ...credentials,
         mode: mode.id,
@@ -78,13 +81,18 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
 
   const ready = room?.status === 'active' && room.participantCount === 2;
   const share = () => {
-    if (!room) {
+    if (!room || !inviteToken) {
       return;
     }
+    const invite = buildRoomInvite({
+      inviteToken,
+      accessCode: room.accessCode,
+      decisionPrompt: mode.title.toLowerCase(),
+    });
     Share.share({
-      message: `Help me decide ${mode.title.toLowerCase()} on Choosr. Join with code ${
-        room.accessCode
-      }.`,
+      title: 'Join my Choosr room',
+      message: invite.message,
+      url: invite.url,
     }).catch(() => undefined);
   };
   const cancel = async () => {
@@ -144,19 +152,12 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             loading={creating}
             onPress={createRoom}
           />
-        ) : (
+        ) : creating || !room ? (
+          <Button label="Creating room…" loading disabled />
+        ) : ready ? (
           <Button
-            label={
-              ready
-                ? 'Start swiping'
-                : creating
-                ? 'Creating room…'
-                : 'Waiting for your partner…'
-            }
-            disabled={!ready}
-            loading={creating}
+            label="Start swiping"
             onPress={() =>
-              room &&
               navigation.replace('Swipe', {
                 sessionId: room.sessionId,
                 roundNumber: room.roundNumber,
@@ -165,13 +166,14 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
               })
             }
           />
+        ) : (
+          <Button label="Send invite" onPress={share} />
         )}
-        <Button
-          label="Share invite"
-          variant="secondary"
-          disabled={!room}
-          onPress={share}
-        />
+        {!creating && room && !ready ? (
+          <Text style={styles.inviteHint}>
+            Send it by text, WhatsApp, or any messaging app. We’ll wait here.
+          </Text>
+        ) : null}
         <Text style={styles.preview}>{mode.eyebrow} · Private choices</Text>
       </View>
     </Screen>
@@ -263,5 +265,11 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   actions: { gap: 9 },
+  inviteHint: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
   preview: { color: colors.faint, fontSize: 10, textAlign: 'center' },
 });

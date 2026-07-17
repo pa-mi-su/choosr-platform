@@ -5,7 +5,7 @@ export type RootStackParamList = {
   ModeSelect: undefined;
   LocalSetup: { mode: DecisionMode };
   Waiting: { mode: DecisionMode; searchArea?: string };
-  Join: undefined;
+  Join: { inviteToken?: string } | undefined;
   Swipe: {
     sessionId: string;
     roundNumber: number;

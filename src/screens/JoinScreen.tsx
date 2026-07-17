@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -15,81 +15,110 @@ import type { RootStackParamList } from '../types/navigation';
 type Props = NativeStackScreenProps<RootStackParamList, 'Join'>;
 const ROOM_CODE_LENGTH = 8;
 
-export function JoinScreen({ navigation }: Props): React.JSX.Element {
+export function JoinScreen({ navigation, route }: Props): React.JSX.Element {
   const [code, setCode] = useState('');
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inviteToken = route.params?.inviteToken;
+  const automaticJoinStarted = useRef(false);
 
-  const join = useCallback(async () => {
-    if (code.length !== ROOM_CODE_LENGTH || joining) {
-      return;
-    }
-    setJoining(true);
-    setError(null);
-    try {
-      const joined = await joinDecisionRoom({ accessCode: code });
-      const room = await loadDecisionRoom(joined.sessionId);
-      if (room.status !== 'active' || room.participantCount !== 2) {
-        setError(
-          'This device created that room. Enter the code on your partner’s device.',
-        );
+  const join = useCallback(
+    async (token?: string) => {
+      if ((!token && code.length !== ROOM_CODE_LENGTH) || joining) {
         return;
       }
-      await touchRoomPresence(room.sessionId);
-      navigation.replace('Swipe', {
-        sessionId: room.sessionId,
-        roundNumber: room.roundNumber,
-        mode: room.mode,
-      });
-    } catch (cause) {
-      setError(roomErrorMessage(cause));
-    } finally {
-      setJoining(false);
+      setJoining(true);
+      setError(null);
+      try {
+        const joined = await joinDecisionRoom(
+          token ? { inviteToken: token } : { accessCode: code },
+        );
+        const room = await loadDecisionRoom(joined.sessionId);
+        if (room.status !== 'active' || room.participantCount !== 2) {
+          setError(
+            'This device created that room. Open the invite on your partner’s device.',
+          );
+          return;
+        }
+        await touchRoomPresence(room.sessionId);
+        navigation.replace('Swipe', {
+          sessionId: room.sessionId,
+          roundNumber: room.roundNumber,
+          mode: room.mode,
+        });
+      } catch (cause) {
+        setError(roomErrorMessage(cause));
+      } finally {
+        setJoining(false);
+      }
+    },
+    [code, joining, navigation],
+  );
+
+  useEffect(() => {
+    if (!inviteToken || automaticJoinStarted.current) {
+      return;
     }
-  }, [code, joining, navigation]);
+    automaticJoinStarted.current = true;
+    join(inviteToken).catch(() => undefined);
+  }, [inviteToken, join]);
+
+  const close = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.replace('Home');
+    }
+  };
 
   return (
     <Screen testID="join-screen" style={styles.screen}>
       <View style={styles.top}>
         <Brand compact />
-        <Button label="Close" variant="quiet" onPress={navigation.goBack} />
+        <Button label="Close" variant="quiet" onPress={close} />
       </View>
       <View style={styles.content}>
         <View style={styles.icon}>
           <Text style={styles.iconText}>↗</Text>
         </View>
-        <Text style={styles.eyebrow}>JOIN YOUR PARTNER</Text>
-        <Text style={styles.title}>Enter the room code.</Text>
+        <Text style={styles.eyebrow}>
+          {inviteToken ? 'INVITE RECEIVED' : 'JOIN YOUR PARTNER'}
+        </Text>
+        <Text style={styles.title}>
+          {inviteToken ? 'Joining your room…' : 'Enter the room code.'}
+        </Text>
         <Text style={styles.subtitle}>
           You’ll both see the same options. Your individual choices stay
           private.
         </Text>
-        <TextInput
-          testID="room-code-input"
-          accessibilityLabel="Room code"
-          autoCapitalize="characters"
-          autoCorrect={false}
-          editable={!joining}
-          maxLength={ROOM_CODE_LENGTH}
-          placeholder="ABCD2345"
-          placeholderTextColor={colors.faint}
-          selectionColor={colors.primary}
-          value={code}
-          onChangeText={value => {
-            setCode(normalizeRoomCode(value));
-            setError(null);
-          }}
-          onSubmitEditing={join}
-          style={styles.input}
-        />
+        {!inviteToken ? (
+          <TextInput
+            testID="room-code-input"
+            accessibilityLabel="Room code"
+            autoCapitalize="characters"
+            autoCorrect={false}
+            editable={!joining}
+            maxLength={ROOM_CODE_LENGTH}
+            placeholder="ABCD2345"
+            placeholderTextColor={colors.faint}
+            selectionColor={colors.primary}
+            value={code}
+            onChangeText={value => {
+              setCode(normalizeRoomCode(value));
+              setError(null);
+            }}
+            onSubmitEditing={() => join()}
+            style={styles.input}
+          />
+        ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
       <View>
         <Button
-          label="Join room"
-          disabled={code.length !== ROOM_CODE_LENGTH}
+          label={inviteToken && error ? 'Try invite again' : 'Join room'}
+          disabled={!inviteToken && code.length !== ROOM_CODE_LENGTH}
           loading={joining}
-          onPress={join}
+          onPress={() => join(inviteToken)}
         />
         <Text style={styles.note}>
           Rooms support exactly two people and expire automatically.
