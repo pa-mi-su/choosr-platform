@@ -11,9 +11,10 @@ domain boundaries for decision items, sessions, and content providers; privilege
 remain behind database functions; and untrusted provider/deck data is validated before it
 crosses a boundary. No Expo dependency or committed secret is present.
 
-This audit does **not** classify the app as production ready. The mobile screens still use
-the intentional local two-person simulation. Hosted Supabase deployment, live room wiring,
-provider credentials, cross-device acceptance tests, and store-release work remain.
+This audit does **not** classify the app as production ready. The mobile screens now use
+anonymous Auth, server-created rooms, persisted private swipes, Realtime events, polling
+fallbacks, reconnect recovery, and authoritative matches. Hosted Supabase deployment,
+provider credentials, physical cross-device acceptance tests, and store-release work remain.
 
 ## Design and SOLID review
 
@@ -46,6 +47,10 @@ real variation requires it.
    creations per rolling 24 hours.
 7. Expanded pgTAP and Jest coverage for generic decision modes, cross-mode rejection,
    oversized payload rejection, malformed persisted items, and unsafe action URLs.
+8. Removed the local partner timer, hardcoded room code, and simulated partner likes; room
+   readiness and matches now come only from authenticated database state.
+9. Added reconnect-safe deck resumption, missed-event polling, automatic second-round
+   synchronization, and user-facing network/room errors.
 
 ## Security posture
 
@@ -63,15 +68,13 @@ real variation requires it.
 
 1. Authenticate the Supabase CLI, deploy migrations/functions, configure Realtime, and set
    server-side provider secrets.
-2. Replace the local partner simulation in screens with anonymous Auth, session RPCs,
-   Realtime presence, persisted swipes, reconnect handling, and authoritative match events.
-3. Put manual-code joins behind an abuse-controlled server boundary or equivalent rate
+2. Put manual-code joins behind an abuse-controlled server boundary or equivalent rate
    limiting before a public launch; code entropy alone is not a complete abuse control.
-4. Configure provider quotas and graceful fallback behavior, and verify licensing and
+3. Configure provider quotas and graceful fallback behavior, and verify licensing and
    attribution for TMDB, Places, and Maps.
-5. Run iPhone/iPhone, Android/Android, and cross-platform physical-device acceptance tests,
+4. Run iPhone/iPhone, Android/Android, and cross-platform physical-device acceptance tests,
    including expired rooms, network loss, duplicate swipes, and third-user rejection.
-6. Add universal/app links, privacy and terms pages, data-retention cleanup, store assets,
+5. Add universal/app links, privacy and terms pages, data-retention cleanup, store assets,
    production signing, crash reporting, and release pipelines.
 
 ## Engineering rules for follow-up work

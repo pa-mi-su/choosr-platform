@@ -6,7 +6,12 @@ export type RootStackParamList = {
   LocalSetup: { mode: DecisionMode };
   Waiting: { mode: DecisionMode; searchArea?: string };
   Join: undefined;
-  Swipe: { mode: DecisionMode; searchArea?: string };
-  Match: { item: DecisionItem; searchArea?: string };
-  NoMatch: { mode: DecisionMode; searchArea?: string };
+  Swipe: {
+    sessionId: string;
+    roundNumber: number;
+    mode: DecisionMode;
+    searchArea?: string;
+  };
+  Match: { sessionId: string; item: DecisionItem; searchArea?: string };
+  NoMatch: { sessionId: string; mode: DecisionMode; searchArea?: string };
 };

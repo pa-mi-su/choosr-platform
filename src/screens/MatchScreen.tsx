@@ -15,7 +15,7 @@ import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Match'>;
 export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
-  const { item, searchArea } = route.params;
+  const { item } = route.params;
   const mode = modeById[item.mode];
   const action = item.action;
   const scale = useSharedValue(0.82);
@@ -69,11 +69,12 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
           }
         />
         <Button
-          label="Try another deck"
+          label="Start a new room"
           variant="secondary"
-          onPress={() =>
-            navigation.replace('Swipe', { mode: item.mode, searchArea })
-          }
+          onPress={() => {
+            navigation.popToTop();
+            navigation.navigate('ModeSelect');
+          }}
         />
         <Button
           label="Back home"

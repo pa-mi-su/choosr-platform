@@ -1,34 +1,118 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { Brand, Button, Screen } from '../components/UI';
+import { buildPreviewDeck, modeById } from '../data/decisions';
+import { roomErrorMessage } from '../services/roomFlow';
+import {
+  cancelDecisionRoom,
+  createDecisionRoom,
+  loadDecisionRoom,
+  subscribeToRoom,
+  touchRoomPresence,
+  unsubscribeFromRoom,
+  type DecisionRoom,
+} from '../services/sessionService';
 import { colors } from '../theme';
-import { modeById } from '../data/decisions';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Waiting'>;
-const code = 'DATE42AB';
+
 export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const mode = modeById[route.params.mode];
   const searchArea = route.params.searchArea;
-  const [ready, setReady] = useState(false);
+  const [room, setRoom] = useState<DecisionRoom | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(true);
+  const creationStarted = useRef(false);
+  const sessionId = room?.sessionId;
+
+  const createRoom = useCallback(async () => {
+    if (creationStarted.current) {
+      return;
+    }
+    creationStarted.current = true;
+    setCreating(true);
+    setError(null);
+    try {
+      const credentials = await createDecisionRoom({
+        mode: mode.id,
+        items: buildPreviewDeck(mode.id, searchArea),
+      });
+      setRoom({
+        ...credentials,
+        mode: mode.id,
+        status: 'waiting',
+        roundNumber: 1,
+        participantCount: 1,
+      });
+    } catch (cause) {
+      creationStarted.current = false;
+      setError(roomErrorMessage(cause));
+    } finally {
+      setCreating(false);
+    }
+  }, [mode.id, searchArea]);
+
   useEffect(() => {
-    const timer = setTimeout(() => setReady(true), 1400);
-    return () => clearTimeout(timer);
-  }, []);
-  const share = () =>
-    Share.share({
-      message: `Help me decide ${mode.title.toLowerCase()} on Choosr. Join with code ${code}.`,
+    createRoom().catch(() => undefined);
+  }, [createRoom]);
+
+  const refreshRoom = useCallback(async () => {
+    if (!sessionId) {
+      return;
+    }
+    try {
+      setRoom(await loadDecisionRoom(sessionId));
+      setError(null);
+    } catch (cause) {
+      setError(roomErrorMessage(cause));
+    }
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    }
+    const channel = subscribeToRoom(sessionId, () => {
+      refreshRoom().catch(() => undefined);
     });
+    touchRoomPresence(sessionId).catch(() => undefined);
+    refreshRoom().catch(() => undefined);
+    const poll = setInterval(() => {
+      refreshRoom().catch(() => undefined);
+      touchRoomPresence(sessionId).catch(() => undefined);
+    }, 3000);
+    return () => {
+      clearInterval(poll);
+      unsubscribeFromRoom(channel).catch(() => undefined);
+    };
+  }, [refreshRoom, sessionId]);
+
+  const ready = room?.status === 'active' && room.participantCount === 2;
+  const share = () => {
+    if (!room) {
+      return;
+    }
+    Share.share({
+      message: `Help me decide ${mode.title.toLowerCase()} on Choosr. Join with code ${
+        room.accessCode
+      }.`,
+    }).catch(() => undefined);
+  };
+  const cancel = async () => {
+    if (room) {
+      await cancelDecisionRoom(room.sessionId).catch(() => undefined);
+    }
+    navigation.popToTop();
+  };
+
   return (
     <Screen testID="waiting-screen" style={styles.screen}>
       <View style={styles.top}>
         <Brand compact />
-        <Button
-          label="Cancel"
-          variant="quiet"
-          onPress={() => navigation.popToTop()}
-        />
+        <Button label="Cancel" variant="quiet" onPress={cancel} />
       </View>
       <View style={styles.content}>
         <View style={styles.people}>
@@ -40,36 +124,74 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
           </View>
         </View>
         <Text style={styles.eyebrow}>
-          {ready ? 'YOUR PARTNER IS HERE' : 'ROOM CREATED'}
+          {creating
+            ? 'CREATING PRIVATE ROOM'
+            : ready
+            ? 'PARTNER JOINED'
+            : 'ROOM CREATED'}
         </Text>
         <Text style={styles.title}>
-          {ready ? 'Ready when you are.' : 'Invite your person.'}
+          {creating
+            ? 'One moment…'
+            : ready
+            ? 'Ready when you are.'
+            : 'Invite your person.'}
         </Text>
         <Text style={styles.subtitle}>
           Your choices remain private until you both like the same option.
         </Text>
-        <View style={styles.codeBox}>
-          <Text style={styles.codeLabel}>ROOM CODE</Text>
-          <Text selectable style={styles.code}>
-            {code}
-          </Text>
-          <Text style={styles.expires}>Expires in 24 hours</Text>
-        </View>
+        {room ? (
+          <View style={styles.codeBox}>
+            <Text style={styles.codeLabel}>ROOM CODE</Text>
+            <Text selectable style={styles.code}>
+              {room.accessCode}
+            </Text>
+            <Text style={styles.expires}>Expires in 24 hours</Text>
+          </View>
+        ) : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
       <View style={styles.actions}>
+        {error && !room ? (
+          <Button
+            label="Retry room creation"
+            loading={creating}
+            onPress={createRoom}
+          />
+        ) : (
+          <Button
+            label={
+              ready
+                ? 'Start swiping'
+                : creating
+                ? 'Creating room…'
+                : 'Waiting for your partner…'
+            }
+            disabled={!ready}
+            loading={creating}
+            onPress={() =>
+              room &&
+              navigation.replace('Swipe', {
+                sessionId: room.sessionId,
+                roundNumber: room.roundNumber,
+                mode: mode.id,
+                searchArea,
+              })
+            }
+          />
+        )}
         <Button
-          label={ready ? 'Start swiping' : 'Waiting for your partner…'}
-          disabled={!ready}
-          onPress={() =>
-            navigation.replace('Swipe', { mode: mode.id, searchArea })
-          }
+          label="Share invite"
+          variant="secondary"
+          disabled={!room}
+          onPress={share}
         />
-        <Button label="Share invite" variant="secondary" onPress={share} />
         <Text style={styles.preview}>{mode.eyebrow} · Private choices</Text>
       </View>
     </Screen>
   );
 }
+
 const styles = StyleSheet.create({
   screen: { justifyContent: 'space-between' },
   top: {
@@ -148,6 +270,12 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   expires: { color: colors.faint, fontSize: 10, marginTop: 4 },
+  error: {
+    color: colors.danger,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 14,
+  },
   actions: { gap: 9 },
   preview: { color: colors.faint, fontSize: 10, textAlign: 'center' },
 });

@@ -140,15 +140,6 @@ export const decisionDecks: Record<DecisionMode, DecisionItem[]> = {
   })),
 };
 
-export const simulatedPartnerLikes: Record<
-  DecisionMode,
-  ReadonlySet<string>
-> = {
-  watch: new Set(['past-lives', 'arrival', 'spiderverse']),
-  eat: new Set(['sushi', 'tacos', 'italian']),
-  do: new Set(['coffee', 'bowling', 'live-music']),
-};
-
 export function buildPreviewDeck(
   mode: DecisionMode,
   searchArea?: string,

@@ -9,15 +9,16 @@ projects. It does not use Expo.
 
 ## Current status
 
-The local prototype includes Watch, Eat, and Do mode selection; host and join flows;
+The mobile MVP includes Watch, Eat, and Do mode selection; real host and join flows;
 native invitation sharing; generic decision cards; accessible controls; key-free Maps
-handoff for local matches; a deterministic partner simulation; and match/no-match outcomes.
+handoff for local matches; private persisted swipes; and authoritative match/no-match outcomes.
 
 The Phase 2 foundation now includes a Supabase React Native client, persisted anonymous
 sessions, a five-table PostgreSQL schema, decision modes, immutable item snapshots, Row
 Level Security, authenticated database functions, Realtime configuration, a protected
-content-provider Edge Function, and pgTAP coverage. The hosted project has not received
-the migration yet, and screens use local partner simulation until deployment.
+content-provider Edge Function, pgTAP coverage, Realtime room updates, reconnect recovery,
+and a polling fallback. The hosted project must receive the migration before physical
+devices can use the room flow.
 
 ## Requirements
 
@@ -41,9 +42,10 @@ npm run ios
 npm run android
 ```
 
-The local preview automatically simulates a partner joining. Its Watch, Eat, and Do decks
-live under `src/data`. Live adapters are in `supabase/functions/build-deck` and activate
-after server-side provider credentials are configured.
+Rooms require two distinct anonymous device identities. The host remains on the waiting
+screen until a second device joins with the generated code. Watch, Eat, and Do fallback
+decks live under `src/data`; live adapters are in `supabase/functions/build-deck` and
+activate after server-side provider credentials are configured.
 
 Before starting Metro or a native build, create `.env` from `.env.example`. Only the
 Supabase project URL and publishable key belong in the mobile configuration. The npm
@@ -82,7 +84,7 @@ npm run supabase:test
 - Never commit `.env`, signing keys, service-role keys, or store credentials.
 - Only a Supabase publishable key belongs in the mobile client.
 - TMDB and Google Places access are proxied through a Supabase Edge Function.
-- Production sessions will use Row Level Security and expire automatically.
+- Deployed sessions use Row Level Security and expire automatically.
 - Clients have no direct INSERT, UPDATE, or DELETE grants on application tables.
 - Individual swipe rows can only be selected by the participant who created them.
 

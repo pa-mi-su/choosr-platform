@@ -1,25 +1,58 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { Brand, Button, Screen } from '../components/UI';
+import { normalizeRoomCode, roomErrorMessage } from '../services/roomFlow';
+import {
+  joinDecisionRoom,
+  loadDecisionRoom,
+  touchRoomPresence,
+} from '../services/sessionService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Join'>;
 const ROOM_CODE_LENGTH = 8;
-const ROOM_CODE_PATTERN = /[^A-HJ-NP-Z2-9]/g;
 
 export function JoinScreen({ navigation }: Props): React.JSX.Element {
   const [code, setCode] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const join = useCallback(async () => {
+    if (code.length !== ROOM_CODE_LENGTH || joining) {
+      return;
+    }
+    setJoining(true);
+    setError(null);
+    try {
+      const joined = await joinDecisionRoom({ accessCode: code });
+      const room = await loadDecisionRoom(joined.sessionId);
+      if (room.status !== 'active' || room.participantCount !== 2) {
+        setError(
+          'This device created that room. Enter the code on your partner’s device.',
+        );
+        return;
+      }
+      await touchRoomPresence(room.sessionId);
+      navigation.replace('Swipe', {
+        sessionId: room.sessionId,
+        roundNumber: room.roundNumber,
+        mode: room.mode,
+      });
+    } catch (cause) {
+      setError(roomErrorMessage(cause));
+    } finally {
+      setJoining(false);
+    }
+  }, [code, joining, navigation]);
+
   return (
     <Screen testID="join-screen" style={styles.screen}>
       <View style={styles.top}>
         <Brand compact />
-        <Button
-          label="Close"
-          variant="quiet"
-          onPress={() => navigation.goBack()}
-        />
+        <Button label="Close" variant="quiet" onPress={navigation.goBack} />
       </View>
       <View style={styles.content}>
         <View style={styles.icon}>
@@ -36,26 +69,27 @@ export function JoinScreen({ navigation }: Props): React.JSX.Element {
           accessibilityLabel="Room code"
           autoCapitalize="characters"
           autoCorrect={false}
+          editable={!joining}
           maxLength={ROOM_CODE_LENGTH}
-          placeholder="DATE42AB"
+          placeholder="ABCD2345"
           placeholderTextColor={colors.faint}
           selectionColor={colors.primary}
           value={code}
-          onChangeText={value =>
-            setCode(value.toUpperCase().replace(ROOM_CODE_PATTERN, ''))
-          }
-          onSubmitEditing={() =>
-            code.length === ROOM_CODE_LENGTH &&
-            navigation.replace('Swipe', { mode: 'watch' })
-          }
+          onChangeText={value => {
+            setCode(normalizeRoomCode(value));
+            setError(null);
+          }}
+          onSubmitEditing={join}
           style={styles.input}
         />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
       <View>
         <Button
           label="Join room"
           disabled={code.length !== ROOM_CODE_LENGTH}
-          onPress={() => navigation.replace('Swipe', { mode: 'watch' })}
+          loading={joining}
+          onPress={join}
         />
         <Text style={styles.note}>
           Rooms support exactly two people and expire automatically.
@@ -64,6 +98,7 @@ export function JoinScreen({ navigation }: Props): React.JSX.Element {
     </Screen>
   );
 }
+
 const styles = StyleSheet.create({
   screen: { justifyContent: 'space-between' },
   top: {
@@ -117,6 +152,13 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 8,
     textAlign: 'center',
+  },
+  error: {
+    color: colors.danger,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    marginTop: 14,
   },
   note: {
     color: colors.faint,

@@ -17,6 +17,22 @@ export type RoomCredentials = {
   expiresAt: string;
 };
 
+export type DecisionRoom = {
+  sessionId: string;
+  accessCode: string;
+  mode: DecisionMode;
+  status: SessionStatus;
+  roundNumber: number;
+  expiresAt: string;
+  participantCount: number;
+};
+
+export type RoomOutcome = {
+  status: SessionStatus;
+  roundNumber: number;
+  matchedItemId: string | null;
+};
+
 const toItemPayload = (item: DecisionItem): Json => ({
   id: item.id,
   mode: item.mode,
@@ -86,6 +102,63 @@ export async function joinDecisionRoom(input: {
   };
 }
 
+export async function loadDecisionRoom(
+  sessionId: string,
+): Promise<DecisionRoom> {
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .select('id, access_code, mode, status, round_number, expires_at')
+    .eq('id', sessionId)
+    .single();
+  if (sessionError) {
+    throw sessionError;
+  }
+
+  const { count, error: participantError } = await supabase
+    .from('participants')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId);
+  if (participantError) {
+    throw participantError;
+  }
+
+  return {
+    sessionId: session.id,
+    accessCode: session.access_code,
+    mode: session.mode,
+    status: session.status,
+    roundNumber: session.round_number,
+    expiresAt: session.expires_at,
+    participantCount: count ?? 0,
+  };
+}
+
+export async function loadRoomOutcome(sessionId: string): Promise<RoomOutcome> {
+  const { data: session, error: sessionError } = await supabase
+    .from('sessions')
+    .select('status, round_number')
+    .eq('id', sessionId)
+    .single();
+  if (sessionError) {
+    throw sessionError;
+  }
+
+  const { data: match, error: matchError } = await supabase
+    .from('matches')
+    .select('item_id')
+    .eq('session_id', sessionId)
+    .maybeSingle();
+  if (matchError) {
+    throw matchError;
+  }
+
+  return {
+    status: session.status,
+    roundNumber: session.round_number,
+    matchedItemId: match?.item_id ?? null,
+  };
+}
+
 export async function loadDecisionDeck(
   sessionId: string,
   round: number,
@@ -118,6 +191,53 @@ export async function submitDecision(input: {
     throw error;
   }
   return data[0];
+}
+
+export async function loadOwnSwipeItemIds(
+  sessionId: string,
+  round: number,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('swipes')
+    .select('item_id')
+    .eq('session_id', sessionId)
+    .eq('round', round);
+  if (error) {
+    throw error;
+  }
+  return new Set(data.map(row => row.item_id));
+}
+
+export async function startDecisionRound(input: {
+  sessionId: string;
+  items: DecisionItem[];
+}): Promise<number> {
+  const { data, error } = await supabase.rpc('start_decision_round', {
+    p_session_id: input.sessionId,
+    p_items: input.items.map(toItemPayload),
+  });
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+export async function touchRoomPresence(sessionId: string): Promise<void> {
+  const { error } = await supabase.rpc('touch_presence', {
+    p_session_id: sessionId,
+  });
+  if (error) {
+    throw error;
+  }
+}
+
+export async function cancelDecisionRoom(sessionId: string): Promise<void> {
+  const { error } = await supabase.rpc('cancel_session', {
+    p_session_id: sessionId,
+  });
+  if (error) {
+    throw error;
+  }
 }
 
 export function subscribeToRoom(

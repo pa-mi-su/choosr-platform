@@ -2,7 +2,6 @@ import {
   buildPreviewDeck,
   decisionDecks,
   decisionModes,
-  simulatedPartnerLikes,
 } from '../src/data/decisions';
 
 describe('decision modes', () => {
@@ -17,11 +16,6 @@ describe('decision modes', () => {
       expect(deck.length).toBeGreaterThanOrEqual(4);
       expect(new Set(deck.map(item => item.id)).size).toBe(deck.length);
       expect(deck.every(item => item.mode === mode)).toBe(true);
-      expect(
-        [...simulatedPartnerLikes[mode]].every(id =>
-          deck.some(item => item.id === id),
-        ),
-      ).toBe(true);
     },
   );
 
