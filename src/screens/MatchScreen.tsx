@@ -38,7 +38,7 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
       <Animated.View style={[styles.posterWrap, reveal]}>
         <DecisionArtwork item={item} style={styles.poster} />
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>♥ MATCHED</Text>
+          <Text style={styles.badgeText}>✓ MATCHED</Text>
         </View>
       </Animated.View>
       <View style={styles.details}>

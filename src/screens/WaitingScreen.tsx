@@ -36,7 +36,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             <Text style={styles.personText}>Y</Text>
           </View>
           <View style={[styles.person, styles.partner, ready && styles.ready]}>
-            <Text style={styles.personText}>{ready ? '♥' : '?'}</Text>
+            <Text style={styles.personText}>{ready ? '✓' : '?'}</Text>
           </View>
         </View>
         <Text style={styles.eyebrow}>

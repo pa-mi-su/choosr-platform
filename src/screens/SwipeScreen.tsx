@@ -84,7 +84,7 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.heart}>♥</Text>
+          <Text style={styles.approve}>✓</Text>
         </Pressable>
       </View>
     </Screen>
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   like: { backgroundColor: colors.primary, borderColor: colors.primary },
   pressed: { opacity: 0.75, transform: [{ scale: 0.92 }] },
   pass: { color: colors.muted, fontSize: 38, fontWeight: '300' },
-  heart: { color: colors.white, fontSize: 25 },
+  approve: { color: colors.white, fontSize: 25, fontWeight: '900' },
   hints: { alignItems: 'center' },
   hint: {
     color: colors.faint,

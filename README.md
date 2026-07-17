@@ -88,7 +88,8 @@ npm run supabase:test
 
 The revised approved direction is documented in `docs/PRODUCT_CHARTER.md`. The latest
 architecture, SOLID, security, and release-readiness review is in
-`docs/ENGINEERING_AUDIT.md`.
+`docs/ENGINEERING_AUDIT.md`. Brand references, palette, and app-icon rules are in
+`docs/VISUAL_DIRECTION.md`.
 
 ## Identifiers
 

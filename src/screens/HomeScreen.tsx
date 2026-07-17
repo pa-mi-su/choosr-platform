@@ -9,7 +9,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 export function HomeScreen({ navigation }: Props): React.JSX.Element {
   return (
     <Screen testID="home-screen" style={styles.screen}>
-      <View style={styles.glow} />
+      <View style={styles.orangeGlow} />
       <View style={styles.top}>
         <Brand compact />
         <View style={styles.pill}>
@@ -33,7 +33,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
             <Text style={styles.tonight}>TONIGHT</Text>
           </View>
           <View style={[styles.card, styles.right]}>
-            <Text style={styles.cardIcon}>♥</Text>
+            <Text style={styles.cardIcon}>✓</Text>
           </View>
           <View style={styles.badge}>
             <Text style={styles.badgeText}>IT’S A MATCH</Text>
@@ -60,13 +60,13 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   screen: { overflow: 'hidden' },
-  glow: {
+  orangeGlow: {
     position: 'absolute',
     width: 340,
     height: 340,
     borderRadius: 170,
     backgroundColor: colors.primary,
-    opacity: 0.07,
+    opacity: 0.09,
     top: -180,
     right: -140,
   },
@@ -129,12 +129,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   left: {
-    backgroundColor: '#282D3B',
+    backgroundColor: '#17263A',
     transform: [{ translateX: -84 }, { rotate: '-12deg' }, { scale: 0.88 }],
   },
-  center: { zIndex: 2, backgroundColor: '#24394B' },
+  center: { zIndex: 2, backgroundColor: '#20334B' },
   right: {
-    backgroundColor: '#3E2636',
+    backgroundColor: '#17263A',
     transform: [{ translateX: 84 }, { rotate: '12deg' }, { scale: 0.88 }],
   },
   cardIcon: { color: colors.text, fontSize: 31, opacity: 0.5 },

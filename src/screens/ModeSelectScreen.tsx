@@ -8,6 +8,11 @@ import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ModeSelect'>;
+const modeColors = {
+  watch: { background: '#2B241F', foreground: colors.primary },
+  eat: { background: '#2B241F', foreground: colors.primary },
+  do: { background: '#2B241F', foreground: colors.primary },
+} as const;
 
 export function ModeSelectScreen({ navigation }: Props): React.JSX.Element {
   return (
@@ -24,29 +29,39 @@ export function ModeSelectScreen({ navigation }: Props): React.JSX.Element {
         </Text>
       </View>
       <View style={styles.options}>
-        {decisionModes.map(mode => (
-          <Pressable
-            key={mode.id}
-            accessibilityRole="button"
-            accessibilityLabel={mode.title}
-            onPress={() =>
-              navigation.navigate(
-                mode.id === 'watch' ? 'Waiting' : 'LocalSetup',
-                { mode: mode.id },
-              )
-            }
-            style={({ pressed }) => [styles.option, pressed && styles.pressed]}
-          >
-            <View style={styles.icon}>
-              <Text style={styles.iconText}>{mode.icon}</Text>
-            </View>
-            <View style={styles.optionCopy}>
-              <Text style={styles.optionTitle}>{mode.title}</Text>
-              <Text style={styles.optionDescription}>{mode.description}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        ))}
+        {decisionModes.map(mode => {
+          const palette = modeColors[mode.id];
+          return (
+            <Pressable
+              key={mode.id}
+              accessibilityRole="button"
+              accessibilityLabel={mode.title}
+              onPress={() =>
+                navigation.navigate(
+                  mode.id === 'watch' ? 'Waiting' : 'LocalSetup',
+                  { mode: mode.id },
+                )
+              }
+              style={({ pressed }) => [
+                styles.option,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View
+                style={[styles.icon, { backgroundColor: palette.background }]}
+              >
+                <Text style={[styles.iconText, { color: palette.foreground }]}>
+                  {mode.icon}
+                </Text>
+              </View>
+              <View style={styles.optionCopy}>
+                <Text style={styles.optionTitle}>{mode.title}</Text>
+                <Text style={styles.optionDescription}>{mode.description}</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          );
+        })}
       </View>
       <Text style={styles.note}>
         Exactly two people · Rooms expire in 24 hours
@@ -102,7 +117,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.raised,
   },
-  iconText: { color: colors.accent, fontSize: 24, fontWeight: '900' },
+  iconText: { fontSize: 24, fontWeight: '900' },
   optionCopy: { flex: 1, marginLeft: 14 },
   optionTitle: { color: colors.text, fontSize: 18, fontWeight: '900' },
   optionDescription: { color: colors.muted, fontSize: 12, marginTop: 5 },

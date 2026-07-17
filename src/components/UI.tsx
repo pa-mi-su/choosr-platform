@@ -46,11 +46,12 @@ export function Brand({
   return (
     <View style={styles.brand}>
       <View style={[styles.logo, compact && styles.logoSmall]}>
-        <View
-          style={[styles.logoCard, { transform: [{ rotate: '-13deg' }] }]}
-        />
-        <View style={[styles.logoCard, { transform: [{ rotate: '13deg' }] }]} />
-        <View style={styles.logoHeart} />
+        <Text style={[styles.logoLetter, compact && styles.logoLetterSmall]}>
+          C
+        </Text>
+        <Text style={[styles.logoCheck, compact && styles.logoCheckSmall]}>
+          ✓
+        </Text>
       </View>
       <Text style={[styles.wordmark, compact && styles.wordmarkSmall]}>
         choosr
@@ -109,22 +110,29 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  logoSmall: { width: 32, height: 32, transform: [{ scale: 0.72 }] },
-  logoCard: {
-    position: 'absolute',
-    width: 22,
-    height: 30,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: colors.text,
-  },
-  logoHeart: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    borderRadius: 13,
     backgroundColor: colors.primary,
   },
+  logoSmall: { width: 32, height: 32, borderRadius: 10 },
+  logoLetter: {
+    color: colors.background,
+    fontSize: 31,
+    lineHeight: 36,
+    fontWeight: '900',
+    letterSpacing: -2,
+    marginLeft: -2,
+  },
+  logoLetterSmall: { fontSize: 23, lineHeight: 27, letterSpacing: -1.5 },
+  logoCheck: {
+    position: 'absolute',
+    color: colors.background,
+    fontSize: 11,
+    lineHeight: 12,
+    fontWeight: '900',
+    right: 7,
+    top: 17,
+  },
+  logoCheckSmall: { fontSize: 8, lineHeight: 9, right: 5, top: 13 },
   wordmark: {
     color: colors.text,
     fontSize: 30,
@@ -139,7 +147,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
-  primary: { backgroundColor: colors.primary },
+  primary: {
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 7 },
+    elevation: 5,
+  },
   secondary: {
     backgroundColor: colors.raised,
     borderWidth: 1,
