@@ -2,9 +2,19 @@ import type { DecisionItem, DecisionMode } from './domain';
 
 export type RootStackParamList = {
   Home: undefined;
-  ModeSelect: undefined;
-  LocalSetup: { mode: DecisionMode };
-  Waiting: { mode: DecisionMode; searchArea?: string };
+  Circle: { connectionToken?: string } | undefined;
+  ModeSelect: { connectionId?: string; connectionName?: string } | undefined;
+  LocalSetup: {
+    mode: DecisionMode;
+    connectionId?: string;
+    connectionName?: string;
+  };
+  Waiting: {
+    mode: DecisionMode;
+    searchArea?: string;
+    connectionId?: string;
+    connectionName?: string;
+  };
   Join: { inviteToken?: string } | undefined;
   Swipe: {
     sessionId: string;

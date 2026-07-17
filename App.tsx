@@ -18,6 +18,7 @@ const linking: LinkingOptions<RootStackParamList> = {
   config: {
     screens: {
       Join: 'join/:inviteToken',
+      Circle: 'connect/:connectionToken',
     },
   },
 };

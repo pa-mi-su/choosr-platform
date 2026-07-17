@@ -1,4 +1,4 @@
-import { buildRoomInvite } from '../src/services/roomInvite';
+import { buildCircleInvite, buildRoomInvite } from '../src/services/roomInvite';
 
 describe('buildRoomInvite', () => {
   it('includes a token link and a manual-code fallback', () => {
@@ -21,5 +21,17 @@ describe('buildRoomInvite', () => {
         decisionPrompt: 'decide',
       }).url,
     ).toBe('choosr://join/token%2Fvalue');
+  });
+});
+
+describe('buildCircleInvite', () => {
+  it('builds a secure connection link for native sharing', () => {
+    const invite = buildCircleInvite({
+      inviteToken: 'circle-token',
+      displayName: 'Pat',
+    });
+
+    expect(invite.url).toBe('choosr://connect/circle-token');
+    expect(invite.message).toContain('Pat invited you');
   });
 });

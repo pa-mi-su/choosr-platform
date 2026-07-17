@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Brand, Button, Screen } from '../components/UI';
 import { colors } from '../theme';
@@ -12,10 +12,15 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
       <View style={styles.orangeGlow} />
       <View style={styles.top}>
         <Brand compact />
-        <View style={styles.pill}>
-          <View style={styles.dot} />
-          <Text style={styles.pillText}>NO ACCOUNT NEEDED</Text>
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open my Choosr Circle"
+          onPress={() => navigation.navigate('Circle')}
+          style={({ pressed }) => [styles.pill, pressed && styles.pressed]}
+        >
+          <Text style={styles.peopleIcon}>●●</Text>
+          <Text style={styles.pillText}>MY CIRCLE</Text>
+        </Pressable>
       </View>
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>TONIGHT, SOLVED</Text>
@@ -42,7 +47,12 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
       </View>
       <View style={styles.actions}>
         <Button
-          label="Start a room"
+          label="Choose with someone"
+          onPress={() => navigation.navigate('Circle')}
+        />
+        <Button
+          label="Start a one-time room"
+          variant="secondary"
           onPress={() => navigation.navigate('ModeSelect')}
         />
         <Button
@@ -84,12 +94,8 @@ const styles = StyleSheet.create({
     borderRadius: 99,
     padding: 8,
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.success,
-  },
+  pressed: { opacity: 0.7 },
+  peopleIcon: { color: colors.primary, fontSize: 8, letterSpacing: -2 },
   pillText: { color: colors.muted, fontSize: 9, fontWeight: '900' },
   hero: { flex: 1, justifyContent: 'center' },
   eyebrow: {

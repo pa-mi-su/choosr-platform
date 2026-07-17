@@ -8,6 +8,10 @@ import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
 import { buildRoomInvite } from '../services/roomInvite';
 import {
+  circleErrorMessage,
+  inviteCirclePerson,
+} from '../services/circleService';
+import {
   cancelDecisionRoom,
   createDecisionRoom,
   loadDecisionRoom,
@@ -21,10 +25,13 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Waiting'>;
 export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const mode = modeById[route.params.mode];
   const searchArea = route.params.searchArea;
+  const connectionId = route.params.connectionId;
+  const connectionName = route.params.connectionName;
   const [room, setRoom] = useState<DecisionRoom | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(true);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [circleInviteSent, setCircleInviteSent] = useState(false);
   const creationStarted = useRef(false);
   const sessionId = room?.sessionId;
 
@@ -48,13 +55,21 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
         roundNumber: 1,
         participantCount: 1,
       });
+      if (connectionId) {
+        try {
+          await inviteCirclePerson(credentials.sessionId, connectionId);
+          setCircleInviteSent(true);
+        } catch (cause) {
+          setError(circleErrorMessage(cause));
+        }
+      }
     } catch (cause) {
       creationStarted.current = false;
       setError(roomErrorMessage(cause));
     } finally {
       setCreating(false);
     }
-  }, [mode.id, searchArea]);
+  }, [connectionId, mode.id, searchArea]);
 
   useEffect(() => {
     createRoom().catch(() => undefined);
@@ -122,6 +137,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             ? 'CREATING PRIVATE ROOM'
             : ready
             ? 'PARTNER JOINED'
+            : circleInviteSent
+            ? 'INVITATION SENT'
             : 'ROOM CREATED'}
         </Text>
         <Text style={styles.title}>
@@ -129,6 +146,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             ? 'One moment…'
             : ready
             ? 'Ready when you are.'
+            : circleInviteSent && connectionName
+            ? `${connectionName} is invited.`
             : 'Invite your person.'}
         </Text>
         <Text style={styles.subtitle}>
@@ -167,11 +186,16 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             }
           />
         ) : (
-          <Button label="Send invite" onPress={share} />
+          <Button
+            label={circleInviteSent ? 'Share another way' : 'Send invite'}
+            onPress={share}
+          />
         )}
         {!creating && room && !ready ? (
           <Text style={styles.inviteHint}>
-            Send it by text, WhatsApp, or any messaging app. We’ll wait here.
+            {circleInviteSent && connectionName
+              ? `${connectionName} can join from their Choosr Circle. The link is your fallback.`
+              : 'Send it by text, WhatsApp, or any messaging app. We’ll wait here.'}
           </Text>
         ) : null}
         <Text style={styles.preview}>{mode.eyebrow} · Private choices</Text>

@@ -5,6 +5,8 @@ export type RoomInvite = {
   message: string;
 };
 
+export type CircleInvite = RoomInvite;
+
 export function buildRoomInvite(input: {
   inviteToken: string;
   accessCode: string;
@@ -21,3 +23,16 @@ export function buildRoomInvite(input: {
 }
 
 export const roomLinkingPrefixes = [CHOOSR_DEEP_LINK_PREFIX];
+
+export function buildCircleInvite(input: {
+  inviteToken: string;
+  displayName: string;
+}): CircleInvite {
+  const url = `${CHOOSR_DEEP_LINK_PREFIX}connect/${encodeURIComponent(
+    input.inviteToken,
+  )}`;
+  return {
+    url,
+    message: `${input.displayName} invited you to connect on Choosr. Tap to join their Circle: ${url}`,
+  };
+}

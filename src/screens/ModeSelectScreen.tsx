@@ -14,7 +14,11 @@ const modeColors = {
   do: { background: '#2B241F', foreground: colors.primary },
 } as const;
 
-export function ModeSelectScreen({ navigation }: Props): React.JSX.Element {
+export function ModeSelectScreen({
+  navigation,
+  route,
+}: Props): React.JSX.Element {
+  const selectedPerson = route.params;
   return (
     <Screen testID="mode-select-screen">
       <View style={styles.top}>
@@ -25,7 +29,9 @@ export function ModeSelectScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.eyebrow}>CHOOSE TOGETHER</Text>
         <Text style={styles.title}>What are we deciding?</Text>
         <Text style={styles.subtitle}>
-          You both get the same options. Individual passes stay private.
+          {selectedPerson?.connectionName
+            ? `You’re inviting ${selectedPerson.connectionName}. Individual passes stay private.`
+            : 'You both get the same options. Individual passes stay private.'}
         </Text>
       </View>
       <View style={styles.options}>
@@ -39,7 +45,10 @@ export function ModeSelectScreen({ navigation }: Props): React.JSX.Element {
               onPress={() =>
                 navigation.navigate(
                   mode.id === 'watch' ? 'Waiting' : 'LocalSetup',
-                  { mode: mode.id },
+                  {
+                    mode: mode.id,
+                    ...selectedPerson,
+                  },
                 )
               }
               style={({ pressed }) => [

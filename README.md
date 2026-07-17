@@ -29,9 +29,14 @@ The real two-device client flow is implemented:
 - Reconnection-safe deck resumption from persisted swipe state
 - Synchronized subsequent rounds
 - Native invitation sharing and key-free Maps handoff
+- Optional persistent **Choosr Circle** profiles and mutually accepted connections
+- One-tap room invitations for Circle connections
+- Contact-safe Circle links through the native share picker without address-book uploads
+- Transactional push-notification outbox and native device-token storage boundary
 - Watch, Eat, and Do fallback decks
 
-The database implementation passes 62 pgTAP assertions. Both migrations are deployed to the
+The original room database implementation passes 62 pgTAP assertions, and the Circle schema
+adds a 23-assertion regression suite. All migrations are deployed to the
 hosted Supabase project, where the room lifecycle has been verified using independent
 host, partner, and third-user clients. Hosted checks cover room activation, third-user
 rejection, private-swipe RLS, authoritative matching, and participant/match Realtime events.
@@ -47,12 +52,13 @@ rejection, private-swipe RLS, authoritative matching, and participant/match Real
 | Interaction            | Gesture Handler, Reanimated, Worklets | Swipe gestures and match animations                                         |
 | Device storage         | AsyncStorage                          | Persists the anonymous Supabase session across launches                     |
 | Backend client         | Supabase JS                           | Auth, PostgREST reads, RPC writes, Realtime, and Edge Function calls        |
-| Identity               | Supabase anonymous Auth               | Unique device-scoped identity without visible accounts                      |
-| Database               | PostgreSQL with Row Level Security    | Rooms, participants, frozen decks, private swipes, and matches              |
+| Identity               | Supabase anonymous Auth + Circle      | Instant use plus an optional persistent name and unique handle              |
+| Database               | PostgreSQL with Row Level Security    | Rooms, Circle connections, invitations, private swipes, and matches         |
 | Write boundary         | PostgreSQL security-definer RPCs      | Validated, transactional state changes without direct table writes          |
 | Live updates           | Supabase Realtime/Postgres Changes    | Room activation, participant, match, and round notifications                |
 | Recovery               | 15-second active-only polling         | Low-traffic fallback for missed or disconnected Realtime events             |
 | Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup               |
+| Push boundary          | Token registry + transactional outbox | Provider-neutral delivery queue for future direct APNs/FCM workers          |
 | Provider boundary      | Supabase Edge Functions               | Keeps TMDB and Google Places credentials out of mobile binaries             |
 | Watch provider         | TMDB adapter                          | Normalized movie discovery when server credentials are configured           |
 | Local provider         | Google Places adapter                 | Normalized nearby Eat/Do results when server credentials are configured     |
@@ -82,6 +88,25 @@ flowchart LR
 The mobile client is untrusted. It may read only data allowed by RLS and cannot directly
 insert, update, or delete application-table rows. All writes cross validated database
 function boundaries.
+
+## Choosr Circle and invitations
+
+Circle is optional: one-time rooms still require no profile. A user who wants repeat invites
+creates a display name and unique handle on top of the existing persisted anonymous identity.
+Connections are mutual and server-authorized.
+
+There are two connection paths:
+
+1. **Handle:** request `@handle`; the recipient explicitly accepts.
+2. **Contacts:** Choosr creates a one-use, seven-day `choosr://connect/<token>` capability and
+   opens the native share picker. The recipient becomes connected only after opening the link
+   and creating a Circle identity. Choosr never reads or uploads the address book.
+
+From Circle, selecting an accepted person before Watch/Eat/Do creates the normal secure room
+and a recipient-bound `room_invitations` row. It appears in the other person's Circle and can
+only be accepted by that authenticated recipient. A transactionally inserted
+`notification_outbox` row is the future APNs/FCM delivery boundary, so room creation never
+depends on either push vendor being available.
 
 ## End-to-end room lifecycle
 
@@ -165,7 +190,8 @@ The typed stack lives in `src/navigation/AppNavigator.tsx` and
 
 ```text
 Home
-├── ModeSelect
+├── Circle → Person → ModeSelect
+├── ModeSelect (one-time room)
 │   ├── Waiting (Watch)
 │   └── LocalSetup → Waiting (Eat/Do)
 └── Join
@@ -502,7 +528,9 @@ Confirm that:
 - Live provider deck creation is not yet wired into the host screen.
 - Subsequent fallback rounds currently reuse the prior normalized deck.
 - A branded HTTPS universal/app-link gateway and hosted install fallback page remain; the
-  installed-app `choosr://` room link and manual-code fallback are implemented.
+  installed-app `choosr://` room/Circle links and manual-code fallback are implemented.
+- Circle invitations appear in-app. Direct background push still requires APNs credentials,
+  Firebase project files, native permission/token registration, and an outbox delivery worker.
 - Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
 - Retention Cron run history should be monitored after its first hourly and daily executions.
 - Physical iPhone/iPhone, Android/Android, and cross-platform acceptance matrices remain.

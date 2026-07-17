@@ -18,6 +18,12 @@ export function LocalSetupScreen({
   const continueToRoom = () =>
     navigation.navigate('Waiting', {
       mode: mode.id,
+      ...(route.params.connectionId
+        ? {
+            connectionId: route.params.connectionId,
+            connectionName: route.params.connectionName,
+          }
+        : {}),
       ...(searchArea.trim() ? { searchArea: searchArea.trim() } : {}),
     });
 

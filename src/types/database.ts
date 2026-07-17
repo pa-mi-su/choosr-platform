@@ -69,6 +69,35 @@ type MatchRow = {
   created_at: string;
 };
 
+type ProfileRow = {
+  user_id: string;
+  display_name: string;
+  handle: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type ConnectionRow = {
+  id: string;
+  requester_user_id: string;
+  addressee_user_id: string;
+  status: 'pending' | 'accepted' | 'declined';
+  created_at: string;
+  responded_at: string | null;
+};
+
+type RoomInvitationRow = {
+  id: string;
+  session_id: string;
+  connection_id: string;
+  sender_user_id: string;
+  recipient_user_id: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled' | 'expired';
+  created_at: string;
+  expires_at: string;
+  responded_at: string | null;
+};
+
 type Table<Row, Insert, Update> = {
   Row: Row;
   Insert: Insert;
@@ -84,6 +113,9 @@ export type Database = {
       session_items: Table<SessionItemRow, never, never>;
       swipes: Table<SwipeRow, never, never>;
       matches: Table<MatchRow, never, never>;
+      profiles: Table<ProfileRow, never, never>;
+      connections: Table<ConnectionRow, never, never>;
+      room_invitations: Table<RoomInvitationRow, never, never>;
     };
     Views: Record<never, never>;
     Functions: {
@@ -103,6 +135,77 @@ export type Database = {
           invite_token: string;
           expires_at: string;
         }[];
+      };
+      upsert_choosr_profile: {
+        Args: { p_display_name: string; p_handle: string };
+        Returns: {
+          user_id: string;
+          display_name: string;
+          handle: string;
+        }[];
+      };
+      get_choosr_profile: {
+        Args: Record<never, never>;
+        Returns: {
+          user_id: string;
+          display_name: string;
+          handle: string;
+        }[];
+      };
+      send_connection_request: {
+        Args: { p_handle: string };
+        Returns: string;
+      };
+      respond_connection: {
+        Args: { p_connection_id: string; p_accept: boolean };
+        Returns: undefined;
+      };
+      create_circle_invite: {
+        Args: Record<never, never>;
+        Returns: { invite_token: string; expires_at: string }[];
+      };
+      redeem_circle_invite: {
+        Args: { p_invite_token: string };
+        Returns: string;
+      };
+      list_circle: {
+        Args: Record<never, never>;
+        Returns: {
+          connection_id: string;
+          person_user_id: string;
+          display_name: string;
+          handle: string;
+          status: 'pending' | 'accepted' | 'declined';
+          direction: 'incoming' | 'outgoing';
+        }[];
+      };
+      invite_connection_to_session: {
+        Args: { p_session_id: string; p_connection_id: string };
+        Returns: string;
+      };
+      list_pending_room_invitations: {
+        Args: Record<never, never>;
+        Returns: {
+          invitation_id: string;
+          session_id: string;
+          sender_display_name: string;
+          sender_handle: string;
+          mode: DecisionMode;
+          expires_at: string;
+        }[];
+      };
+      respond_room_invitation: {
+        Args: { p_invitation_id: string; p_accept: boolean };
+        Returns: {
+          session_id: string;
+          status: SessionStatus;
+          round_number: number;
+          expires_at: string;
+        }[];
+      };
+      register_push_token: {
+        Args: { p_platform: 'ios' | 'android'; p_token: string };
+        Returns: undefined;
       };
       join_session: {
         Args: {
