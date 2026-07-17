@@ -3,10 +3,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Brand, Button, Screen } from '../components/UI';
 import { colors } from '../theme';
+import { modeById } from '../data/decisions';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'NoMatch'>;
-export function NoMatchScreen({ navigation }: Props): React.JSX.Element {
+export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
+  const mode = modeById[route.params.mode];
+  const searchArea = route.params.searchArea;
   return (
     <Screen testID="no-match-screen" style={styles.screen}>
       <Brand compact />
@@ -18,13 +21,15 @@ export function NoMatchScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.title}>Good taste takes another round.</Text>
         <Text style={styles.subtitle}>
           You made it through this deck without a match. Try a fresh set of
-          movies together.
+          options together.
         </Text>
       </View>
       <View style={styles.actions}>
         <Button
           label="Try another deck"
-          onPress={() => navigation.replace('Swipe')}
+          onPress={() =>
+            navigation.replace('Swipe', { mode: mode.id, searchArea })
+          }
         />
         <Button
           label="End room"

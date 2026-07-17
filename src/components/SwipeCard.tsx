@@ -11,17 +11,17 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { colors } from '../theme';
-import type { Movie, SwipeDirection } from '../types/domain';
-import { MoviePoster } from './MoviePoster';
+import type { DecisionItem, SwipeDirection } from '../types/domain';
+import { DecisionArtwork } from './DecisionArtwork';
 
 const width = Dimensions.get('window').width;
 const threshold = width * 0.24;
 
 export function SwipeCard({
-  movie,
+  item,
   onSwipe,
 }: {
-  movie: Movie;
+  item: DecisionItem;
   onSwipe: (direction: SwipeDirection) => void;
 }): React.JSX.Element {
   const x = useSharedValue(0);
@@ -68,19 +68,16 @@ export function SwipeCard({
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View testID="swipe-card" style={[styles.card, cardStyle]}>
-        <MoviePoster movie={movie} style={styles.poster} />
+        <DecisionArtwork item={item} style={styles.poster} />
         <Animated.Text style={[styles.yes, yesStyle]}>YES</Animated.Text>
         <Animated.Text style={[styles.pass, passStyle]}>PASS</Animated.Text>
         <View style={styles.details}>
           <View style={styles.row}>
-            <Text style={styles.title}>{movie.title}</Text>
-            <Text style={styles.rating}>★ {movie.rating}</Text>
+            <Text style={styles.title}>{item.title}</Text>
           </View>
-          <Text style={styles.meta}>
-            {movie.year} · {movie.runtime} · {movie.genres.join(' / ')}
-          </Text>
+          <Text style={styles.meta}>{item.tags.join(' · ')}</Text>
           <Text numberOfLines={2} style={styles.overview}>
-            {movie.overview}
+            {item.description}
           </Text>
         </View>
       </Animated.View>
@@ -101,7 +98,6 @@ const styles = StyleSheet.create({
   details: { padding: 18 },
   row: { flexDirection: 'row', gap: 10 },
   title: { flex: 1, color: colors.text, fontSize: 22, fontWeight: '900' },
-  rating: { color: colors.accent, fontWeight: '900' },
   meta: { color: colors.muted, fontSize: 11, marginTop: 6 },
   overview: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: 8 },
   yes: {

@@ -2,7 +2,7 @@ import type { SwipeDirection } from '../types/domain';
 
 type Input = {
   direction: SwipeDirection;
-  movieId: string;
+  itemId: string;
   index: number;
   deckSize: number;
   partnerLikes: ReadonlySet<string>;
@@ -10,7 +10,7 @@ type Input = {
 export type SwipeOutcome = 'match' | 'next' | 'no-match';
 
 export function getSwipeOutcome(input: Input): SwipeOutcome {
-  if (input.direction === 'right' && input.partnerLikes.has(input.movieId)) {
+  if (input.direction === 'right' && input.partnerLikes.has(input.itemId)) {
     return 'match';
   }
   return input.index >= input.deckSize - 1 ? 'no-match' : 'next';

@@ -3,11 +3,14 @@ import { Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Brand, Button, Screen } from '../components/UI';
 import { colors } from '../theme';
+import { modeById } from '../data/decisions';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Waiting'>;
 const code = 'MOON42';
-export function WaitingScreen({ navigation }: Props): React.JSX.Element {
+export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
+  const mode = modeById[route.params.mode];
+  const searchArea = route.params.searchArea;
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setReady(true), 1400);
@@ -15,7 +18,7 @@ export function WaitingScreen({ navigation }: Props): React.JSX.Element {
   }, []);
   const share = () =>
     Share.share({
-      message: `Help me pick a movie on Choosr. Join with code ${code}.`,
+      message: `Help me decide ${mode.title.toLowerCase()} on Choosr. Join with code ${code}.`,
     });
   return (
     <Screen testID="waiting-screen" style={styles.screen}>
@@ -43,7 +46,7 @@ export function WaitingScreen({ navigation }: Props): React.JSX.Element {
           {ready ? 'Ready when you are.' : 'Invite your person.'}
         </Text>
         <Text style={styles.subtitle}>
-          Your choices remain private until you both like the same movie.
+          Your choices remain private until you both like the same option.
         </Text>
         <View style={styles.codeBox}>
           <Text style={styles.codeLabel}>ROOM CODE</Text>
@@ -57,12 +60,12 @@ export function WaitingScreen({ navigation }: Props): React.JSX.Element {
         <Button
           label={ready ? 'Start swiping' : 'Waiting for your partner…'}
           disabled={!ready}
-          onPress={() => navigation.replace('Swipe')}
+          onPress={() =>
+            navigation.replace('Swipe', { mode: mode.id, searchArea })
+          }
         />
         <Button label="Share invite" variant="secondary" onPress={share} />
-        <Text style={styles.preview}>
-          Local preview · Live presence arrives in Phase 2
-        </Text>
+        <Text style={styles.preview}>{mode.eyebrow} · Private choices</Text>
       </View>
     </Screen>
   );

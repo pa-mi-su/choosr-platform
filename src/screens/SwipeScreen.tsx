@@ -3,34 +3,42 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Brand, Screen } from '../components/UI';
 import { SwipeCard } from '../components/SwipeCard';
-import { movies, simulatedPartnerLikes } from '../data/movies';
+import {
+  buildPreviewDeck,
+  modeById,
+  simulatedPartnerLikes,
+} from '../data/decisions';
 import { getSwipeOutcome } from '../services/swipeOutcome';
 import { colors } from '../theme';
 import type { SwipeDirection } from '../types/domain';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Swipe'>;
-export function SwipeScreen({ navigation }: Props): React.JSX.Element {
+export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
+  const mode = route.params.mode;
+  const searchArea = route.params.searchArea;
+  const deck = buildPreviewDeck(mode, searchArea);
+  const modeDefinition = modeById[mode];
   const [index, setIndex] = useState(0);
-  const movie = movies[index];
+  const item = deck[index];
   const swipe = useCallback(
     (direction: SwipeDirection) => {
       const outcome = getSwipeOutcome({
         direction,
-        movieId: movie.id,
+        itemId: item.id,
         index,
-        deckSize: movies.length,
-        partnerLikes: simulatedPartnerLikes,
+        deckSize: deck.length,
+        partnerLikes: simulatedPartnerLikes[mode],
       });
       if (outcome === 'match') {
-        navigation.replace('Match', { movie });
+        navigation.replace('Match', { item, searchArea });
       } else if (outcome === 'no-match') {
-        navigation.replace('NoMatch');
+        navigation.replace('NoMatch', { mode, searchArea });
       } else {
         setIndex(current => current + 1);
       }
     },
-    [index, movie, navigation],
+    [deck.length, index, item, mode, navigation, searchArea],
   );
   return (
     <Screen testID="swipe-screen" style={styles.screen}>
@@ -42,20 +50,20 @@ export function SwipeScreen({ navigation }: Props): React.JSX.Element {
         </View>
       </View>
       <View style={styles.progress}>
-        <Text style={styles.prompt}>Would you watch this?</Text>
+        <Text style={styles.prompt}>{modeDefinition.prompt}</Text>
         <Text style={styles.count}>
-          {index + 1} / {movies.length}
+          {index + 1} / {deck.length}
         </Text>
       </View>
       <View style={styles.deck}>
         <View style={styles.behind} />
-        <SwipeCard key={movie.id} movie={movie} onSwipe={swipe} />
+        <SwipeCard key={item.id} item={item} onSwipe={swipe} />
       </View>
       <View style={styles.controls}>
         <Pressable
           testID="pass-button"
           accessibilityRole="button"
-          accessibilityLabel="Pass on this movie"
+          accessibilityLabel={`Pass on ${item.title}`}
           onPress={() => swipe('left')}
           style={({ pressed }) => [styles.control, pressed && styles.pressed]}
         >
@@ -68,7 +76,7 @@ export function SwipeScreen({ navigation }: Props): React.JSX.Element {
         <Pressable
           testID="like-button"
           accessibilityRole="button"
-          accessibilityLabel="Like this movie"
+          accessibilityLabel={`Like ${item.title}`}
           onPress={() => swipe('right')}
           style={({ pressed }) => [
             styles.control,

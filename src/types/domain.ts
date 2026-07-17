@@ -1,14 +1,29 @@
 export type SwipeDirection = 'left' | 'right';
 
-export type Movie = {
+export type DecisionMode = 'watch' | 'eat' | 'do';
+
+export type DecisionItem = {
   id: string;
+  mode: DecisionMode;
   title: string;
-  year: number;
-  rating: number;
-  runtime: string;
-  genres: string[];
-  overview: string;
+  kicker: string;
+  meta: string;
+  description: string;
   background: string;
   accent: string;
-  providers: string[];
+  tags: string[];
+  action?: {
+    label: string;
+    url: string;
+  };
+};
+
+export type DecisionModeDefinition = {
+  id: DecisionMode;
+  icon: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  prompt: string;
+  matchSubtitle: string;
 };

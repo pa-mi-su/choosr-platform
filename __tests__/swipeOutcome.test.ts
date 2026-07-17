@@ -6,7 +6,7 @@ describe('mutual matching', () => {
     expect(
       getSwipeOutcome({
         direction: 'right',
-        movieId: 'arrival',
+        itemId: 'arrival',
         index: 1,
         deckSize: 4,
         partnerLikes,
@@ -16,7 +16,7 @@ describe('mutual matching', () => {
     expect(
       getSwipeOutcome({
         direction: 'left',
-        movieId: 'arrival',
+        itemId: 'arrival',
         index: 1,
         deckSize: 4,
         partnerLikes,
@@ -26,7 +26,7 @@ describe('mutual matching', () => {
     expect(
       getSwipeOutcome({
         direction: 'right',
-        movieId: 'moonlight',
+        itemId: 'moonlight',
         index: 3,
         deckSize: 4,
         partnerLikes,

@@ -1,34 +1,35 @@
 import React from 'react';
 import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { colors } from '../theme';
-import type { Movie } from '../types/domain';
 
-export function MoviePoster({
-  movie,
+import { colors } from '../theme';
+import type { DecisionItem } from '../types/domain';
+
+export function DecisionArtwork({
+  item,
   style,
 }: {
-  movie: Movie;
+  item: DecisionItem;
   style?: ViewStyle;
 }): React.JSX.Element {
   return (
     <View
-      style={[styles.poster, { backgroundColor: movie.background }, style]}
-      accessibilityLabel={`${movie.title} poster artwork`}
+      style={[styles.artwork, { backgroundColor: item.background }, style]}
+      accessibilityLabel={`${item.title} artwork`}
     >
-      <View style={[styles.orb, { backgroundColor: movie.accent }]} />
+      <View style={[styles.orb, { backgroundColor: item.accent }]} />
       <View style={styles.copy}>
-        <Text style={styles.kicker}>A FILM TOGETHER</Text>
+        <Text style={styles.kicker}>{item.kicker}</Text>
         <Text numberOfLines={3} style={styles.title}>
-          {movie.title.toUpperCase()}
+          {item.title.toUpperCase()}
         </Text>
-        <Text style={styles.year}>{movie.year}</Text>
+        <Text style={styles.meta}>{item.meta}</Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  poster: { overflow: 'hidden', borderRadius: 24, minHeight: 320 },
+  artwork: { overflow: 'hidden', borderRadius: 24, minHeight: 320 },
   orb: {
     position: 'absolute',
     width: 290,
@@ -59,5 +60,5 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1.3,
   },
-  year: { color: colors.white, opacity: 0.8, fontSize: 12, marginTop: 8 },
+  meta: { color: colors.white, opacity: 0.8, fontSize: 12, marginTop: 8 },
 });

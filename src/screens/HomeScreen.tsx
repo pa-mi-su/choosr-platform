@@ -18,11 +18,11 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
         </View>
       </View>
       <View style={styles.hero}>
-        <Text style={styles.eyebrow}>MOVIE NIGHT, SOLVED</Text>
+        <Text style={styles.eyebrow}>TONIGHT, SOLVED</Text>
         <Text style={styles.title}>Swipe separately.{`\n`}Match together.</Text>
         <Text style={styles.subtitle}>
-          Create a private room, invite your person, and discover the first
-          movie you both want to watch.
+          Decide what to watch, what to eat, or what to do—without debating
+          every option out loud.
         </Text>
         <View style={styles.cards}>
           <View style={[styles.card, styles.left]}>
@@ -43,7 +43,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
       <View style={styles.actions}>
         <Button
           label="Start a room"
-          onPress={() => navigation.navigate('Waiting')}
+          onPress={() => navigation.navigate('ModeSelect')}
         />
         <Button
           label="Join with a code"

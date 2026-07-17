@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { Linking, Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, {
   useAnimatedStyle,
@@ -8,13 +8,15 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Button, Screen } from '../components/UI';
-import { MoviePoster } from '../components/MoviePoster';
+import { DecisionArtwork } from '../components/DecisionArtwork';
+import { modeById } from '../data/decisions';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Match'>;
 export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
-  const { movie } = route.params;
+  const { item, searchArea } = route.params;
+  const mode = modeById[item.mode];
   const scale = useSharedValue(0.82);
   const opacity = useSharedValue(0);
   useEffect(() => {
@@ -30,41 +32,47 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
       <View style={styles.header}>
         <Text style={styles.eyebrow}>YOU BOTH SAID YES</Text>
         <Text style={styles.title}>It’s a match!</Text>
-        <Text style={styles.subtitle}>Movie night starts here.</Text>
+        <Text style={styles.subtitle}>{mode.matchSubtitle}</Text>
       </View>
       <Animated.View style={[styles.posterWrap, reveal]}>
-        <MoviePoster movie={movie} style={styles.poster} />
+        <DecisionArtwork item={item} style={styles.poster} />
         <View style={styles.badge}>
           <Text style={styles.badgeText}>♥ MATCHED</Text>
         </View>
       </Animated.View>
       <View style={styles.details}>
-        <Text style={styles.movie}>{movie.title}</Text>
-        <Text style={styles.meta}>
-          {movie.year} · {movie.runtime} · ★ {movie.rating}
-        </Text>
-        <Text style={styles.available}>AVAILABLE ON</Text>
+        <Text style={styles.movie}>{item.title}</Text>
+        <Text style={styles.meta}>{item.meta}</Text>
+        <Text style={styles.available}>GOOD TO KNOW</Text>
         <View style={styles.providers}>
-          {movie.providers.map(item => (
-            <View key={item} style={styles.provider}>
-              <Text style={styles.providerText}>{item}</Text>
+          {item.tags.map(tag => (
+            <View key={tag} style={styles.provider}>
+              <Text style={styles.providerText}>{tag}</Text>
             </View>
           ))}
         </View>
       </View>
       <View style={styles.actions}>
+        {item.action ? (
+          <Button
+            label={item.action.label}
+            onPress={() => Linking.openURL(item.action!.url)}
+          />
+        ) : null}
         <Button
           label="Share the match"
           onPress={() =>
             Share.share({
-              message: `We matched on ${movie.title} with Choosr.`,
+              message: `We matched on ${item.title} with Choosr.`,
             })
           }
         />
         <Button
-          label="Choose another movie"
+          label="Try another deck"
           variant="secondary"
-          onPress={() => navigation.replace('Swipe')}
+          onPress={() =>
+            navigation.replace('Swipe', { mode: item.mode, searchArea })
+          }
         />
         <Button
           label="Back home"

@@ -3,6 +3,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { HomeScreen } from '../screens/HomeScreen';
+import { ModeSelectScreen } from '../screens/ModeSelectScreen';
+import { LocalSetupScreen } from '../screens/LocalSetupScreen';
 import { WaitingScreen } from '../screens/WaitingScreen';
 import { JoinScreen } from '../screens/JoinScreen';
 import { SwipeScreen } from '../screens/SwipeScreen';
@@ -20,6 +22,8 @@ export function AppNavigator(): React.JSX.Element {
       }}
     >
       <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="ModeSelect" component={ModeSelectScreen} />
+      <Stack.Screen name="LocalSetup" component={LocalSetupScreen} />
       <Stack.Screen name="Waiting" component={WaitingScreen} />
       <Stack.Screen name="Join" component={JoinScreen} />
       <Stack.Screen name="Swipe" component={SwipeScreen} />

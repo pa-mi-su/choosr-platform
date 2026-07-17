@@ -4,9 +4,22 @@
   "private": true,
   "scripts": {
     "android": "react-native run-android",
+    "env:generate": "node scripts/generate-env.mjs",
+    "env:generate:test": "node scripts/generate-env.mjs --allow-placeholder",
     "ios": "react-native run-ios",
     "lint": "eslint .",
+    "preandroid": "npm run env:generate",
+    "preios": "npm run env:generate",
+    "prelint": "npm run env:generate:test",
+    "prestart": "npm run env:generate",
+    "pretest": "npm run env:generate:test",
+    "pretypecheck": "npm run env:generate:test",
     "start": "react-native start",
+    "supabase:lint": "supabase db lint --local --schema public --level error --fail-on error",
+    "supabase:reset": "supabase db reset --local",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:test": "supabase test db --local",
     "test": "jest",
     "typecheck": "tsc --noEmit"
   },
@@ -15,12 +28,14 @@
     "@react-native/new-app-screen": "0.86.0",
     "@react-navigation/native": "^7.3.10",
     "@react-navigation/native-stack": "^7.18.2",
+    "@supabase/supabase-js": "^2.110.7",
     "react": "19.2.3",
     "react-native": "0.86.0",
     "react-native-gesture-handler": "^3.1.0",
     "react-native-reanimated": "^4.5.2",
     "react-native-safe-area-context": "^5.5.2",
     "react-native-screens": "^4.26.2",
+    "react-native-url-polyfill": "^4.0.0",
     "react-native-worklets": "^0.11.1"
   },
   "devDependencies": {
@@ -43,6 +58,7 @@
     "jest": "^29.6.3",
     "prettier": "2.8.8",
     "react-test-renderer": "19.2.3",
+    "supabase": "^2.109.1",
     "typescript": "^5.8.3"
   },
   "engines": {

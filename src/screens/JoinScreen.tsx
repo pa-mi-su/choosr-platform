@@ -25,7 +25,8 @@ export function JoinScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.eyebrow}>JOIN YOUR PARTNER</Text>
         <Text style={styles.title}>Enter the room code.</Text>
         <Text style={styles.subtitle}>
-          You’ll both see the same movies. Your individual choices stay private.
+          You’ll both see the same options. Your individual choices stay
+          private.
         </Text>
         <TextInput
           testID="room-code-input"
@@ -41,7 +42,7 @@ export function JoinScreen({ navigation }: Props): React.JSX.Element {
             setCode(value.toUpperCase().replace(/[^A-Z0-9]/g, ''))
           }
           onSubmitEditing={() =>
-            code.length >= 4 && navigation.replace('Swipe')
+            code.length >= 4 && navigation.replace('Swipe', { mode: 'watch' })
           }
           style={styles.input}
         />
@@ -50,7 +51,7 @@ export function JoinScreen({ navigation }: Props): React.JSX.Element {
         <Button
           label="Join room"
           disabled={code.length < 4}
-          onPress={() => navigation.replace('Swipe')}
+          onPress={() => navigation.replace('Swipe', { mode: 'watch' })}
         />
         <Text style={styles.note}>
           Rooms support exactly two people and expire automatically.
