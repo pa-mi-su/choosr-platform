@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "463748381172",
+    "project_id": "choosr-platform",
+    "storage_bucket": "choosr-platform.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:463748381172:android:a664da990ce0c6d42f21a1",
+        "android_client_info": {
+          "package_name": "com.choosr.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCHji2aw6SUwBDmy87QlfYMi0YVgR0Kc8E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

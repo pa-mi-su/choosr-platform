@@ -17,6 +17,9 @@ end
 target 'Choosr' do
   config = use_native_modules!
 
+  use_frameworks! :linkage => :static
+  $RNFirebaseAsStaticFramework = true
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.
@@ -30,5 +33,16 @@ target 'Choosr' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # RNFirebase exposes React headers from static framework modules. Xcode 26's
+    # explicit module scanner otherwise promotes those imports to hard errors.
+    installer.pods_project.targets.each do |pod_target|
+      next unless ['RNFBApp', 'RNFBMessaging'].include?(pod_target.name)
+
+      pod_target.build_configurations.each do |build_configuration|
+        build_configuration.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        build_configuration.build_settings['CLANG_ENABLE_MODULES'] = 'NO'
+      end
+    end
   end
 end

@@ -31,6 +31,11 @@ import {
   type PendingRoomInvitation,
 } from '../services/circleService';
 import { buildCircleInvite } from '../services/roomInvite';
+import {
+  enablePushNotifications,
+  isPushEnabled,
+  refreshPushRegistration,
+} from '../services/pushNotifications';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -46,6 +51,7 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(false);
   const connectionToken = route.params?.connectionToken;
   const redemptionStarted = useRef(false);
 
@@ -62,6 +68,11 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
         }
         setDisplayName(ownProfile.displayName);
         setHandle(ownProfile.handle);
+        const notificationsEnabled = await isPushEnabled();
+        setPushEnabled(notificationsEnabled);
+        if (notificationsEnabled) {
+          refreshPushRegistration().catch(() => undefined);
+        }
         const [circle, pending] = await Promise.all([
           loadCircle(),
           loadPendingRoomInvitations(),
@@ -100,6 +111,12 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
     run(async () => {
       const saved = await saveOwnProfile({ displayName, handle });
       setProfile(saved);
+      setPushEnabled(await enablePushNotifications());
+    });
+
+  const enableRoomAlerts = () =>
+    run(async () => {
+      setPushEnabled(await enablePushNotifications());
     });
 
   const addFriend = () =>
@@ -212,6 +229,24 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
                 <Text style={styles.handle}>@{profile.handle}</Text>
               </View>
             </View>
+
+            {!pushEnabled ? (
+              <View style={styles.alertPanel}>
+                <View style={styles.alertCopy}>
+                  <Text style={styles.alertTitle}>Don’t miss an invite</Text>
+                  <Text style={styles.alertText}>
+                    Enable alerts so Circle invitations reach you when Choosr is closed.
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={enableRoomAlerts}
+                  style={styles.alertButton}
+                >
+                  <Text style={styles.alertButtonText}>Enable</Text>
+                </Pressable>
+              </View>
+            ) : null}
 
             {invitations.length ? (
               <View style={styles.section}>
@@ -476,4 +511,23 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     textAlign: 'center',
   },
+  alertPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.raised,
+    borderRadius: 17,
+    padding: 14,
+    marginTop: 10,
+  },
+  alertCopy: { flex: 1 },
+  alertTitle: { color: colors.text, fontSize: 13, fontWeight: '900' },
+  alertText: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
+  alertButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginLeft: 10,
+  },
+  alertButtonText: { color: colors.white, fontSize: 11, fontWeight: '900' },
 });

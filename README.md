@@ -32,7 +32,8 @@ The real two-device client flow is implemented:
 - Optional persistent **Choosr Circle** profiles and mutually accepted connections
 - One-tap room invitations for Circle connections
 - Contact-safe Circle links through the native share picker without address-book uploads
-- Transactional push-notification outbox and native device-token storage boundary
+- Native Firebase Messaging registration, permissions, token refresh, and notification routing
+- Transactional push outbox with leased, retryable FCM/APNs Edge delivery
 - Watch, Eat, and Do fallback decks
 
 The original room database implementation passes 62 pgTAP assertions, and the Circle schema
@@ -58,7 +59,8 @@ rejection, private-swipe RLS, authoritative matching, and participant/match Real
 | Live updates           | Supabase Realtime/Postgres Changes    | Room activation, participant, match, and round notifications                |
 | Recovery               | 15-second active-only polling         | Low-traffic fallback for missed or disconnected Realtime events             |
 | Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup               |
-| Push boundary          | Token registry + transactional outbox | Provider-neutral delivery queue for future direct APNs/FCM workers          |
+| Push client            | React Native Firebase Messaging       | Native permission, FCM token lifecycle, foreground/background notification |
+| Push delivery          | FCM HTTP v1 + APNs                     | Cross-platform delivery through a leased transactional outbox worker        |
 | Provider boundary      | Supabase Edge Functions               | Keeps TMDB and Google Places credentials out of mobile binaries             |
 | Watch provider         | TMDB adapter                          | Normalized movie discovery when server credentials are configured           |
 | Local provider         | Google Places adapter                 | Normalized nearby Eat/Do results when server credentials are configured     |
@@ -83,6 +85,12 @@ flowchart LR
     Host -.->|"Optional live deck"| Edge["build-deck Edge Function"]
     Edge --> TMDB["TMDB"]
     Edge --> Places["Google Places"]
+    RPC --> Outbox[("Notification outbox")]
+    Outbox --> PushWorker["dispatch-notifications Edge Function"]
+    PushWorker --> FCM["Firebase Cloud Messaging"]
+    FCM --> Android["Android notification"]
+    FCM --> APNs["Apple Push Notification service"]
+    APNs --> iOS["iOS notification"]
 ```
 
 The mobile client is untrusted. It may read only data allowed by RLS and cannot directly
@@ -105,8 +113,10 @@ There are two connection paths:
 From Circle, selecting an accepted person before Watch/Eat/Do creates the normal secure room
 and a recipient-bound `room_invitations` row. It appears in the other person's Circle and can
 only be accepted by that authenticated recipient. A transactionally inserted
-`notification_outbox` row is the future APNs/FCM delivery boundary, so room creation never
-depends on either push vendor being available.
+`notification_outbox` row is leased by the `dispatch-notifications` Edge Function and sent
+through FCM HTTP v1. FCM delivers Android notifications directly and relays iOS notifications
+through APNs. Room creation never depends on either push vendor being available: a failed send
+remains retryable in the outbox and the in-app invitation remains authoritative.
 
 ## End-to-end room lifecycle
 
@@ -215,6 +225,8 @@ The client does not infer room identity from a local singleton.
 - `src/services/roomFlow.ts` contains pure room-state routing, reconnection indexing, code
   normalization, and safe user-facing error mapping.
 - `src/services/deckService.ts` contains preview and provider-backed deck access.
+- `src/services/pushNotifications.ts` owns native permission, token registration, token refresh,
+  foreground handling, and delivery-worker wakeups.
 - `src/services/decisionItemParser.ts` validates untrusted JSON loaded from PostgreSQL.
 - `src/data/decisions.ts` defines decision modes and deterministic fallback decks.
 
@@ -324,6 +336,7 @@ choosr-platform/
 │   ├── migrations/                 # Versioned PostgreSQL source of truth
 │   ├── tests/database/             # pgTAP security and lifecycle tests
 │   ├── functions/build-deck/       # Protected provider adapters
+│   ├── functions/dispatch-notifications/ # FCM HTTP v1 outbox worker
 │   └── config.toml                 # Local Supabase configuration
 ├── __tests__/                      # Jest application tests
 ├── assets/brand/                   # App-icon master assets and rules
@@ -364,6 +377,20 @@ SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 `npm start`, `npm run ios`, and `npm run android` run `scripts/generate-env.mjs` first.
 The script validates these values and writes an ignored, mode-`0600`
 `src/config/generatedEnv.ts`. Do not edit or commit that generated file.
+
+### Firebase client configuration
+
+The native Firebase client files are required at these exact paths and are intentionally
+tracked because they contain mobile-safe project identifiers, not server authority:
+
+```text
+android/app/google-services.json
+ios/Choosr/GoogleService-Info.plist
+```
+
+The Apple APNs `.p8` key and Firebase service-account JSON are server credentials. Keep them
+outside the repository. Files matching `AuthKey_*.p8`, `*firebase-adminsdk*.json`, and
+`*service-account*.json` are ignored as a second line of defense.
 
 ## Run the mobile app
 
@@ -475,6 +502,25 @@ npx supabase secrets set GOOGLE_PLACES_API_KEY=...
 npx supabase functions deploy build-deck
 ```
 
+### Push delivery deployment
+
+1. In Firebase Console, open **Project settings → Cloud Messaging**, choose the Choosr iOS
+   app, and upload the APNs authentication `.p8` with its Apple Key ID and Team ID.
+2. In **Project settings → Service accounts**, generate a Firebase Admin SDK private key.
+3. Base64-encode that JSON without printing it and store the result only as the hosted
+   Supabase secret `FIREBASE_SERVICE_ACCOUNT_BASE64`.
+4. Deploy the versioned database lease migration and Edge Function:
+
+```sh
+npx supabase db push
+npx supabase functions deploy dispatch-notifications --use-api
+```
+
+The dispatcher uses the hosted `SUPABASE_SERVICE_ROLE_KEY` injected by Supabase, leases jobs
+with `FOR UPDATE SKIP LOCKED`, removes invalid device tokens, marks a job delivered only after
+at least one device accepts it, and releases failures for retry. Neither server credential is
+bundled in the app.
+
 Never paste a database password, access token, provider credential, secret key, or
 service-role key into `.env`, source code, documentation, issues, or commit history.
 
@@ -529,8 +575,9 @@ Confirm that:
 - Subsequent fallback rounds currently reuse the prior normalized deck.
 - A branded HTTPS universal/app-link gateway and hosted install fallback page remain; the
   installed-app `choosr://` room/Circle links and manual-code fallback are implemented.
-- Circle invitations appear in-app. Direct background push still requires APNs credentials,
-  Firebase project files, native permission/token registration, and an outbox delivery worker.
+- Background push code, native projects, migration, and delivery worker are implemented. Hosted
+  delivery remains disabled until the APNs key is uploaded to Firebase and the Firebase Admin
+  service account is stored as the Supabase secret described above.
 - Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
 - Retention Cron run history should be monitored after its first hourly and daily executions.
 - Physical iPhone/iPhone, Android/Android, and cross-platform acceptance matrices remain.

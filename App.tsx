@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StatusBar, StyleSheet } from 'react-native';
+import { Alert, StatusBar, StyleSheet } from 'react-native';
 import {
   NavigationContainer,
   type LinkingOptions,
@@ -12,6 +12,12 @@ import { registerAuthAutoRefresh } from './src/lib/supabase';
 import { roomLinkingPrefixes } from './src/services/roomInvite';
 import { colors } from './src/theme';
 import type { RootStackParamList } from './src/types/navigation';
+import {
+  flushPendingNotificationNavigation,
+  navigationRef,
+  openCircleFromNotification,
+} from './src/navigation/navigationRef';
+import { registerPushListeners } from './src/services/pushNotifications';
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: roomLinkingPrefixes,
@@ -25,6 +31,24 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 export default function App(): React.JSX.Element {
   useEffect(() => registerAuthAutoRefresh(), []);
+  useEffect(
+    () =>
+      registerPushListeners({
+        onOpen: openCircleFromNotification,
+        onForeground: message => {
+          Alert.alert(
+            message.notification?.title ?? 'New Choosr invitation',
+            message.notification?.body ??
+              'Open your Circle to see who invited you.',
+            [
+              { text: 'Later', style: 'cancel' },
+              { text: 'View invite', onPress: openCircleFromNotification },
+            ],
+          );
+        },
+      }),
+    [],
+  );
 
   return (
     <GestureHandlerRootView style={styles.root}>
@@ -33,7 +57,11 @@ export default function App(): React.JSX.Element {
           barStyle="light-content"
           backgroundColor={colors.background}
         />
-        <NavigationContainer linking={linking}>
+        <NavigationContainer
+          ref={navigationRef}
+          linking={linking}
+          onReady={flushPendingNotificationNavigation}
+        >
           <AppNavigator />
         </NavigationContainer>
       </SafeAreaProvider>

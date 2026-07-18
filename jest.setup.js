@@ -9,3 +9,16 @@ jest.mock('react-native-worklets', () =>
 jest.mock('react-native-reanimated', () =>
   require('react-native-reanimated/mock'),
 );
+jest.mock('@react-native-firebase/messaging', () => ({
+  AuthorizationStatus: { AUTHORIZED: 1, PROVISIONAL: 2 },
+  getMessaging: jest.fn(() => ({})),
+  getInitialNotification: jest.fn(() => Promise.resolve(null)),
+  getToken: jest.fn(() => Promise.resolve('test-firebase-token-long-enough')),
+  isDeviceRegisteredForRemoteMessages: jest.fn(() => true),
+  onMessage: jest.fn(() => jest.fn()),
+  onNotificationOpenedApp: jest.fn(() => jest.fn()),
+  onTokenRefresh: jest.fn(() => jest.fn()),
+  registerDeviceForRemoteMessages: jest.fn(() => Promise.resolve()),
+  requestPermission: jest.fn(() => Promise.resolve(1)),
+  setBackgroundMessageHandler: jest.fn(),
+}));

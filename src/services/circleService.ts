@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import type { DecisionMode } from '../types/domain';
 import { ensureAnonymousSession } from './anonymousAuth';
+import { dispatchPendingNotifications } from './pushNotifications';
 
 export type ChoosrProfile = {
   userId: string;
@@ -89,6 +90,7 @@ export async function requestConnection(handle: string): Promise<void> {
   if (error) {
     throw error;
   }
+  await dispatchPendingNotifications();
 }
 
 export async function answerConnection(
@@ -144,6 +146,7 @@ export async function inviteCirclePerson(
   if (error) {
     throw error;
   }
+  await dispatchPendingNotifications();
 }
 
 export async function loadPendingRoomInvitations(): Promise<
