@@ -716,9 +716,10 @@ restrictions or replacing the supported FID-based Android registration path.
 - A complete iPhone/iPhone, Android/Android, and expanded cross-platform acceptance matrix
   remains, including offline recovery, token rotation, declined invitations, and expiration.
 - Provider quotas, attribution, licensing checks, and production fallback behavior remain.
-- CI, branch-aware native variants, and guarded deployment workflows are implemented. External
-  UAT/production project creation, GitHub credentials, signing activation, store submission,
-  privacy/terms pages, and crash reporting remain.
+- CI, branch-aware native variants, guarded deployments, signed artifact creation, App Store
+  Connect upload, and Google Play track upload are implemented in the repository. External
+  environment creation, account-owned credentials, signing activation, store records,
+  privacy/terms pages, crash reporting, and final store review remain.
 
 ## Product and engineering documents
 

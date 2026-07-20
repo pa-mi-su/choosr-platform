@@ -90,6 +90,8 @@ jobs:
           ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
           ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          CHOOSR_VERSION_CODE: ${{ github.run_number }}
+          CHOOSR_VERSION_NAME: ${{ vars.APP_VERSION }}
         run: ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release
       - uses: actions/upload-artifact@v4
         if: steps.gate.outputs.enabled == 'true'
@@ -97,6 +99,25 @@ jobs:
           name: choosr-android-${{ needs.resolve.outputs.environment }}-${{ github.sha }}
           path: android/app/build/outputs/bundle/**/*.aab
           retention-days: 7
+      - name: Upload to Google Play
+        if: steps.gate.outputs.enabled == 'true' && vars.ANDROID_UPLOAD_ENABLED == 'true'
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64 }}
+          GOOGLE_PLAY_PACKAGE_NAME: ${{ vars.GOOGLE_PLAY_PACKAGE_NAME }}
+          GOOGLE_PLAY_TRACK: ${{ vars.GOOGLE_PLAY_TRACK }}
+          GOOGLE_PLAY_RELEASE_STATUS: ${{ vars.GOOGLE_PLAY_RELEASE_STATUS }}
+          GOOGLE_PLAY_RELEASE_NAME: Choosr ${{ vars.APP_VERSION }} (${{ github.run_number }})
+        run: |
+          test -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64"
+          test -n "$GOOGLE_PLAY_PACKAGE_NAME"
+          test -n "$GOOGLE_PLAY_TRACK"
+          credentials="$RUNNER_TEMP/google-play-service-account.json"
+          printf '%s' "$GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64" | base64 --decode > "$credentials"
+          bundle=$(find android/app/build/outputs/bundle -name '*.aab' -type f -print -quit)
+          test -n "$bundle"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$credentials" >> "$GITHUB_ENV"
+          echo "GOOGLE_PLAY_BUNDLE_PATH=$bundle" >> "$GITHUB_ENV"
+          GOOGLE_APPLICATION_CREDENTIALS="$credentials" GOOGLE_PLAY_BUNDLE_PATH="$bundle" node scripts/upload-google-play.mjs
 
   ios:
     name: iOS ${{ needs.resolve.outputs.environment }} artifact
@@ -173,7 +194,9 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         env:
           APP_ENV: ${{ needs.resolve.outputs.environment }}
+          APP_VERSION: ${{ vars.APP_VERSION }}
         run: |
+          echo "IOS_MARKETING_VERSION=${APP_VERSION:-1.0.0}" >> "$GITHUB_ENV"
           case "$APP_ENV" in
             dev)
               echo "IOS_SCHEME=Choosr-Dev" >> "$GITHUB_ENV"
@@ -209,6 +232,8 @@ jobs:
             DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
+            MARKETING_VERSION="$IOS_MARKETING_VERSION" \
             archive
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -232,7 +257,7 @@ jobs:
           path: ios/build/ios/*.ipa
           retention-days: 7
       - name: Upload to App Store Connect
-        if: steps.gate.outputs.enabled == 'true' && vars.MOBILE_UPLOAD_ENABLED == 'true'
+        if: steps.gate.outputs.enabled == 'true' && vars.IOS_UPLOAD_ENABLED == 'true'
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_API_ISSUER_ID }}

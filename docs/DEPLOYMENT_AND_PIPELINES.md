@@ -42,7 +42,7 @@ Each identity must be registered independently with Apple, Firebase, and Google 
 | `ci.yml`              | PR or push involving an environment branch | Formatting, lint, types, Jest, pgTAP, schema lint, Android build |
 | `ios-ci.yml`          | iOS/application PR changes or manual       | Unsigned production simulator build                              |
 | `supabase-deploy.yml` | Push to `dev`, `uat`, or `main`            | Guarded migration and Edge Function deployment                   |
-| `mobile-build.yml`    | Push to `dev`, `uat`, or `main`            | Guarded signed Android/iOS artifacts and optional iOS upload     |
+| `mobile-build.yml`    | Push to `dev`, `uat`, or `main`            | Signed native artifacts and guarded App Store/Play upload        |
 
 Deployment workflows are intentionally fail-closed. They do not deploy or build signed
 artifacts until the matching GitHub environment sets the enable variable to `true`.
@@ -53,17 +53,22 @@ Create `dev`, `uat`, and `prod` GitHub environments. Configure these independent
 
 ### Variables
 
-| Variable                          | Purpose                                           |
-| --------------------------------- | ------------------------------------------------- |
-| `SUPABASE_DEPLOY_ENABLED`         | Set to `true` only after the target is verified   |
-| `SUPABASE_PROJECT_REF`            | Environment-specific Supabase project reference   |
-| `SUPABASE_URL`                    | Mobile-safe environment API URL                   |
-| `SUPABASE_PUBLISHABLE_KEY`        | Mobile-safe publishable key                       |
-| `MOBILE_BUILD_ENABLED`            | Enables signed native artifacts                   |
-| `MOBILE_UPLOAD_ENABLED`           | Enables App Store Connect upload after iOS export |
-| `IOS_TEAM_ID`                     | Apple Developer team ID                           |
-| `APP_STORE_CONNECT_API_KEY_ID`    | App Store Connect API key ID                      |
-| `APP_STORE_CONNECT_API_ISSUER_ID` | App Store Connect API issuer ID                   |
+| Variable                          | Purpose                                                       |
+| --------------------------------- | ------------------------------------------------------------- |
+| `SUPABASE_DEPLOY_ENABLED`         | Set to `true` only after the target is verified               |
+| `SUPABASE_PROJECT_REF`            | Environment-specific Supabase project reference               |
+| `SUPABASE_URL`                    | Mobile-safe environment API URL                               |
+| `SUPABASE_PUBLISHABLE_KEY`        | Mobile-safe publishable key                                   |
+| `MOBILE_BUILD_ENABLED`            | Enables signed native artifacts                               |
+| `ANDROID_UPLOAD_ENABLED`          | Enables Google Play upload after Android build                |
+| `IOS_UPLOAD_ENABLED`              | Enables App Store Connect upload after iOS export             |
+| `APP_VERSION`                     | Store-facing semantic version, such as `1.0.0`                |
+| `GOOGLE_PLAY_PACKAGE_NAME`        | Package registered for that environment                       |
+| `GOOGLE_PLAY_TRACK`               | `internal`, `beta`, or `production`                           |
+| `GOOGLE_PLAY_RELEASE_STATUS`      | Lower environments use `completed`; production starts `draft` |
+| `IOS_TEAM_ID`                     | Apple Developer team ID                                       |
+| `APP_STORE_CONNECT_API_KEY_ID`    | App Store Connect API key ID                                  |
+| `APP_STORE_CONNECT_API_ISSUER_ID` | App Store Connect API issuer ID                               |
 
 ### Secrets
 
@@ -77,6 +82,7 @@ Create `dev`, `uat`, and `prod` GitHub environments. Configure these independent
 | `ANDROID_UPLOAD_KEYSTORE_PASSWORD`         | Keystore password                                 |
 | `ANDROID_UPLOAD_KEY_ALIAS`                 | Upload alias                                      |
 | `ANDROID_UPLOAD_KEY_PASSWORD`              | Upload key password                               |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64`       | Play Publisher service-account JSON               |
 | `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`  | Apple distribution certificate and key            |
 | `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`    | `.p12` password                                   |
 | `IOS_PROVISIONING_PROFILE_BASE64`          | Profile matching the environment bundle ID        |
@@ -100,6 +106,21 @@ For each environment:
 9. Configure GitHub values with deployment gates still disabled.
 10. Run CI, perform a dry run, enable deployment, then run deployment manually.
 
+The workflow assigns `github.run_number` as both platforms' monotonic store build number.
+`APP_VERSION` remains the human-facing version. Android upload opens a Google Play edit,
+uploads the signed bundle, assigns it to the configured track, and commits the edit. The
+production environment must use `production` plus `draft`, so CI cannot make the app public.
+iOS upload sends the IPA to App Store Connect for processing; release remains a separate,
+manual store decision.
+
+Recommended environment mappings:
+
+| Environment | Play package            | Play track   | Release status |
+| ----------- | ----------------------- | ------------ | -------------- |
+| `dev`       | `com.pamisu.choosr.dev` | `internal`   | `completed`    |
+| `uat`       | `com.pamisu.choosr.uat` | `beta`       | `completed`    |
+| `prod`      | `com.pamisu.choosr`     | `production` | `draft`        |
+
 Never point a lower-environment binary at the production backend. Never copy production user
 rows, profile photos, push tokens, or room data into a lower environment.
 
@@ -113,6 +134,12 @@ rows, profile photos, push tokens, or room data into a lower environment.
 6. Open `prod -> main`; merge only the exact approved commit set.
 7. Production workflows deploy and create store candidates from `main`.
 8. Release publicly through the store consoles only after production smoke tests.
+
+The GitHub repository remains private. GitHub Actions, environments, encrypted secrets, and
+store delivery all work with a private repository. On GitHub Free, protected-branch rules for
+private repositories require a paid plan; making proprietary source public is not an
+acceptable substitute. Until that feature is enabled, promotion discipline and environment
+deployment gates are procedural rather than enforced branch policy.
 
 ## Rollback
 

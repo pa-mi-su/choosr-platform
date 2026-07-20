@@ -59,6 +59,8 @@ react {
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
 def enableProguardInReleaseBuilds = false
+def choosrVersionCode = (System.getenv("CHOOSR_VERSION_CODE") ?: "1").toInteger()
+def choosrVersionName = System.getenv("CHOOSR_VERSION_NAME") ?: "1.0.0"
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -83,8 +85,8 @@ android {
         applicationId "com.pamisu.choosr"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode choosrVersionCode
+        versionName choosrVersionName
     }
     flavorDimensions "environment"
     productFlavors {
