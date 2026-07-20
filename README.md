@@ -47,8 +47,11 @@ participant/match Realtime events.
 
 The repository uses the same controlled promotion model as Sanctuary:
 `feature/* -> dev -> uat -> prod -> main`. GitHub Actions validate application code, database
-migrations, Android, and iOS. Guarded deployment workflows target isolated `dev`, `uat`, and
-`prod` GitHub environments and remain disabled until their external resources are provisioned.
+migrations, Android, and iOS. Development uses local Supabase and direct native builds; `uat`
+deploys the hosted acceptance backend and distributes private Android/iOS builds through
+Firebase App Distribution; `main` deploys production and creates Google Play internal and
+TestFlight candidates. All external gates remain disabled until their resources and credentials
+are provisioned.
 
 ### Current capability matrix
 
@@ -426,7 +429,7 @@ choosr-platform/
 ├── assets/brand/                   # App-icon master assets and rules
 ├── docs/                           # Product, engineering, and visual direction
 ├── .github/workflows/              # CI, native build, and guarded deployment automation
-└── scripts/                        # Environment generation and structural verification
+└── scripts/                        # Environment, Firebase distribution, and Play delivery tools
 ```
 
 ## Requirements
