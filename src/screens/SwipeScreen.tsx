@@ -65,6 +65,9 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
       } else if (destination === 'no-match') {
         transitioning.current = true;
         navigation.replace('NoMatch', { sessionId, mode, searchArea });
+      } else if (destination === 'closed') {
+        transitioning.current = true;
+        navigation.popToTop();
       }
     },
     [mode, navigation, searchArea, sessionId],

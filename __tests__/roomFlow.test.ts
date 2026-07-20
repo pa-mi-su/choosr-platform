@@ -15,6 +15,11 @@ describe('real room flow', () => {
     expect(getRoomDestination('matched', null)).toBe('waiting');
   });
 
+  it('routes terminal room closure back out of the room flow', () => {
+    expect(getRoomDestination('cancelled', null)).toBe('closed');
+    expect(getRoomDestination('expired', null)).toBe('closed');
+  });
+
   it('resumes at the first item without a persisted swipe', () => {
     expect(
       findFirstUnswipedIndex(

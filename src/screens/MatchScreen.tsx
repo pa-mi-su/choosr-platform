@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Animated, {
@@ -10,22 +10,64 @@ import Animated, {
 import { Button, Screen } from '../components/UI';
 import { DecisionArtwork } from '../components/DecisionArtwork';
 import { modeById } from '../data/decisions';
+import { useRoomSync } from '../hooks/useRoomSync';
 import { getMatchResultAction } from '../services/matchResult';
+import { roomErrorMessage } from '../services/roomFlow';
+import {
+  cancelDecisionRoom,
+  loadDecisionRoom,
+} from '../services/sessionService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Match'>;
 export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
-  const { item } = route.params;
+  const { item, sessionId } = route.params;
   const mode = modeById[item.mode];
   const action = getMatchResultAction(item);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [endingAction, setEndingAction] = useState<
+    'done' | 'choose-again' | null
+  >(null);
   const scale = useSharedValue(0.82);
   const opacity = useSharedValue(0);
   useEffect(() => {
     scale.value = withSpring(1);
     opacity.value = withTiming(1, { duration: 400 });
   }, [opacity, scale]);
+
+  const followClosure = useCallback(async () => {
+    try {
+      const room = await loadDecisionRoom(sessionId);
+      if (room.status === 'cancelled' || room.status === 'expired') {
+        navigation.popToTop();
+      }
+    } catch {
+      // A later Realtime event or recovery poll will retry transient failures.
+    }
+  }, [navigation, sessionId]);
+
+  useRoomSync({
+    sessionId,
+    tables: ['sessions'],
+    refresh: followClosure,
+  });
+
+  const closeRoom = async (next: 'done' | 'choose-again') => {
+    if (endingAction) return;
+    setEndingAction(next);
+    setActionError(null);
+    try {
+      await cancelDecisionRoom(sessionId);
+      navigation.popToTop();
+      if (next === 'choose-again') {
+        navigation.navigate('ModeSelect');
+      }
+    } catch (cause) {
+      setActionError(roomErrorMessage(cause));
+      setEndingAction(null);
+    }
+  };
   const reveal = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ scale: scale.value }],
@@ -74,15 +116,16 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         <Button
           label="Choose again"
           variant="secondary"
-          onPress={() => {
-            navigation.popToTop();
-            navigation.navigate('ModeSelect');
-          }}
+          loading={endingAction === 'choose-again'}
+          disabled={endingAction !== null}
+          onPress={() => closeRoom('choose-again')}
         />
         <Button
           label="Done"
           variant="quiet"
-          onPress={() => navigation.popToTop()}
+          loading={endingAction === 'done'}
+          disabled={endingAction !== null}
+          onPress={() => closeRoom('done')}
         />
       </View>
     </Screen>

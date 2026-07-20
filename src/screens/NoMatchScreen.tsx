@@ -7,6 +7,7 @@ import { modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
 import {
+  cancelDecisionRoom,
   loadDecisionRoom,
   loadDecisionDeck,
   startDecisionRound,
@@ -20,6 +21,7 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
   const { sessionId, searchArea } = route.params;
   const mode = modeById[route.params.mode];
   const [restarting, setRestarting] = useState(false);
+  const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const followRestart = useCallback(async () => {
@@ -32,6 +34,8 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
           mode: room.mode,
           searchArea,
         });
+      } else if (room.status === 'cancelled' || room.status === 'expired') {
+        navigation.popToTop();
       }
     } catch {
       // A later Realtime event or poll will retry.
@@ -69,6 +73,19 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
     }
   };
 
+  const endRoom = async () => {
+    if (ending) return;
+    setEnding(true);
+    setError(null);
+    try {
+      await cancelDecisionRoom(sessionId);
+      navigation.popToTop();
+    } catch (cause) {
+      setError(roomErrorMessage(cause));
+      setEnding(false);
+    }
+  };
+
   return (
     <Screen testID="no-match-screen" style={styles.screen}>
       <Brand compact />
@@ -92,7 +109,8 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
         <Button
           label="End room"
           variant="quiet"
-          onPress={navigation.popToTop}
+          loading={ending}
+          onPress={endRoom}
         />
       </View>
     </Screen>

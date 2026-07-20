@@ -80,12 +80,20 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
       return;
     }
     try {
-      setRoom(await loadDecisionRoom(sessionId));
+      const currentRoom = await loadDecisionRoom(sessionId);
+      if (
+        currentRoom.status === 'cancelled' ||
+        currentRoom.status === 'expired'
+      ) {
+        navigation.popToTop();
+        return;
+      }
+      setRoom(currentRoom);
       setError(null);
     } catch (cause) {
       setError(roomErrorMessage(cause));
     }
-  }, [sessionId]);
+  }, [navigation, sessionId]);
 
   useRoomSync({
     sessionId,

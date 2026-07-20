@@ -2,7 +2,12 @@ import type { SessionStatus } from '../types/database';
 
 const ROOM_CODE_PATTERN = /[^A-HJ-NP-Z2-9]/g;
 
-export type RoomDestination = 'waiting' | 'swiping' | 'matched' | 'no-match';
+export type RoomDestination =
+  | 'waiting'
+  | 'swiping'
+  | 'matched'
+  | 'no-match'
+  | 'closed';
 
 export function getRoomDestination(
   status: SessionStatus,
@@ -16,6 +21,9 @@ export function getRoomDestination(
   }
   if (status === 'active') {
     return 'swiping';
+  }
+  if (status === 'cancelled' || status === 'expired') {
+    return 'closed';
   }
   return 'waiting';
 }
