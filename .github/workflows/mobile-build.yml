@@ -1,0 +1,247 @@
+name: Mobile Environment Builds
+
+on:
+  push:
+    branches: [dev, uat, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: choosr-mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: Resolve mobile environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
+      flavor: ${{ steps.target.outputs.flavor }}
+    steps:
+      - id: target
+        run: |
+          case "${GITHUB_REF}" in
+            refs/heads/dev) echo "environment=dev" >> "$GITHUB_OUTPUT"; echo "flavor=Dev" >> "$GITHUB_OUTPUT" ;;
+            refs/heads/uat) echo "environment=uat" >> "$GITHUB_OUTPUT"; echo "flavor=Uat" >> "$GITHUB_OUTPUT" ;;
+            refs/heads/main) echo "environment=prod" >> "$GITHUB_OUTPUT"; echo "flavor=Prod" >> "$GITHUB_OUTPUT" ;;
+            *) exit 1 ;;
+          esac
+
+  android:
+    name: Android ${{ needs.resolve.outputs.environment }} artifact
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - name: Build gate
+        id: gate
+        env:
+          ENABLED: ${{ vars.MOBILE_BUILD_ENABLED }}
+        run: |
+          [ "${ENABLED}" = "true" ] && echo "enabled=true" >> "$GITHUB_OUTPUT" || echo "enabled=false" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+      - uses: actions/setup-node@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+        if: steps.gate.outputs.enabled == 'true'
+      - name: Materialize environment configuration
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          APP_ENV: ${{ needs.resolve.outputs.environment }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          FIREBASE_ANDROID_CONFIG_BASE64: ${{ secrets.FIREBASE_ANDROID_CONFIG_BASE64 }}
+        run: |
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_PUBLISHABLE_KEY"
+          test -n "$FIREBASE_ANDROID_CONFIG_BASE64"
+          printf 'SUPABASE_URL=%s\nSUPABASE_PUBLISHABLE_KEY=%s\n' "$SUPABASE_URL" "$SUPABASE_PUBLISHABLE_KEY" > ".env.${APP_ENV}"
+          if [ "$APP_ENV" = "prod" ]; then
+            destination="android/app/google-services.json"
+          else
+            destination="android/app/src/${APP_ENV}/google-services.json"
+          fi
+          printf '%s' "$FIREBASE_ANDROID_CONFIG_BASE64" | base64 --decode > "$destination"
+          npm run "env:generate:${APP_ENV}"
+      - name: Prepare signing key
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_UPLOAD_KEYSTORE_BASE64"
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/choosr-upload.jks"
+          echo "ANDROID_UPLOAD_KEYSTORE_PATH=$RUNNER_TEMP/choosr-upload.jks" >> "$GITHUB_ENV"
+      - name: Build signed app bundle
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: android
+        env:
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          name: choosr-android-${{ needs.resolve.outputs.environment }}-${{ github.sha }}
+          path: android/app/build/outputs/bundle/**/*.aab
+          retention-days: 7
+
+  ios:
+    name: iOS ${{ needs.resolve.outputs.environment }} artifact
+    needs: resolve
+    runs-on: macos-15
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - name: Build gate
+        id: gate
+        env:
+          ENABLED: ${{ vars.MOBILE_BUILD_ENABLED }}
+        run: |
+          [ "${ENABLED}" = "true" ] && echo "enabled=true" >> "$GITHUB_OUTPUT" || echo "enabled=false" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+      - uses: actions/setup-node@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.gate.outputs.enabled == 'true'
+      - name: Materialize environment configuration
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          APP_ENV: ${{ needs.resolve.outputs.environment }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
+          FIREBASE_IOS_CONFIG_BASE64: ${{ secrets.FIREBASE_IOS_CONFIG_BASE64 }}
+        run: |
+          test -n "$SUPABASE_URL"
+          test -n "$SUPABASE_PUBLISHABLE_KEY"
+          test -n "$FIREBASE_IOS_CONFIG_BASE64"
+          printf 'SUPABASE_URL=%s\nSUPABASE_PUBLISHABLE_KEY=%s\n' "$SUPABASE_URL" "$SUPABASE_PUBLISHABLE_KEY" > ".env.${APP_ENV}"
+          if [ "$APP_ENV" = "prod" ]; then
+            destination="ios/Choosr/GoogleService-Info.plist"
+          else
+            destination="ios/Choosr/Firebase/${APP_ENV}/GoogleService-Info.plist"
+          fi
+          printf '%s' "$FIREBASE_IOS_CONFIG_BASE64" | base64 --decode > "$destination"
+          npm run "env:generate:${APP_ENV}"
+      - name: Install CocoaPods dependencies
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: ios
+        run: pod install
+      - name: Install signing material
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          test -n "$IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64"
+          test -n "$IOS_PROVISIONING_PROFILE_BASE64"
+          certificate="$RUNNER_TEMP/choosr-distribution.p12"
+          profile="$RUNNER_TEMP/choosr.mobileprovision"
+          keychain="$RUNNER_TEMP/choosr-signing.keychain-db"
+          printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate"
+          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile"
+          security create-keychain -p "temporary" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "temporary" "$keychain"
+          security import "$certificate" -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security list-keychain -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "temporary" "$keychain"
+          profile_plist="$RUNNER_TEMP/profile.plist"
+          security cms -D -i "$profile" > "$profile_plist"
+          profile_uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")
+          profile_name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$profile_plist")
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/${profile_uuid}.mobileprovision"
+          echo "IOS_PROFILE_NAME=$profile_name" >> "$GITHUB_ENV"
+      - name: Resolve iOS release settings
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          APP_ENV: ${{ needs.resolve.outputs.environment }}
+        run: |
+          case "$APP_ENV" in
+            dev)
+              echo "IOS_SCHEME=Choosr-Dev" >> "$GITHUB_ENV"
+              echo "IOS_CONFIGURATION=Release-Dev" >> "$GITHUB_ENV"
+              echo "IOS_BUNDLE_ID=com.pamisu.choosr.dev" >> "$GITHUB_ENV"
+              ;;
+            uat)
+              echo "IOS_SCHEME=Choosr-UAT" >> "$GITHUB_ENV"
+              echo "IOS_CONFIGURATION=Release-UAT" >> "$GITHUB_ENV"
+              echo "IOS_BUNDLE_ID=com.pamisu.choosr.uat" >> "$GITHUB_ENV"
+              ;;
+            prod)
+              echo "IOS_SCHEME=Choosr-Prod" >> "$GITHUB_ENV"
+              echo "IOS_CONFIGURATION=Release" >> "$GITHUB_ENV"
+              echo "IOS_BUNDLE_ID=com.pamisu.choosr" >> "$GITHUB_ENV"
+              ;;
+          esac
+      - name: Archive and export IPA
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: ios
+        env:
+          IOS_TEAM_ID: ${{ vars.IOS_TEAM_ID }}
+        run: |
+          test -n "$IOS_TEAM_ID"
+          archive="$RUNNER_TEMP/${IOS_SCHEME}.xcarchive"
+          export_path="$RUNNER_TEMP/choosr-export"
+          xcodebuild \
+            -workspace Choosr.xcworkspace \
+            -scheme "$IOS_SCHEME" \
+            -configuration "$IOS_CONFIGURATION" \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$archive" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
+            archive
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>teamID</key><string>${IOS_TEAM_ID}</string>
+            <key>provisioningProfiles</key><dict>
+              <key>${IOS_BUNDLE_ID}</key><string>${IOS_PROFILE_NAME}</string>
+            </dict>
+          </dict></plist>
+          EOF
+          xcodebuild -exportArchive -archivePath "$archive" -exportPath "$export_path" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+          mkdir -p build/ios
+          cp "$export_path"/*.ipa build/ios/
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          name: choosr-ios-${{ needs.resolve.outputs.environment }}-${{ github.sha }}
+          path: ios/build/ios/*.ipa
+          retention-days: 7
+      - name: Upload to App Store Connect
+        if: steps.gate.outputs.enabled == 'true' && vars.MOBILE_UPLOAD_ENABLED == 'true'
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_API_ISSUER_ID }}
+          APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64 }}
+        run: |
+          test -n "$APP_STORE_CONNECT_API_KEY_ID"
+          test -n "$APP_STORE_CONNECT_API_ISSUER_ID"
+          test -n "$APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64"
+          key_dir="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$key_dir"
+          printf '%s' "$APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64" | base64 --decode > "$key_dir/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          xcrun altool --upload-app --type ios --file ios/build/ios/*.ipa --apiKey "$APP_STORE_CONNECT_API_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_API_ISSUER_ID"

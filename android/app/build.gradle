@@ -22,7 +22,7 @@ react {
     //   The list of variants to that are debuggable. For those we're going to
     //   skip the bundling of the JS bundle and the assets. Default is "debug", "debugOptimized".
     //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
-    // debuggableVariants = ["liteDebug", "liteDebugOptimized", "prodDebug", "prodDebugOptimized"]
+    debuggableVariants = ["devDebug", "uatDebug", "prodDebug"]
 
     /* Bundling */
     //   A list containing the node command and its flags. Default is just 'node'.
@@ -86,6 +86,25 @@ android {
         versionCode 1
         versionName "1.0"
     }
+    flavorDimensions "environment"
+    productFlavors {
+        dev {
+            dimension "environment"
+            applicationIdSuffix ".dev"
+            versionNameSuffix "-dev"
+            resValue "string", "app_name", "Choosr Dev"
+        }
+        uat {
+            dimension "environment"
+            applicationIdSuffix ".uat"
+            versionNameSuffix "-uat"
+            resValue "string", "app_name", "Choosr UAT"
+        }
+        prod {
+            dimension "environment"
+            resValue "string", "app_name", "Choosr"
+        }
+    }
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -93,15 +112,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH")) {
+            release {
+                storeFile file(System.getenv("ANDROID_UPLOAD_KEYSTORE_PATH"))
+                storePassword System.getenv("ANDROID_UPLOAD_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_UPLOAD_KEY_ALIAS")
+                keyPassword System.getenv("ANDROID_UPLOAD_KEY_PASSWORD")
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.findByName("release")
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

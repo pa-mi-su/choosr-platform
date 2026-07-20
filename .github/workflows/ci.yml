@@ -1,0 +1,74 @@
+name: Choosr CI
+
+on:
+  pull_request:
+    branches: [dev, uat, prod, main]
+  push:
+    branches: [dev, uat, prod, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: choosr-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application:
+    name: TypeScript and application tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run env:verify
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test -- --runInBand
+
+  database:
+    name: Supabase migration and pgTAP tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start local Supabase
+        run: npm run supabase:start
+      - name: Rebuild schema from migrations
+        run: npm run supabase:reset
+      - name: Run database assertions
+        run: npm run supabase:test
+      - name: Lint database schema
+        run: npm run supabase:lint
+      - name: Stop local Supabase
+        if: always()
+        run: npm run supabase:stop
+
+  android:
+    name: Android production-debug build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - run: npm ci
+      - run: npm run env:generate:test
+      - name: Build production debug variant
+        working-directory: android
+        run: ./gradlew assembleProdDebug

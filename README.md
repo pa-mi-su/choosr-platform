@@ -45,6 +45,11 @@ rooms, matches, Circle invitations, push delivery, and synchronized closure. Hos
 checks also cover third-user rejection, private-swipe RLS, authoritative matching, and
 participant/match Realtime events.
 
+The repository uses the same controlled promotion model as Sanctuary:
+`feature/* -> dev -> uat -> prod -> main`. GitHub Actions validate application code, database
+migrations, Android, and iOS. Guarded deployment workflows target isolated `dev`, `uat`, and
+`prod` GitHub environments and remain disabled until their external resources are provisioned.
+
 ### Current capability matrix
 
 | Capability                                        | Status                        | Notes                                            |
@@ -420,7 +425,8 @@ choosr-platform/
 ├── __tests__/                      # Jest application tests
 ├── assets/brand/                   # App-icon master assets and rules
 ├── docs/                           # Product, engineering, and visual direction
-└── scripts/generate-env.mjs        # Validated mobile env code generation
+├── .github/workflows/              # CI, native build, and guarded deployment automation
+└── scripts/                        # Environment generation and structural verification
 ```
 
 ## Requirements
@@ -440,35 +446,37 @@ git clone git@github.com:pa-mi-su/choosr-platform.git
 cd choosr-platform
 nvm use
 npm install
-cp .env.example .env
+cp .env.dev.example .env.dev
 cd ios
 pod install
 cd ..
 ```
 
-Add only the mobile-safe hosted values to `.env`:
+Add only the mobile-safe hosted values to `.env.dev`:
 
 ```dotenv
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
 
-`npm start`, `npm run ios`, and `npm run android` run `scripts/generate-env.mjs` first.
-The script validates these values and writes an ignored, mode-`0600`
-`src/config/generatedEnv.ts`. Do not edit or commit that generated file.
+`npm start`, `npm run ios`, and `npm run android` use development by default. Explicit scripts
+are available as `npm run ios:dev`, `ios:uat`, `ios:prod`, `android:dev`, `android:uat`, and
+`android:prod`. The generator reads `.env.dev`, `.env.uat`, or `.env.prod`; `.env` remains only
+as a temporary development compatibility fallback. It writes the validated result to ignored,
+mode-`0600` `src/config/generatedEnv.ts`.
 
 ### Configuration ownership
 
-| Value/file                          | Where it belongs                                 | Safe to commit?             |
-| ----------------------------------- | ------------------------------------------------ | --------------------------- |
-| Supabase URL and publishable key    | Local `.env`; generated mobile config is ignored | `.env`: no                  |
-| `google-services.json`              | `android/app/`                                   | Yes; mobile client metadata |
-| `GoogleService-Info.plist`          | `ios/Choosr/`                                    | Yes; mobile client metadata |
-| APNs `AuthKey_*.p8`                 | Apple/Firebase credential storage only           | Never                       |
-| Firebase Admin service-account JSON | Secure local storage; base64 hosted secret       | Never                       |
-| `FIREBASE_SERVICE_ACCOUNT_BASE64`   | Supabase Edge Function secret                    | Never                       |
-| TMDB/Google Places credentials      | Supabase Edge Function secrets                   | Never                       |
-| Supabase service-role key           | Supabase-hosted server environment only          | Never                       |
+| Value/file                          | Where it belongs                                     | Safe to commit?             |
+| ----------------------------------- | ---------------------------------------------------- | --------------------------- |
+| Supabase URL and publishable key    | Local `.env.<environment>`; generated config ignored | No                          |
+| `google-services.json`              | `android/app/`                                       | Yes; mobile client metadata |
+| `GoogleService-Info.plist`          | `ios/Choosr/`                                        | Yes; mobile client metadata |
+| APNs `AuthKey_*.p8`                 | Apple/Firebase credential storage only               | Never                       |
+| Firebase Admin service-account JSON | Secure local storage; base64 hosted secret           | Never                       |
+| `FIREBASE_SERVICE_ACCOUNT_BASE64`   | Supabase Edge Function secret                        | Never                       |
+| TMDB/Google Places credentials      | Supabase Edge Function secrets                       | Never                       |
+| Supabase service-role key           | Supabase-hosted server environment only              | Never                       |
 
 The deployed database migrations create all application tables, RPCs, Realtime publication
 entries, Cron jobs, notification outbox boundaries, and the `profile-photos` Storage bucket.
@@ -476,13 +484,16 @@ Dashboard-only schema changes are not part of the supported workflow.
 
 ### Firebase client configuration
 
-The native Firebase client files are required at these exact paths and are intentionally
-tracked because they contain mobile-safe project identifiers, not server authority:
+The production Firebase client files are currently present at these paths:
 
 ```text
 android/app/google-services.json
 ios/Choosr/GoogleService-Info.plist
 ```
+
+Development and UAT use `android/app/src/<environment>/google-services.json` and
+`ios/Choosr/Firebase/<environment>/GoogleService-Info.plist`. CI materializes them from the
+matching GitHub environment after the isolated Firebase projects are created.
 
 The Apple APNs `.p8` key and Firebase service-account JSON are server credentials. Keep them
 outside the repository. Files matching `AuthKey_*.p8`, `*firebase-adminsdk*.json`, and
@@ -508,6 +519,10 @@ Then, in another terminal:
 npm run ios
 npm run android
 ```
+
+These aliases launch the development variants. Use `npm run ios:prod` or
+`npm run android:prod` for the existing production-identifier test configuration while the
+isolated lower environments are being provisioned.
 
 For a physical iPhone, open `ios/Choosr.xcworkspace`, select the Choosr target, choose an
 Apple development team under Signing & Capabilities, select the connected phone, and run.
@@ -701,7 +716,9 @@ restrictions or replacing the supported FID-based Android registration path.
 - A complete iPhone/iPhone, Android/Android, and expanded cross-platform acceptance matrix
   remains, including offline recovery, token rotation, declined invitations, and expiration.
 - Provider quotas, attribution, licensing checks, and production fallback behavior remain.
-- Privacy/terms pages, crash reporting, production signing, CI/CD, and store submission remain.
+- CI, branch-aware native variants, and guarded deployment workflows are implemented. External
+  UAT/production project creation, GitHub credentials, signing activation, store submission,
+  privacy/terms pages, and crash reporting remain.
 
 ## Product and engineering documents
 
@@ -709,13 +726,15 @@ restrictions or replacing the supported FID-based Android registration path.
 - `docs/PRODUCT_CHARTER.md` — earlier product-direction snapshot retained for history
 - `docs/ENGINEERING_AUDIT.md` — architecture, SOLID, security, and release audit
 - `docs/VISUAL_DIRECTION.md` — brand references, palette, icon, and motion rules
+- `docs/DEPLOYMENT_AND_PIPELINES.md` — promotion, environment secrets, release, and rollback
 - `supabase/README.md` — backend security model and deployment checklist
 - `assets/brand/README.md` — app-icon sources and export rules
 
 ## Application identifiers
 
-- iOS bundle identifier: `com.pamisu.choosr`
-- Android application ID: `com.pamisu.choosr`
+- Development iOS/Android identifier: `com.pamisu.choosr.dev`
+- UAT iOS/Android identifier: `com.pamisu.choosr.uat`
+- Production iOS/Android identifier: `com.pamisu.choosr`
 - Apple Developer App ID: `com.pamisu.choosr` with Push Notifications enabled
 - Firebase project: `choosr-platform`, with matching iOS and Android app registrations
 - The former `com.choosr.app` Firebase registrations are unused legacy records. Current native

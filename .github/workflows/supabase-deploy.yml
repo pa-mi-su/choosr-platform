@@ -1,0 +1,103 @@
+name: Supabase Deployment
+
+on:
+  push:
+    branches: [dev, uat, main]
+    paths:
+      - 'supabase/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/supabase-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: choosr-supabase-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve deployment target
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
+    steps:
+      - id: target
+        shell: bash
+        run: |
+          case "${GITHUB_REF}" in
+            refs/heads/dev) environment=dev ;;
+            refs/heads/uat) environment=uat ;;
+            refs/heads/main) environment=prod ;;
+            *)
+              echo "Unsupported deployment ref: ${GITHUB_REF}" >&2
+              exit 1
+              ;;
+          esac
+          echo "environment=${environment}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: Deploy Supabase ${{ needs.resolve.outputs.environment }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Deployment safety gate
+        id: gate
+        env:
+          ENABLED: ${{ vars.SUPABASE_DEPLOY_ENABLED }}
+        run: |
+          if [ "${ENABLED}" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Supabase deployment is disabled for this environment."
+          fi
+      - name: Validate required credentials
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_PROJECT_REF SUPABASE_DB_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required environment value: ${name}"
+              exit 1
+            fi
+          done
+      - name: Link project
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+      - name: Preview database deployment
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx supabase db push --linked --dry-run
+      - name: Apply database migrations
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: npx supabase db push --linked
+      - name: Deploy Edge Functions
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          npx supabase functions deploy build-deck --project-ref "$SUPABASE_PROJECT_REF"
+          npx supabase functions deploy dispatch-notifications --project-ref "$SUPABASE_PROJECT_REF"
