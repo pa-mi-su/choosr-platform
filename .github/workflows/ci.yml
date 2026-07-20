@@ -56,6 +56,7 @@ jobs:
   android:
     name: Android production-debug build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -71,4 +72,4 @@ jobs:
       - run: npm run env:generate:test
       - name: Build production debug variant
         working-directory: android
-        run: ./gradlew assembleProdDebug
+        run: ./gradlew assembleProdDebug -PreactNativeArchitectures=x86_64 --no-daemon
