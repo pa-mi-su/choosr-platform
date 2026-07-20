@@ -49,7 +49,7 @@ jobs:
           fi
 
           changed_files="$(git diff --name-only "$range")"
-          if grep -Eq '^(android/|src/|index\.js$|package(-lock)?\.json$|react-native\.config\.js$|babel\.config\.js$|scripts/generate-env\.mjs$|\.github/workflows/ci\.yml$)' <<< "$changed_files"; then
+          if grep -Eq '^(android/|src/|index\.js$|package(-lock)?\.json$|react-native\.config\.js$|babel\.config\.js$|scripts/generate-env\.mjs$)' <<< "$changed_files"; then
             echo "android=true" >> "$GITHUB_OUTPUT"
           else
             echo "android=false" >> "$GITHUB_OUTPUT"
@@ -96,7 +96,10 @@ jobs:
   android:
     name: Android production-debug build
     needs: changes
-    if: needs.changes.outputs.android == 'true'
+    # Pull requests validate native compilation. Promoted environment pushes
+    # are handled by mobile-build.yml, which creates the signed artifact. Do
+    # not compile the same React Native application twice after a merge.
+    if: (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
