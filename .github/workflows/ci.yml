@@ -4,7 +4,9 @@ on:
   pull_request:
     branches: [dev, uat, prod, main]
   push:
-    branches: [dev, uat, prod, main]
+    # Feature/integration work is validated once through pull requests. Push
+    # validation remains on promoted environment branches after merge.
+    branches: [uat, prod, main]
   workflow_dispatch:
 
 permissions:
