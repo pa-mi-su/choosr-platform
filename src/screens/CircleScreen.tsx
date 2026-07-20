@@ -13,6 +13,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
+import { ProfileAvatar } from '../components/ProfileAvatar';
 import { modeById } from '../data/decisions';
 import {
   answerConnection,
@@ -31,6 +32,7 @@ import {
   type PendingRoomInvitation,
 } from '../services/circleService';
 import { buildCircleInvite } from '../services/roomInvite';
+import { chooseAndUploadProfilePhoto } from '../services/profilePhotoService';
 import {
   enablePushNotifications,
   isPushEnabled,
@@ -140,6 +142,16 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
       });
     });
 
+  const changeProfilePhoto = () =>
+    run(async () => {
+      if (!profile) return;
+      const avatarPath = await chooseAndUploadProfilePhoto(profile.avatarPath);
+      if (avatarPath) {
+        // refresh() resolves the new public URL and updates the Circle list.
+        setProfile({ ...profile, avatarPath });
+      }
+    });
+
   const openInvitation = async (invitation: PendingRoomInvitation) => {
     if (working) return;
     setWorking(true);
@@ -219,15 +231,28 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
         ) : (
           <>
             <View style={styles.identity}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {profile.displayName.slice(0, 1).toUpperCase()}
-                </Text>
-              </View>
+              <ProfileAvatar
+                displayName={profile.displayName}
+                photoUrl={profile.photoUrl}
+              />
               <View style={styles.personCopy}>
                 <Text style={styles.personName}>{profile.displayName}</Text>
                 <Text style={styles.handle}>@{profile.handle}</Text>
               </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Change profile photo"
+                disabled={working}
+                onPress={changeProfilePhoto}
+                style={({ pressed }) => [
+                  styles.photoButton,
+                  pressed && styles.photoButtonPressed,
+                ]}
+              >
+                <Text style={styles.photoButtonText}>
+                  {profile.photoUrl ? 'Change' : 'Add photo'}
+                </Text>
+              </Pressable>
             </View>
 
             {!pushEnabled ? (
@@ -235,7 +260,8 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
                 <View style={styles.alertCopy}>
                   <Text style={styles.alertTitle}>Don’t miss an invite</Text>
                   <Text style={styles.alertText}>
-                    Enable alerts so Circle invitations reach you when Choosr is closed.
+                    Enable alerts so Circle invitations reach you when Choosr is
+                    closed.
                   </Text>
                 </View>
                 <Pressable
@@ -318,11 +344,11 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
               ) : (
                 people.map(person => (
                   <View key={person.connectionId} style={styles.personCard}>
-                    <View style={styles.smallAvatar}>
-                      <Text style={styles.smallAvatarText}>
-                        {person.displayName.slice(0, 1).toUpperCase()}
-                      </Text>
-                    </View>
+                    <ProfileAvatar
+                      displayName={person.displayName}
+                      photoUrl={person.photoUrl}
+                      size="small"
+                    />
                     <View style={styles.personCopy}>
                       <Text style={styles.personName}>
                         {person.displayName}
@@ -420,15 +446,15 @@ const styles = StyleSheet.create({
     padding: 15,
     marginTop: 24,
   },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  photoButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
   },
-  avatarText: { color: colors.background, fontSize: 24, fontWeight: '900' },
+  photoButtonPressed: { opacity: 0.7 },
+  photoButtonText: { color: colors.primary, fontSize: 11, fontWeight: '900' },
   section: { marginTop: 26, gap: 10 },
   sectionTitle: {
     color: colors.faint,
@@ -465,15 +491,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 12,
   },
-  smallAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 15,
-    backgroundColor: colors.raised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  smallAvatarText: { color: colors.primary, fontSize: 18, fontWeight: '900' },
   personCopy: { flex: 1, marginLeft: 12 },
   personName: { color: colors.text, fontSize: 15, fontWeight: '900' },
   handle: { color: colors.muted, fontSize: 12, marginTop: 3 },
@@ -521,7 +538,12 @@ const styles = StyleSheet.create({
   },
   alertCopy: { flex: 1 },
   alertTitle: { color: colors.text, fontSize: 13, fontWeight: '900' },
-  alertText: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 3 },
+  alertText: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
+  },
   alertButton: {
     backgroundColor: colors.primary,
     borderRadius: 12,

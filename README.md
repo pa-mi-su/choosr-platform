@@ -30,6 +30,7 @@ The real two-device client flow is implemented:
 - Synchronized subsequent rounds
 - Native invitation sharing and key-free Maps handoff
 - Optional persistent **Choosr Circle** profiles and mutually accepted connections
+- Native profile-photo selection with owner-scoped Supabase Storage uploads
 - One-tap room invitations for Circle connections
 - Contact-safe Circle links through the native share picker without address-book uploads
 - Native Firebase Messaging permissions, iOS token lifecycle, Android FID registration, and
@@ -100,9 +101,10 @@ function boundaries.
 
 ## Choosr Circle and invitations
 
-Circle is optional: one-time rooms still require no profile. A user who wants repeat invites
-creates a display name and unique handle on top of the existing persisted anonymous identity.
-Connections are mutual and server-authorized.
+Circle is the primary repeat-use path. A user creates a display name, unique handle, and
+optional profile photo on top of the existing persisted anonymous identity. Connections are
+mutual and server-authorized. **Quick room** remains the profile-free guest/onboarding path,
+while **Enter code** is the recovery path when an invite link or notification is unavailable.
 
 There are two connection paths:
 
@@ -202,10 +204,10 @@ The typed stack lives in `src/navigation/AppNavigator.tsx` and
 ```text
 Home
 ├── Circle → Person → ModeSelect
-├── ModeSelect (one-time room)
+├── Quick room → ModeSelect (profile-free guest flow)
 │   ├── Waiting (Watch)
 │   └── LocalSetup → Waiting (Eat/Do)
-└── Join
+└── Enter code (invite recovery)
 
 Waiting / Join → Swipe → Match
                        └→ NoMatch → next round
@@ -287,6 +289,9 @@ Mutating RPCs use `security definer` with an empty search path, explicitly authe
   keys are ignored and must never be committed.
 - RLS is enabled on all five application tables.
 - Authenticated clients have no direct `INSERT`, `UPDATE`, or `DELETE` grants.
+- Profile photos are capped at 5 MB; Storage policies limit writes and deletion to the
+  authenticated user's own folder. Public photo URLs are intentional because avatars are
+  presentation data shown to Circle connections.
 - Session membership gates room, participant, deck, and match reads.
 - Swipe reads are restricted to the participant who created them.
 - Invite tokens are returned once and only SHA-256 hashes are stored.

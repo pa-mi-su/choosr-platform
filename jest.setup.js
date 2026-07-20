@@ -22,3 +22,7 @@ jest.mock('@react-native-firebase/messaging', () => ({
   requestPermission: jest.fn(() => Promise.resolve(1)),
   setBackgroundMessageHandler: jest.fn(),
 }));
+
+jest.mock('react-native-image-picker', () => ({
+  launchImageLibrary: jest.fn(),
+}));

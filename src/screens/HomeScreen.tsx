@@ -47,19 +47,34 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
       </View>
       <View style={styles.actions}>
         <Button
-          label="Choose with someone"
+          label="Choose from My Circle"
           onPress={() => navigation.navigate('Circle')}
         />
-        <Button
-          label="Start a one-time room"
-          variant="secondary"
-          onPress={() => navigation.navigate('ModeSelect')}
-        />
-        <Button
-          label="Join with a code"
-          variant="secondary"
-          onPress={() => navigation.navigate('Join')}
-        />
+        <Text style={styles.guestLabel}>WITH SOMEONE NEW?</Text>
+        <View style={styles.guestActions}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => navigation.navigate('ModeSelect')}
+            style={({ pressed }) => [
+              styles.guestAction,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.guestActionTitle}>Quick room</Text>
+            <Text style={styles.guestActionCopy}>Send a private link</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => navigation.navigate('Join')}
+            style={({ pressed }) => [
+              styles.guestAction,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.guestActionTitle}>Enter code</Text>
+            <Text style={styles.guestActionCopy}>Join without a profile</Text>
+          </Pressable>
+        </View>
         <Text style={styles.privacy}>
           Private choices · Rooms expire automatically
         </Text>
@@ -169,5 +184,26 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: '#123229', fontSize: 10, fontWeight: '900' },
   actions: { gap: 10 },
+  guestLabel: {
+    color: colors.faint,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textAlign: 'center',
+    marginTop: 3,
+  },
+  guestActions: { flexDirection: 'row', gap: 10 },
+  guestAction: {
+    flex: 1,
+    minHeight: 62,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.raised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 17,
+  },
+  guestActionTitle: { color: colors.text, fontSize: 14, fontWeight: '900' },
+  guestActionCopy: { color: colors.faint, fontSize: 9, marginTop: 4 },
   privacy: { color: colors.faint, fontSize: 10, textAlign: 'center' },
 });

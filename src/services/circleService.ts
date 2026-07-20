@@ -2,11 +2,14 @@ import { supabase } from '../lib/supabase';
 import type { DecisionMode } from '../types/domain';
 import { ensureAnonymousSession } from './anonymousAuth';
 import { dispatchPendingNotifications } from './pushNotifications';
+import { profilePhotoUrl } from './profilePhotoService';
 
 export type ChoosrProfile = {
   userId: string;
   displayName: string;
   handle: string;
+  avatarPath: string | null;
+  photoUrl: string | null;
 };
 
 export type CirclePerson = {
@@ -14,6 +17,8 @@ export type CirclePerson = {
   personUserId: string;
   displayName: string;
   handle: string;
+  avatarPath: string | null;
+  photoUrl: string | null;
   status: 'pending' | 'accepted' | 'declined';
   direction: 'incoming' | 'outgoing';
 };
@@ -39,6 +44,8 @@ export async function loadOwnProfile(): Promise<ChoosrProfile | null> {
         userId: profile.user_id,
         displayName: profile.display_name,
         handle: profile.handle,
+        avatarPath: profile.avatar_path,
+        photoUrl: profilePhotoUrl(profile.avatar_path),
       }
     : null;
 }
@@ -63,6 +70,8 @@ export async function saveOwnProfile(input: {
     userId: profile.user_id,
     displayName: profile.display_name,
     handle: profile.handle,
+    avatarPath: null,
+    photoUrl: null,
   };
 }
 
@@ -77,6 +86,8 @@ export async function loadCircle(): Promise<CirclePerson[]> {
     personUserId: person.person_user_id,
     displayName: person.display_name,
     handle: person.handle,
+    avatarPath: person.avatar_path,
+    photoUrl: profilePhotoUrl(person.avatar_path),
     status: person.status,
     direction: person.direction,
   }));
@@ -215,5 +226,11 @@ export function circleErrorMessage(error: unknown): string {
     return 'That Circle invitation is not valid.';
   if (message.includes('room_') || message.includes('invitation_'))
     return 'That invitation is no longer available.';
+  if (message.includes('photo_too_large'))
+    return 'Choose a photo smaller than 5 MB.';
+  if (message.includes('camera_unavailable'))
+    return 'The photo library is not available on this device.';
+  if (message.includes('permission'))
+    return 'Allow photo access in Settings to choose a profile photo.';
   return 'Choosr could not complete that action. Please try again.';
 }

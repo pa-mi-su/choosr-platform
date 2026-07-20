@@ -73,6 +73,7 @@ type ProfileRow = {
   user_id: string;
   display_name: string;
   handle: string;
+  avatar_path: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -150,7 +151,12 @@ export type Database = {
           user_id: string;
           display_name: string;
           handle: string;
+          avatar_path: string | null;
         }[];
+      };
+      set_profile_avatar: {
+        Args: { p_avatar_path: string | null };
+        Returns: undefined;
       };
       send_connection_request: {
         Args: { p_handle: string };
@@ -175,6 +181,7 @@ export type Database = {
           person_user_id: string;
           display_name: string;
           handle: string;
+          avatar_path: string | null;
           status: 'pending' | 'accepted' | 'declined';
           direction: 'incoming' | 'outgoing';
         }[];
