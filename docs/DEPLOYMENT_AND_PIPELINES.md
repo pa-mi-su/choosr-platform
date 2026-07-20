@@ -119,6 +119,8 @@ Perform these stages in order. Keep every deployment gate `false` until its stag
 
 1. Run Supabase locally with `npm run supabase:start` and rebuild it with
    `npm run supabase:reset`.
+   Configure local push delivery with `npm run supabase:push:configure`, then keep
+   `npm run supabase:functions:serve` running during two-device testing.
 2. Create Firebase project `choosr-dev` on the Spark plan.
 3. Register Android app `com.pamisu.choosr.dev` and Apple app
    `com.pamisu.choosr.dev`.
@@ -129,6 +131,8 @@ Perform these stages in order. Keep every deployment gate `false` until its stag
    development signing for local devices.
 6. Run `npm run android:dev` and `npm run ios:dev`. The `dev` branch runs CI but never deploys
    a hosted backend or distributes a signed release.
+7. For physical devices, set `.env.dev` to the Mac's private Wi-Fi address on port `54321`;
+   simulators may use `127.0.0.1`. Never use a private HTTP URL for UAT or Production.
 
 ### 2. UAT
 

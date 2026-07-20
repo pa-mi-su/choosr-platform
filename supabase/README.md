@@ -47,11 +47,19 @@ schema changes only through the dashboard; create and test a migration here firs
 
 ```sh
 npm run supabase:start
+npm run supabase:push:configure
+npm run supabase:functions:serve
 npm run supabase:reset
 npm run supabase:lint
 npm run supabase:test
 npm run supabase:stop
 ```
+
+The push configuration command validates the external `choosr-dev` Firebase Admin credential
+and creates an owner-only `supabase/.env.local`, which is ignored by Git. Keep the functions
+server running during local invitation tests. Mobile clients invoke the authenticated
+`dispatch-notifications` function after transactional outbox writes; hosted environments should
+also add an independently monitored retry schedule before public launch.
 
 ## Hosted deployment checklist
 
