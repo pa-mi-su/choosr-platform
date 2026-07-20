@@ -546,11 +546,23 @@ stop the stack after testing.
 
 ```sh
 npm run supabase:start
+npm run supabase:push:configure
+npm run supabase:functions:serve
 npm run supabase:reset
 npm run supabase:lint
 npm run supabase:test
 npm run supabase:stop
 ```
+
+`supabase:push:configure` validates the external `choosr-dev` Firebase service-account
+credential and writes an owner-readable-only, ignored `supabase/.env.local`. Keep
+`supabase:functions:serve` running while testing invitations and push notifications. Never copy
+the Firebase service-account JSON or its encoded value into the repository.
+
+`.env.dev` should use `http://127.0.0.1:54321` for simulators. A physical phone must use the
+Mac's private Wi-Fi address instead (for example, `http://192.168.x.x:54321`) and both devices
+must be on the same trusted network. The environment generator permits private HTTP URLs only
+for Dev; UAT and Production continue to require hosted Supabase HTTPS URLs.
 
 `supabase db reset --local` recreates the database, applies every migration, and seeds the
 empty development seed. Database schema changes must be made as new migrations; do not make

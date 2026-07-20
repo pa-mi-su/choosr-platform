@@ -68,6 +68,7 @@ yarn-error.log
 !.env.dev.example
 !.env.uat.example
 !.env.prod.example
+supabase/.env.local
 src/config/generatedEnv.ts
 
 # Environment-specific Firebase client configuration. These files identify

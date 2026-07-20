@@ -68,8 +68,39 @@ const supabasePublishableKey =
   values.SUPABASE_PUBLISHABLE_KEY ||
   (allowPlaceholder ? 'sb_publishable_placeholder' : '');
 
-if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(supabaseUrl)) {
-  throw new Error('SUPABASE_URL must be a valid https://*.supabase.co URL.');
+const isHostedSupabaseUrl = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(
+  supabaseUrl,
+);
+const isLocalDevelopmentUrl = (() => {
+  if (environment !== 'dev') {
+    return false;
+  }
+
+  try {
+    const url = new URL(supabaseUrl);
+    const isPrivateIpv4 =
+      /^10\./.test(url.hostname) ||
+      /^192\.168\./.test(url.hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(url.hostname);
+
+    return (
+      url.protocol === 'http:' &&
+      url.port === '54321' &&
+      (url.hostname === '127.0.0.1' ||
+        url.hostname === 'localhost' ||
+        isPrivateIpv4)
+    );
+  } catch {
+    return false;
+  }
+})();
+
+if (!isHostedSupabaseUrl && !isLocalDevelopmentUrl) {
+  throw new Error(
+    environment === 'dev'
+      ? 'SUPABASE_URL must be a hosted Supabase URL or a local/private HTTP URL on port 54321.'
+      : 'SUPABASE_URL must be a valid https://*.supabase.co URL.',
+  );
 }
 
 if (!supabasePublishableKey.startsWith('sb_publishable_')) {
