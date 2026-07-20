@@ -1,9 +1,24 @@
 begin;
 select plan(14);
 
-select has_column('public', 'notification_outbox', 'processing_started_at');
-select has_column('public', 'notification_outbox', 'last_error');
-select has_column('public', 'notification_outbox', 'attempts');
+select has_column(
+  'public',
+  'notification_outbox',
+  'processing_started_at',
+  'notification jobs track lease start time'
+);
+select has_column(
+  'public',
+  'notification_outbox',
+  'last_error',
+  'notification jobs retain the last delivery error'
+);
+select has_column(
+  'public',
+  'notification_outbox',
+  'attempts',
+  'notification jobs count delivery attempts'
+);
 select has_function('public', 'claim_notification_jobs', array['integer']);
 select has_function('public', 'complete_notification_job', array['bigint']);
 select has_function('public', 'fail_notification_job', array['bigint', 'text']);
