@@ -36,13 +36,28 @@ The real two-device client flow is implemented:
 - Native Firebase Messaging permissions, iOS token lifecycle, Android FID registration, and
   notification routing
 - Transactional push outbox with leased, retryable FCM/APNs Edge delivery
-- Watch, Eat, and Do fallback decks
+- Watch, Eat, and Do curated decks
 
-The original room database implementation passes 62 pgTAP assertions, and the Circle schema
-adds a 23-assertion regression suite. All migrations are deployed to the
-hosted Supabase project, where the room lifecycle has been verified using independent
-host, partner, and third-user clients. Hosted checks cover room activation, third-user
-rejection, private-swipe RLS, authoritative matching, and participant/match Realtime events.
+The repository declares 110 pgTAP assertions across schema, room flow, modes, retention,
+Circle, push delivery, synchronized closure, and profile photos. All migrations are deployed
+to the hosted Supabase project. Physical iOS/Android testing has verified cross-platform
+rooms, matches, Circle invitations, push delivery, and synchronized closure. Hosted lifecycle
+checks also cover third-user rejection, private-swipe RLS, authoritative matching, and
+participant/match Realtime events.
+
+### Current capability matrix
+
+| Capability                                        | Status                        | Notes                                            |
+| ------------------------------------------------- | ----------------------------- | ------------------------------------------------ |
+| Watch, Eat, and Do rooms                          | Implemented                   | Uses curated normalized decks today              |
+| Cross-platform private swiping and matching       | Implemented                   | PostgreSQL is authoritative                      |
+| Circle profiles, handles, connections, and photos | Implemented                   | Optional layer over anonymous Auth               |
+| Quick-room links and manual codes                 | Implemented                   | Custom `choosr://` links; code is recovery       |
+| Push invitations                                  | Implemented and device-tested | Firebase HTTP v1; FCM to Android and APNs to iOS |
+| Synchronized round restart and room closure       | Implemented                   | Either participant can act; all clients follow   |
+| Live TMDB/Places adapters                         | Implemented server boundary   | Not yet called by host room creation             |
+| HTTPS universal/app links and install landing     | Not implemented               | Required before polished external distribution   |
+| Store-ready production release                    | Not ready                     | See release blockers below                       |
 
 ## Technology stack
 
@@ -55,8 +70,9 @@ rejection, private-swipe RLS, authoritative matching, and participant/match Real
 | Interaction            | Gesture Handler, Reanimated, Worklets | Swipe gestures and match animations                                         |
 | Device storage         | AsyncStorage                          | Persists the anonymous Supabase session across launches                     |
 | Backend client         | Supabase JS                           | Auth, PostgREST reads, RPC writes, Realtime, and Edge Function calls        |
-| Identity               | Supabase anonymous Auth + Circle      | Instant use plus an optional persistent name and unique handle              |
+| Identity               | Supabase anonymous Auth + Circle      | Instant use plus an optional persistent name, handle, and photo             |
 | Database               | PostgreSQL with Row Level Security    | Rooms, Circle connections, invitations, private swipes, and matches         |
+| Media                  | Supabase Storage + Image Picker       | Owner-scoped Circle profile-photo selection and delivery                    |
 | Write boundary         | PostgreSQL security-definer RPCs      | Validated, transactional state changes without direct table writes          |
 | Live updates           | Supabase Realtime/Postgres Changes    | Room activation, participant, match, and round notifications                |
 | Recovery               | 15-second active-only polling         | Low-traffic fallback for missed or disconnected Realtime events             |
@@ -87,6 +103,8 @@ flowchart LR
     Host -.->|"Optional live deck"| Edge["build-deck Edge Function"]
     Edge --> TMDB["TMDB"]
     Edge --> Places["Google Places"]
+    Host -->|"Profile photo"| Storage[("Supabase Storage")]
+    Partner -->|"Profile photo"| Storage
     RPC --> Outbox[("Notification outbox")]
     Outbox --> PushWorker["dispatch-notifications Edge Function"]
     PushWorker --> FCM["Firebase Cloud Messaging"]
@@ -96,8 +114,27 @@ flowchart LR
 ```
 
 The mobile client is untrusted. It may read only data allowed by RLS and cannot directly
-insert, update, or delete application-table rows. All writes cross validated database
-function boundaries.
+insert, update, or delete application-table rows. All writes cross validated, authenticated
+database-function boundaries through RPCs.
+
+### Authoritative room state
+
+```mermaid
+stateDiagram-v2
+    [*] --> waiting: create_decision_session
+    waiting --> active: second participant joins
+    active --> matched: first mutual yes
+    active --> completed: both exhaust deck
+    completed --> active: start_decision_round
+    waiting --> cancelled: participant closes room
+    active --> cancelled: participant closes room
+    matched --> cancelled: Done / Choose again
+    completed --> cancelled: End room
+    waiting --> expired: retention job
+    active --> expired: retention job
+    cancelled --> [*]
+    expired --> [*]
+```
 
 ## Choosr Circle and invitations
 
@@ -105,6 +142,10 @@ Circle is the primary repeat-use path. A user creates a display name, unique han
 optional profile photo on top of the existing persisted anonymous identity. Connections are
 mutual and server-authorized. **Quick room** remains the profile-free guest/onboarding path,
 while **Enter code** is the recovery path when an invite link or notification is unavailable.
+
+Profile photos are optional. The native picker scales the image to at most 1024×1024,
+compresses it, and uploads only JPEG/PNG data up to 5 MB. Circle renders an initial when a
+photo is absent or cannot be loaded. A photo is presentation data, not authentication.
 
 There are two connection paths:
 
@@ -134,14 +175,16 @@ remains retryable in the outbox and the in-app invitation remains authoritative.
    one transaction.
 7. The database returns the room UUID, eight-character code, one-time invite token, and
    expiration timestamp.
-8. **Send invite** opens the native share sheet with a tokenized room link and manual-code
-   fallback for Messages, WhatsApp, and other installed messaging apps.
+8. For a Circle room, the database creates a recipient-bound invitation and transactional
+   push job. For a Quick room, **Send invite** opens the native share sheet with a tokenized
+   room link and manual-code fallback for Messages, WhatsApp, and other installed apps.
 9. The UI remains in the waiting state with one participant. There is no local timer or
    simulated partner.
 
 ### 2. Partner joins
 
-1. A different device enters the room code.
+1. A different device accepts a Circle invitation, opens a tokenized Quick-room link, or
+   enters the room code.
 2. The second device receives its own anonymous identity.
 3. `join_session` locks and validates the room.
 4. The function rejects expired, active, full, invalid, and third-participant joins.
@@ -194,6 +237,14 @@ increments the round under a session lock, freezes the next deck, and returns th
 fallback implementation reuses the previous normalized deck; provider-backed fresh-deck
 generation is a remaining integration task.
 
+### 6. Room closure
+
+Either participant may close a waiting, active, matched, or completed room. `cancel_session`
+validates membership, changes the server state to `cancelled`, cancels pending invitations,
+and is idempotent for already closed rooms. Match, no-match, swipe, and waiting screens
+observe the terminal state through Realtime or recovery polling and return to Home without
+waiting for local input on the second device.
+
 ## Client architecture
 
 ### Navigation
@@ -209,8 +260,8 @@ Home
 │   └── LocalSetup → Waiting (Eat/Do)
 └── Enter code (invite recovery)
 
-Waiting / Join → Swipe → Match
-                       └→ NoMatch → next round
+Waiting / Join → Swipe ┬→ Match → Done / Choose again
+                       └→ NoMatch → next round / End room
 ```
 
 Room-bound navigation parameters always include the server session ID and round number.
@@ -228,12 +279,15 @@ The client does not infer room identity from a local singleton.
 - `src/services/roomFlow.ts` contains pure room-state routing, reconnection indexing, code
   normalization, and safe user-facing error mapping.
 - `src/services/deckService.ts` contains preview and provider-backed deck access.
+- `src/services/circleService.ts` owns Circle profiles, connections, and invitations.
+- `src/services/profilePhotoService.ts` owns native image selection, bounded encoding,
+  Storage upload, profile binding, and replacement cleanup.
 - `src/services/pushNotifications.ts` owns native permission, installation registration,
   foreground handling, and delivery-worker wakeups. iOS uses the React Native Firebase token
   bridge; Android uses `ChoosrPushRegistrationModule` because Firebase's current Android SDK
   targets app instances with Firebase Installation IDs (FIDs).
 - `src/services/decisionItemParser.ts` validates untrusted JSON loaded from PostgreSQL.
-- `src/data/decisions.ts` defines decision modes and deterministic fallback decks.
+- `src/data/decisions.ts` defines decision modes and deterministic curated decks.
 
 Screens coordinate rendering and user actions; authorization, persistence, outcome logic,
 and provider normalization remain outside presentation components.
@@ -252,13 +306,22 @@ stored, the app renders a waiting state until the room becomes matched or comple
 
 ## Database model
 
-| Table           | Purpose                                             | Important constraints                                       |
-| --------------- | --------------------------------------------------- | ----------------------------------------------------------- |
-| `sessions`      | Room mode, state, host, round, code, and expiration | Unique access code and invite hash; valid state/mode checks |
-| `participants`  | The two anonymous identities in a room              | Unique user per room; unique `host` and `partner` roles     |
-| `session_items` | Frozen normalized deck for a round                  | Unique item and position within each room/round             |
-| `swipes`        | Private participant decisions                       | Unique participant/round/item; direction is left or right   |
-| `matches`       | Authoritative mutual acceptance                     | At most one match per session                               |
+| Table                 | Purpose                                             | Important constraints                                     |
+| --------------------- | --------------------------------------------------- | --------------------------------------------------------- |
+| `sessions`            | Room mode, state, host, round, code, and expiration | Unique code/token hash; bounded state and mode            |
+| `participants`        | Anonymous identities in a room                      | Unique user per room; unique host and partner roles       |
+| `session_items`       | Frozen normalized deck for a round                  | Unique item and position per room/round                   |
+| `swipes`              | Private participant decisions                       | Immutable participant/round/item decision                 |
+| `matches`             | Authoritative mutual acceptance                     | At most one match per session                             |
+| `profiles`            | Optional Circle identity                            | Unique handle; bounded display name; optional avatar path |
+| `connections`         | Mutual Circle relationship                          | One record per unordered user pair                        |
+| `circle_invites`      | Shareable connection capability                     | Hashed one-use token with seven-day expiration            |
+| `room_invitations`    | Circle room invitation                              | One recipient-bound invitation per room                   |
+| `device_push_tokens`  | Native delivery endpoints                           | Unique platform token/FID registration                    |
+| `notification_outbox` | Transactional push work                             | Unique dedupe key, attempts, lease, and delivery state    |
+
+`private.anonymous_user_activity` is a server-only retention ledger. It prevents an active
+Circle or room identity from being deleted merely because its Auth creation date is old.
 
 The normalized `DecisionItem` payload is stored with each room item so both devices see
 the same title, metadata, tags, colors, action URL, and ordering even if a provider changes
@@ -274,7 +337,15 @@ later.
 | `touch_presence`                | Updates the current participant's `last_seen_at`                      |
 | `submit_swipe`                  | Persists an immutable decision and resolves match/no-match atomically |
 | `start_decision_round`          | Creates a synchronized next round after completion                    |
-| `cancel_session`                | Lets the host cancel a waiting or active room                         |
+| `cancel_session`                | Lets either participant idempotently close any live/result room       |
+| `upsert_choosr_profile`         | Creates or updates a display name and unique handle                   |
+| `set_profile_avatar`            | Binds only the caller's validated Storage path                        |
+| `send_connection_request`       | Creates a mutual-acceptance Circle request                            |
+| `create_circle_invite`          | Creates a one-use, seven-day connection capability                    |
+| `invite_connection_to_session`  | Creates a recipient-bound room invite and transactional push job      |
+| `respond_room_invitation`       | Accepts or declines only for the bound recipient                      |
+| `register_push_token`           | Stores the caller's current iOS token or Android FID                  |
+| `claim_notification_jobs`       | Leases outbox work with `FOR UPDATE SKIP LOCKED`                      |
 | `cleanup_expired_sessions`      | Marks expired rooms and deletes old expired data                      |
 | `cleanup_stale_anonymous_users` | Removes identities inactive for 30 days, excluding live rooms         |
 
@@ -287,7 +358,7 @@ Mutating RPCs use `security definer` with an empty search path, explicitly authe
 - Only the Supabase URL and publishable key may exist in the mobile environment.
 - `.env`, generated environment modules, provider secrets, signing files, and service-role
   keys are ignored and must never be committed.
-- RLS is enabled on all five application tables.
+- RLS is enabled on every client-facing application table; direct writes are revoked.
 - Authenticated clients have no direct `INSERT`, `UPDATE`, or `DELETE` grants.
 - Profile photos are capped at 5 MB; Storage policies limit writes and deletion to the
   authenticated user's own folder. Public photo URLs are intentional because avatars are
@@ -309,7 +380,7 @@ alerts, and complete a formal privacy review.
 
 ## Content and provider strategy
 
-The mobile room flow currently uses normalized fallback decks from `src/data/decisions.ts`.
+The mobile room flow currently uses normalized curated decks from `src/data/decisions.ts`.
 This keeps local development and zero-cost testing deterministic.
 
 `supabase/functions/build-deck` is the protected live-provider boundary:
@@ -330,12 +401,12 @@ must be completed before live discovery is considered production-ready.
 choosr-platform/
 ├── App.tsx                         # Native app root and providers
 ├── src/
-│   ├── components/                 # Shared UI, artwork, and swipe card
-│   ├── data/                       # Decision modes and fallback decks
+│   ├── components/                 # Shared UI, artwork, avatars, and swipe card
+│   ├── data/                       # Decision modes and curated decks
 │   ├── lib/                        # Supabase client configuration
 │   ├── navigation/                 # Typed native-stack navigator
 │   ├── screens/                    # Host, join, swipe, match, and no-match UI
-│   ├── services/                   # Auth, rooms, deck, parsing, and pure flow logic
+│   ├── services/                   # Auth, rooms, Circle, photos, push, deck, and flow logic
 │   ├── theme.ts                    # Shared visual tokens
 │   └── types/                      # Domain, database, and navigation contracts
 ├── ios/                            # Native Xcode workspace/project and assets
@@ -386,6 +457,23 @@ SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 The script validates these values and writes an ignored, mode-`0600`
 `src/config/generatedEnv.ts`. Do not edit or commit that generated file.
 
+### Configuration ownership
+
+| Value/file                          | Where it belongs                                 | Safe to commit?             |
+| ----------------------------------- | ------------------------------------------------ | --------------------------- |
+| Supabase URL and publishable key    | Local `.env`; generated mobile config is ignored | `.env`: no                  |
+| `google-services.json`              | `android/app/`                                   | Yes; mobile client metadata |
+| `GoogleService-Info.plist`          | `ios/Choosr/`                                    | Yes; mobile client metadata |
+| APNs `AuthKey_*.p8`                 | Apple/Firebase credential storage only           | Never                       |
+| Firebase Admin service-account JSON | Secure local storage; base64 hosted secret       | Never                       |
+| `FIREBASE_SERVICE_ACCOUNT_BASE64`   | Supabase Edge Function secret                    | Never                       |
+| TMDB/Google Places credentials      | Supabase Edge Function secrets                   | Never                       |
+| Supabase service-role key           | Supabase-hosted server environment only          | Never                       |
+
+The deployed database migrations create all application tables, RPCs, Realtime publication
+entries, Cron jobs, notification outbox boundaries, and the `profile-photos` Storage bucket.
+Dashboard-only schema changes are not part of the supported workflow.
+
 ### Firebase client configuration
 
 The native Firebase client files are required at these exact paths and are intentionally
@@ -424,6 +512,8 @@ npm run android
 For a physical iPhone, open `ios/Choosr.xcworkspace`, select the Choosr target, choose an
 Apple development team under Signing & Capabilities, select the connected phone, and run.
 Open the workspace—not the `.xcodeproj`—because CocoaPods dependencies are workspace-owned.
+After adding or changing a native dependency, run `cd ios && pod install` and rebuild the app;
+a Metro refresh cannot add a native module to an already installed binary.
 
 Two-device testing requires separate application storage/anonymous identities. A simulator
 and a physical iPhone, two simulators with separate data, or iOS and Android are valid
@@ -489,8 +579,8 @@ xcodebuild \
 
 ## Hosted Supabase deployment
 
-The initial Choosr migration is deployed. Use this workflow for future migrations and for
-linking a fresh engineering checkout.
+All versioned migrations through `20260720143000_add_profile_photos.sql` are deployed. Use
+this workflow for future migrations and for linking a fresh engineering checkout.
 
 Authenticate and link the CLI to the intended project:
 
@@ -549,6 +639,9 @@ After deployment, verify:
 7. Both devices receive the same ordered deck.
 8. Individual swipe rows remain private.
 9. Mutual acceptance opens the same match on both devices.
+10. Done/End room on one device returns the other device to Home.
+11. Circle invitations arrive in-app and by push on physical iOS and Android devices.
+12. Profile-photo upload, replacement, initials fallback, and cross-device display work.
 
 ## Common troubleshooting
 
@@ -583,41 +676,37 @@ Confirm that:
 - The migration has been deployed.
 - The project is healthy and not paused.
 
-### Android reports `FCM Registration failed` / `INVALID_ARGUMENT`
+### Push registration or delivery fails
 
-Confirm the generated APK package, Firebase app record, and native config all use
-`com.pamisu.choosr`; confirm the Firebase project number is `463748381172`; and confirm both
-Firebase Installations API and FCM Registration API are allowed for the Firebase-created
-Android API key. Do not add an application restriction while diagnosing this error.
+The earlier Android `INVALID_ARGUMENT` registration problem was resolved by resetting the
+test device's Google Play Services/Google Services Framework identity and signing in again.
+Cross-platform push delivery now works on the physical acceptance devices.
 
-As of July 20, 2026, the physical Pixel acceptance device reaches Google Play Services using
-Firebase Messaging 25.1.0 and the supported FID `register()` API, but Google returns
-`INVALID_ARGUMENT` with `missing Android ID or token`. The same result occurs after clearing
-all app data, while Firebase Installations itself successfully creates a FID and auth token.
-This is an external Firebase project/registration blocker; capture a fresh filtered `adb
-logcat` and escalate it to Firebase Support rather than reverting to deprecated token APIs.
+For a new device, confirm that the installed package and Firebase registration both use
+`com.pamisu.choosr`, notification permission is granted, Google Play Services is healthy,
+the APNs key is attached to the current Firebase iOS app, and the hosted dispatcher still has
+`FIREBASE_SERVICE_ACCOUNT_BASE64`. Capture filtered device logs before changing API-key
+restrictions or replacing the supported FID-based Android registration path.
 
 ## Current limitations and release blockers
 
 - Live provider deck creation is not yet wired into the host screen.
-- Subsequent fallback rounds currently reuse the prior normalized deck.
+- Subsequent curated rounds currently reuse the prior normalized deck.
 - A branded HTTPS universal/app-link gateway and hosted install fallback page remain; the
   installed-app `choosr://` room/Circle links and manual-code fallback are implemented.
-- Background push code, native projects, migration, and delivery worker are implemented. APNs
-  development and production credentials are configured in Firebase, and the Firebase Admin
-  service account is stored as the Supabase delivery-worker secret. Physical-device delivery
-  still requires completion of the acceptance matrix below. Android FID registration currently
-  reaches Google Play Services but is rejected with the documented `INVALID_ARGUMENT` blocker
-  described under troubleshooting.
+- Background push, APNs/FCM credentials, native registration, the database outbox, and the
+  delivery worker are implemented and have passed cross-platform physical-device delivery.
 - Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
 - Retention Cron run history should be monitored after its first hourly and daily executions.
-- Physical iPhone/iPhone, Android/Android, and cross-platform acceptance matrices remain.
+- A complete iPhone/iPhone, Android/Android, and expanded cross-platform acceptance matrix
+  remains, including offline recovery, token rotation, declined invitations, and expiration.
 - Provider quotas, attribution, licensing checks, and production fallback behavior remain.
 - Privacy/terms pages, crash reporting, production signing, CI/CD, and store submission remain.
 
 ## Product and engineering documents
 
-- `docs/PRODUCT_CHARTER.md` — approved MVP scope and product contract
+- This README — current implemented product and technical source of truth
+- `docs/PRODUCT_CHARTER.md` — earlier product-direction snapshot retained for history
 - `docs/ENGINEERING_AUDIT.md` — architecture, SOLID, security, and release audit
 - `docs/VISUAL_DIRECTION.md` — brand references, palette, icon, and motion rules
 - `supabase/README.md` — backend security model and deployment checklist
@@ -629,5 +718,6 @@ logcat` and escalate it to Firebase Support rather than reverting to deprecated 
 - Android application ID: `com.pamisu.choosr`
 - Apple Developer App ID: `com.pamisu.choosr` with Push Notifications enabled
 - Firebase project: `choosr-platform`, with matching iOS and Android app registrations
-- The former `com.choosr.app` Firebase registrations are retained temporarily for rollback and
-  should be removed only after physical-device push acceptance passes on both platforms.
+- The former `com.choosr.app` Firebase registrations are unused legacy records. Current native
+  configuration and tested push delivery use `com.pamisu.choosr`; remove the legacy records
+  only after confirming no external test build still depends on them.
