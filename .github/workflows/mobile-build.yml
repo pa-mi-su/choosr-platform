@@ -32,6 +32,7 @@ jobs:
     name: Android ${{ needs.resolve.outputs.environment }} artifact
     needs: resolve
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     environment: ${{ needs.resolve.outputs.environment }}
     steps:
       - name: Build gate
@@ -94,9 +95,16 @@ jobs:
           APP_ENV: ${{ needs.resolve.outputs.environment }}
         run: |
           if [ "$APP_ENV" = "prod" ]; then
-            ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release
+            ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release --no-daemon --stacktrace --console=plain
           else
-            ./gradlew assemble${{ needs.resolve.outputs.flavor }}Release
+            # Firebase UAT is installed on physical tester devices. Building only
+            # arm64 avoids compiling three unused emulator/legacy ABIs. Play Store
+            # production remains a full Android App Bundle above.
+            ./gradlew assemble${{ needs.resolve.outputs.flavor }}Release \
+              -PreactNativeArchitectures=arm64-v8a \
+              --no-daemon \
+              --stacktrace \
+              --console=plain
           fi
       - uses: actions/upload-artifact@v4
         if: steps.gate.outputs.enabled == 'true'
