@@ -78,9 +78,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace "com.choosr.app"
+    namespace "com.pamisu.choosr"
     defaultConfig {
-        applicationId "com.choosr.app"
+        applicationId "com.pamisu.choosr"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -111,6 +111,9 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation platform("com.google.firebase:firebase-bom:${rootProject.ext.firebaseBomVersion}")
+    implementation("com.google.firebase:firebase-installations")
+    implementation("com.google.firebase:firebase-messaging")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

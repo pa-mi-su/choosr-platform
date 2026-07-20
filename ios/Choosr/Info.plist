@@ -44,6 +44,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Choosr connects to your development computer on the local network while testing the app.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Choosr uses your location only to suggest nearby restaurants and activities while you create a room.</string>
 	<key>RCTNewArchEnabled</key>

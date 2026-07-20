@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.choosr.app</string>
+	<string>com.pamisu.choosr</string>
 	<key>PROJECT_ID</key>
 	<string>choosr-platform</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:463748381172:ios:59b2f8ad851d4ef02f21a1</string>
+	<string>1:463748381172:ios:19040ce171a9d1b02f21a1</string>
 </dict>
 </plist>

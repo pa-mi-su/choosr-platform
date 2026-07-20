@@ -12,14 +12,11 @@ import {
   requestPermission,
   type RemoteMessage,
 } from '@react-native-firebase/messaging';
-import {
-  PermissionsAndroid,
-  Platform,
-  type Permission,
-} from 'react-native';
+import { PermissionsAndroid, Platform, type Permission } from 'react-native';
 
 import { supabase } from '../lib/supabase';
 import { ensureAnonymousSession } from './anonymousAuth';
+import { registerAndroidPushInstallation } from './androidPushRegistration';
 
 const PUSH_ENABLED_KEY = 'choosr.push.enabled';
 const ANDROID_NOTIFICATION_PERMISSION =
@@ -57,6 +54,11 @@ async function requestPlatformPermission(): Promise<boolean> {
 }
 
 async function syncCurrentToken(): Promise<void> {
+  if (Platform.OS === 'android') {
+    await registerToken(await registerAndroidPushInstallation());
+    return;
+  }
+
   const messaging = getMessaging();
   if (
     Platform.OS === 'ios' &&

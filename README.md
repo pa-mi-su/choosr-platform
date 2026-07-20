@@ -32,7 +32,8 @@ The real two-device client flow is implemented:
 - Optional persistent **Choosr Circle** profiles and mutually accepted connections
 - One-tap room invitations for Circle connections
 - Contact-safe Circle links through the native share picker without address-book uploads
-- Native Firebase Messaging registration, permissions, token refresh, and notification routing
+- Native Firebase Messaging permissions, iOS token lifecycle, Android FID registration, and
+  notification routing
 - Transactional push outbox with leased, retryable FCM/APNs Edge delivery
 - Watch, Eat, and Do fallback decks
 
@@ -59,8 +60,8 @@ rejection, private-swipe RLS, authoritative matching, and participant/match Real
 | Live updates           | Supabase Realtime/Postgres Changes    | Room activation, participant, match, and round notifications                |
 | Recovery               | 15-second active-only polling         | Low-traffic fallback for missed or disconnected Realtime events             |
 | Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup               |
-| Push client            | React Native Firebase Messaging       | Native permission, FCM token lifecycle, foreground/background notification |
-| Push delivery          | FCM HTTP v1 + APNs                     | Cross-platform delivery through a leased transactional outbox worker        |
+| Push client            | React Native Firebase + Kotlin bridge | Native permission, iOS tokens, Android FIDs, and notification routing       |
+| Push delivery          | FCM HTTP v1 + APNs                    | Cross-platform delivery through a leased transactional outbox worker        |
 | Provider boundary      | Supabase Edge Functions               | Keeps TMDB and Google Places credentials out of mobile binaries             |
 | Watch provider         | TMDB adapter                          | Normalized movie discovery when server credentials are configured           |
 | Local provider         | Google Places adapter                 | Normalized nearby Eat/Do results when server credentials are configured     |
@@ -225,8 +226,10 @@ The client does not infer room identity from a local singleton.
 - `src/services/roomFlow.ts` contains pure room-state routing, reconnection indexing, code
   normalization, and safe user-facing error mapping.
 - `src/services/deckService.ts` contains preview and provider-backed deck access.
-- `src/services/pushNotifications.ts` owns native permission, token registration, token refresh,
-  foreground handling, and delivery-worker wakeups.
+- `src/services/pushNotifications.ts` owns native permission, installation registration,
+  foreground handling, and delivery-worker wakeups. iOS uses the React Native Firebase token
+  bridge; Android uses `ChoosrPushRegistrationModule` because Firebase's current Android SDK
+  targets app instances with Firebase Installation IDs (FIDs).
 - `src/services/decisionItemParser.ts` validates untrusted JSON loaded from PostgreSQL.
 - `src/data/decisions.ts` defines decision modes and deterministic fallback decks.
 
@@ -391,6 +394,12 @@ ios/Choosr/GoogleService-Info.plist
 The Apple APNs `.p8` key and Firebase service-account JSON are server credentials. Keep them
 outside the repository. Files matching `AuthKey_*.p8`, `*firebase-adminsdk*.json`, and
 `*service-account*.json` are ignored as a second line of defense.
+
+Android enables Firebase's FID-based registration with
+`firebase_messaging_installation_id_enabled`. The small Kotlin module under
+`android/app/src/main/java/com/pamisu/choosr/push` calls the native `register()` API and returns
+the registered FID to the existing Supabase device-registration boundary. Do not replace this
+with the deprecated Android `getToken()` path.
 
 ## Run the mobile app
 
@@ -569,15 +578,32 @@ Confirm that:
 - The migration has been deployed.
 - The project is healthy and not paused.
 
+### Android reports `FCM Registration failed` / `INVALID_ARGUMENT`
+
+Confirm the generated APK package, Firebase app record, and native config all use
+`com.pamisu.choosr`; confirm the Firebase project number is `463748381172`; and confirm both
+Firebase Installations API and FCM Registration API are allowed for the Firebase-created
+Android API key. Do not add an application restriction while diagnosing this error.
+
+As of July 20, 2026, the physical Pixel acceptance device reaches Google Play Services using
+Firebase Messaging 25.1.0 and the supported FID `register()` API, but Google returns
+`INVALID_ARGUMENT` with `missing Android ID or token`. The same result occurs after clearing
+all app data, while Firebase Installations itself successfully creates a FID and auth token.
+This is an external Firebase project/registration blocker; capture a fresh filtered `adb
+logcat` and escalate it to Firebase Support rather than reverting to deprecated token APIs.
+
 ## Current limitations and release blockers
 
 - Live provider deck creation is not yet wired into the host screen.
 - Subsequent fallback rounds currently reuse the prior normalized deck.
 - A branded HTTPS universal/app-link gateway and hosted install fallback page remain; the
   installed-app `choosr://` room/Circle links and manual-code fallback are implemented.
-- Background push code, native projects, migration, and delivery worker are implemented. Hosted
-  delivery remains disabled until the APNs key is uploaded to Firebase and the Firebase Admin
-  service account is stored as the Supabase secret described above.
+- Background push code, native projects, migration, and delivery worker are implemented. APNs
+  development and production credentials are configured in Firebase, and the Firebase Admin
+  service account is stored as the Supabase delivery-worker secret. Physical-device delivery
+  still requires completion of the acceptance matrix below. Android FID registration currently
+  reaches Google Play Services but is rejected with the documented `INVALID_ARGUMENT` blocker
+  described under troubleshooting.
 - Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
 - Retention Cron run history should be monitored after its first hourly and daily executions.
 - Physical iPhone/iPhone, Android/Android, and cross-platform acceptance matrices remain.
@@ -594,5 +620,9 @@ Confirm that:
 
 ## Application identifiers
 
-- iOS bundle identifier: `com.choosr.app`
-- Android application ID: `com.choosr.app`
+- iOS bundle identifier: `com.pamisu.choosr`
+- Android application ID: `com.pamisu.choosr`
+- Apple Developer App ID: `com.pamisu.choosr` with Push Notifications enabled
+- Firebase project: `choosr-platform`, with matching iOS and Android app registrations
+- The former `com.choosr.app` Firebase registrations are retained temporarily for rollback and
+  should be removed only after physical-device push acceptance passes on both platforms.

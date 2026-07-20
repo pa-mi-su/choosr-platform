@@ -1,4 +1,4 @@
-package com.choosr.app
+package com.pamisu.choosr
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
