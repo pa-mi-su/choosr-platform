@@ -19,7 +19,12 @@ jobs:
     outputs:
       environment: ${{ steps.target.outputs.environment }}
       flavor: ${{ steps.target.outputs.flavor }}
+      android: ${{ steps.changes.outputs.android }}
+      ios: ${{ steps.changes.outputs.ios }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - id: target
         run: |
           case "${GITHUB_REF}" in
@@ -27,10 +32,44 @@ jobs:
             refs/heads/main) echo "environment=prod" >> "$GITHUB_OUTPUT"; echo "flavor=Prod" >> "$GITHUB_OUTPUT" ;;
             *) exit 1 ;;
           esac
+      - id: changes
+        name: Detect affected mobile platforms
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          before="${{ github.event.before }}"
+          if [[ -z "$before" || "$before" == "0000000000000000000000000000000000000000" ]]; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "${before}...HEAD")"
+          shared_pattern='^(src/|index\.js$|package(-lock)?\.json$|react-native\.config\.js$|babel\.config\.js$|scripts/generate-env\.mjs$|\.github/workflows/mobile-build\.yml$)'
+
+          if grep -Eq "${shared_pattern}|^android/" <<< "$changed_files"; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "android=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq "${shared_pattern}|^ios/" <<< "$changed_files"; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ios=false" >> "$GITHUB_OUTPUT"
+          fi
 
   android:
     name: Android ${{ needs.resolve.outputs.environment }} artifact
     needs: resolve
+    if: needs.resolve.outputs.android == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: ${{ needs.resolve.outputs.environment }}
@@ -95,13 +134,15 @@ jobs:
           APP_ENV: ${{ needs.resolve.outputs.environment }}
         run: |
           if [ "$APP_ENV" = "prod" ]; then
-            ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release --no-daemon --stacktrace --console=plain
+            ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release --build-cache --parallel --no-daemon --stacktrace --console=plain
           else
             # Firebase UAT is installed on physical tester devices. Building only
             # arm64 avoids compiling three unused emulator/legacy ABIs. Play Store
             # production remains a full Android App Bundle above.
             ./gradlew assemble${{ needs.resolve.outputs.flavor }}Release \
               -PreactNativeArchitectures=arm64-v8a \
+              --build-cache \
+              --parallel \
               --no-daemon \
               --stacktrace \
               --console=plain
@@ -153,6 +194,7 @@ jobs:
   ios:
     name: iOS ${{ needs.resolve.outputs.environment }} artifact
     needs: resolve
+    if: needs.resolve.outputs.ios == 'true'
     runs-on: macos-15
     environment: ${{ needs.resolve.outputs.environment }}
     steps:
