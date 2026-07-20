@@ -17,6 +17,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect affected platforms
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - id: filter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            git fetch --no-tags origin "${{ github.base_ref }}"
+            range="origin/${{ github.base_ref }}...HEAD"
+          else
+            before="${{ github.event.before }}"
+            if [[ -z "$before" || "$before" == "0000000000000000000000000000000000000000" ]]; then
+              echo "android=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            range="${before}...HEAD"
+          fi
+
+          changed_files="$(git diff --name-only "$range")"
+          if grep -Eq '^(android/|src/|index\.js$|package(-lock)?\.json$|react-native\.config\.js$|babel\.config\.js$|scripts/generate-env\.mjs$|\.github/workflows/ci\.yml$)' <<< "$changed_files"; then
+            echo "android=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "android=false" >> "$GITHUB_OUTPUT"
+          fi
+
   application:
     name: TypeScript and application tests
     runs-on: ubuntu-latest
@@ -57,6 +95,8 @@ jobs:
 
   android:
     name: Android production-debug build
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -74,4 +114,4 @@ jobs:
       - run: npm run env:generate:test
       - name: Build production debug variant
         working-directory: android
-        run: ./gradlew assembleProdDebug -PreactNativeArchitectures=x86_64 --no-daemon
+        run: ./gradlew assembleProdDebug -PreactNativeArchitectures=x86_64 --build-cache --parallel --no-daemon --console=plain
