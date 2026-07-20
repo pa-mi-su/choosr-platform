@@ -44,12 +44,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ needs.resolve.outputs.environment }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
       - name: Deployment safety gate
         id: gate
         env:
@@ -61,6 +55,15 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "Supabase deployment is disabled for this environment."
           fi
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+      - uses: actions/setup-node@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        if: steps.gate.outputs.enabled == 'true'
       - name: Validate required credentials
         if: steps.gate.outputs.enabled == 'true'
         env:
