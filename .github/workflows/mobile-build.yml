@@ -315,7 +315,7 @@ jobs:
               echo "IOS_SCHEME=Choosr-UAT" >> "$GITHUB_ENV"
               echo "IOS_CONFIGURATION=Release-UAT" >> "$GITHUB_ENV"
               echo "IOS_BUNDLE_ID=com.pamisu.choosr.uat" >> "$GITHUB_ENV"
-              echo "IOS_EXPORT_METHOD=ad-hoc" >> "$GITHUB_ENV"
+              echo "IOS_EXPORT_METHOD=app-store-connect" >> "$GITHUB_ENV"
               ;;
             prod)
               echo "IOS_SCHEME=Choosr-Prod" >> "$GITHUB_ENV"
@@ -395,4 +395,5 @@ jobs:
           key_dir="$HOME/.appstoreconnect/private_keys"
           mkdir -p "$key_dir"
           printf '%s' "$APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64" | base64 --decode > "$key_dir/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          chmod 600 "$key_dir/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
           xcrun altool --upload-app --type ios --file ios/build/ios/*.ipa --apiKey "$APP_STORE_CONNECT_API_KEY_ID" --apiIssuer "$APP_STORE_CONNECT_API_ISSUER_ID"
