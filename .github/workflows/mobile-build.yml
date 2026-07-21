@@ -265,6 +265,9 @@ jobs:
             destination="ios/Choosr/Firebase/${APP_ENV}/GoogleService-Info.plist"
           fi
           printf '%s' "$FIREBASE_IOS_CONFIG_BASE64" | base64 --decode > "$destination"
+          if [ "$destination" != "ios/Choosr/GoogleService-Info.plist" ]; then
+            cp "$destination" ios/Choosr/GoogleService-Info.plist
+          fi
           npm run "env:generate:${APP_ENV}"
       - name: Install CocoaPods dependencies
         if: steps.gate.outputs.enabled == 'true'
