@@ -1,7 +1,6 @@
 import { isAuthenticated } from './auth.ts';
 import { jsonResponse } from './http.ts';
 import { buildPlacesDeck } from './providers/placesProvider.ts';
-import { buildWatchDeck } from './providers/watchProvider.ts';
 import {
   DeckRequestError,
   parseDeckRequest,
@@ -38,10 +37,7 @@ Deno.serve(async request => {
   }
 
   try {
-    const items =
-      body.mode === 'watch'
-        ? await buildWatchDeck(body.region ?? 'US')
-        : await buildPlacesDeck(body);
+    const items = await buildPlacesDeck(body);
     if (!items.length) {
       return jsonResponse({ error: 'No options found for this search.' }, 404);
     }

@@ -20,14 +20,14 @@ Provider credentials, physical cross-device acceptance tests, and store-release 
 ## Design and SOLID review
 
 - **Single responsibility:** provider authentication, HTTP responses, request parsing,
-  presentation shaping, Watch lookup, and Places lookup are separate Edge Function modules.
-- **Open/closed:** Watch and Places implement the same normalized `DecisionItem` boundary;
-  another decision provider can be added without changing session persistence.
+  presentation shaping, and Places lookup are separate Edge Function modules.
+- **Open/closed:** providers implement the normalized `DecisionItem` boundary; another
+  decision provider can be added without changing session persistence.
 - **Liskov substitution:** every provider returns the same validated decision-deck contract.
 - **Interface segregation:** the mobile session service consumes session RPC results and a
   small runtime parser instead of provider-specific response shapes.
 - **Dependency inversion:** UI/domain code depends on normalized decision items rather than
-  TMDB or Google Places records.
+  Google Places records.
 
 Patterns used deliberately: provider adapters, service boundary, normalized domain model,
 database transaction script/RPC, immutable room snapshots, and server-authoritative match
@@ -36,7 +36,7 @@ real variation requires it.
 
 ## Findings remediated
 
-1. Removed obsolete movie-only RPCs that duplicated the generic decision-mode APIs.
+1. Removed obsolete single-purpose RPCs that duplicated the generic decision-mode APIs.
 2. Replaced an unsafe JSON type assertion with runtime validation of stored deck items.
 3. Centralized database deck validation with bounded payload, item count, field lengths,
    mode consistency, required fields, and duplicate-ID rejection.
@@ -75,7 +75,7 @@ real variation requires it.
 2. Put manual-code joins behind an abuse-controlled server boundary or equivalent rate
    limiting before a public launch; code entropy alone is not a complete abuse control.
 3. Configure provider quotas and graceful fallback behavior, and verify licensing and
-   attribution for TMDB, Places, and Maps.
+   attribution for Places and Maps.
 4. Run iPhone/iPhone, Android/Android, and cross-platform physical-device acceptance tests,
    including expired rooms, network loss, duplicate swipes, and third-user rejection.
 5. Add universal/app links, privacy and terms pages, data-retention cleanup, store assets,

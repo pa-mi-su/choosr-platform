@@ -40,7 +40,7 @@ schema changes only through the dashboard; create and test a migration here firs
   permanent-user safety, and live-room protection.
 - `tests/database/0005_circle.test.sql`: Circle identity, connection, contact-link,
   room-invitation, and notification-outbox behavior.
-- `functions/build-deck`: authenticated TMDB and Google Places provider adapter.
+- `functions/build-deck`: authenticated Google Places provider adapter for Eat and Do.
 - `seed.sql`: intentionally empty because decks are session-specific.
 
 ## Local verification

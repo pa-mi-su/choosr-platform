@@ -4,11 +4,10 @@ Choosr is a private, real-time decision app for exactly two people. One person c
 temporary room, shares an eight-character code, and both people independently accept or
 pass on the same ordered options. Choosr reveals only the first option both people accept.
 
-The initial decision modes are:
-
-- **Watch:** choose a movie together.
-- **Eat:** match on a cuisine, then open a local Maps search.
-- **Do:** match on an activity, then find it nearby.
+The initial decision modes are **Eat** (match on a cuisine) and **Do** (match on a nearby
+activity). The decision engine is intentionally content-agnostic. A future Custom mode will let
+people create a private deck from their own labels and photos—for example, outfits, trips, gifts,
+or anything else they want to decide together.
 
 Choosr is a React Native Community CLI application with standard native iOS and Android
 projects. It does **not** use Expo, Expo Go, EAS, or an Expo runtime.
@@ -36,7 +35,7 @@ The real two-device client flow is implemented:
 - Native Firebase Messaging permissions, iOS token lifecycle, Android FID registration, and
   notification routing
 - Transactional push outbox with leased, retryable FCM/APNs Edge delivery
-- Watch, Eat, and Do curated decks
+- Eat and Do curated decks
 
 The repository declares 110 pgTAP assertions across schema, room flow, modes, retention,
 Circle, push delivery, synchronized closure, and profile photos. All migrations are deployed
@@ -57,13 +56,14 @@ are provisioned.
 
 | Capability                                        | Status                        | Notes                                            |
 | ------------------------------------------------- | ----------------------------- | ------------------------------------------------ |
-| Watch, Eat, and Do rooms                          | Implemented                   | Uses curated normalized decks today              |
+| Eat and Do rooms                                  | Implemented                   | Uses curated normalized decks today              |
 | Cross-platform private swiping and matching       | Implemented                   | PostgreSQL is authoritative                      |
 | Circle profiles, handles, connections, and photos | Implemented                   | Optional layer over anonymous Auth               |
 | Quick-room links and manual codes                 | Implemented                   | Custom `choosr://` links; code is recovery       |
 | Push invitations                                  | Implemented and device-tested | Firebase HTTP v1; FCM to Android and APNs to iOS |
 | Synchronized round restart and room closure       | Implemented                   | Either participant can act; all clients follow   |
-| Live TMDB/Places adapters                         | Implemented server boundary   | Not yet called by host room creation             |
+| Live Google Places adapter                        | Implemented server boundary   | Not yet called by host room creation             |
+| Custom user-created photo decks                   | Planned                       | Next product expansion; no external catalog      |
 | HTTPS universal/app links and install landing     | Not implemented               | Required before polished external distribution   |
 | Store-ready production release                    | Not ready                     | See release blockers below                       |
 
@@ -87,8 +87,7 @@ are provisioned.
 | Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup               |
 | Push client            | React Native Firebase + Kotlin bridge | Native permission, iOS tokens, Android FIDs, and notification routing       |
 | Push delivery          | FCM HTTP v1 + APNs                    | Cross-platform delivery through a leased transactional outbox worker        |
-| Provider boundary      | Supabase Edge Functions               | Keeps TMDB and Google Places credentials out of mobile binaries             |
-| Watch provider         | TMDB adapter                          | Normalized movie discovery when server credentials are configured           |
+| Provider boundary      | Supabase Edge Functions               | Keeps Google Places credentials out of mobile binaries                      |
 | Local provider         | Google Places adapter                 | Normalized nearby Eat/Do results when server credentials are configured     |
 | Zero-key local handoff | Google Maps HTTPS search URLs         | Opens nearby results after a cuisine or activity match                      |
 | App tests              | Jest, React Test Renderer             | Domain, parser, room-state, navigation-root, and deck behavior              |
@@ -109,7 +108,6 @@ flowchart LR
     Host -->|"Active-only recovery reads every 15 seconds"| DB
     Partner -->|"Active-only recovery reads every 15 seconds"| DB
     Host -.->|"Optional live deck"| Edge["build-deck Edge Function"]
-    Edge --> TMDB["TMDB"]
     Edge --> Places["Google Places"]
     Host -->|"Profile photo"| Storage[("Supabase Storage")]
     Partner -->|"Profile photo"| Storage
@@ -235,7 +233,7 @@ own participant row. Moving from couples to groups changes capacity and completi
 Both devices listen for session and match changes. If a WebSocket event is missed, the
 polling fallback reads the authoritative state and navigates to the same outcome. A match
 is terminal for the round: both clients automatically stop swiping, reveal the same final
-pick, and offer the relevant completion action (watch search or nearby Maps search).
+pick, and offer the relevant nearby Maps completion action.
 
 ### 5. Another round
 
@@ -393,8 +391,7 @@ This keeps local development and zero-cost testing deterministic.
 
 `supabase/functions/build-deck` is the protected live-provider boundary:
 
-- `watch` uses `TMDB_API_READ_TOKEN`.
-- `eat` and `do` use `GOOGLE_PLACES_API_KEY`.
+- Optional live `eat` and `do` enrichment uses `GOOGLE_PLACES_API_KEY`; without it CI skips the live deck function and the app continues with curated decks.
 - Provider-specific records are converted into the generic `DecisionItem` contract.
 - Secrets are Supabase secrets, never mobile `.env` values.
 - Google Places fields are intentionally minimized to control SKU/cost exposure.
@@ -478,7 +475,7 @@ mode-`0600` `src/config/generatedEnv.ts`.
 | APNs `AuthKey_*.p8`                 | GitHub environment secret; uploaded to Firebase      | Never                       |
 | Firebase Admin service-account JSON | GitHub environment secret only                       | Never                       |
 | `FIREBASE_SERVICE_ACCOUNT_BASE64`   | GitHub secret synced to Supabase by CI               | Never                       |
-| TMDB/Google Places credentials      | GitHub secrets synced to Supabase by CI              | Never                       |
+| Google Places credentials           | GitHub secrets synced to Supabase by CI              | Never                       |
 | Supabase service-role key           | Supabase-hosted server environment only              | Never                       |
 
 The deployed database migrations create all application tables, RPCs, Realtime publication
@@ -555,8 +552,8 @@ npm run supabase:stop
 
 Local Supabase runs database migrations and tests without app secrets. Provider-backed decks and
 push delivery are tested against the hosted Dev environment. GitHub Actions synchronizes the
-environment-scoped TMDB, Google Places, and Firebase credentials into Supabase immediately before
-deploying the Edge Functions.
+Firebase credential into Supabase before deploying push delivery. When an environment also has a
+Google Places key, CI synchronizes it and deploys the optional live deck function.
 
 `.env.dev` should use `http://127.0.0.1:54321` for simulators. A physical phone must use the
 Mac's private Wi-Fi address instead (for example, `http://192.168.x.x:54321`) and both devices
@@ -628,11 +625,10 @@ npx supabase db push
 ```
 
 Provider secrets and Edge Functions are deployed by the environment-gated GitHub Actions
-workflow. Do not run `supabase secrets set` with literal values from a workstation.
+workflow. Do not run `supabase secrets set` with literal values from a workstation. Google Places
+is optional and does not block migrations, push delivery, or mobile distribution.
 
 ```sh
-gh secret set TMDB_API_READ_TOKEN --env dev
-gh secret set GOOGLE_PLACES_API_KEY --env dev
 gh secret set FIREBASE_SERVICE_ACCOUNT_BASE64 --env dev
 gh workflow run supabase-deploy.yml --ref dev
 ```

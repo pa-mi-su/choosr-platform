@@ -1,4 +1,4 @@
-export type DecisionMode = 'watch' | 'eat' | 'do';
+export type DecisionMode = 'eat' | 'do';
 
 export type DeckRequest = {
   mode: DecisionMode;
@@ -24,7 +24,7 @@ export type ProviderItem = {
 export class DeckRequestError extends Error {}
 
 const parseMode = (value: unknown): DecisionMode => {
-  if (value === 'watch' || value === 'eat' || value === 'do') {
+  if (value === 'eat' || value === 'do') {
     return value;
   }
   throw new DeckRequestError('Unsupported decision mode.');
@@ -64,7 +64,7 @@ export function parseDeckRequest(value: unknown): DeckRequest {
     500,
     25000,
   );
-  if (mode !== 'watch' && (latitude === undefined || longitude === undefined)) {
+  if (latitude === undefined || longitude === undefined) {
     throw new DeckRequestError(
       'A valid latitude and longitude are required for local modes.',
     );

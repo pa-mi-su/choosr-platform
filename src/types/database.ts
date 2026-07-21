@@ -16,7 +16,7 @@ export type SessionStatus =
 
 export type ParticipantRole = 'host' | 'partner';
 export type SwipeDirection = 'left' | 'right';
-export type DecisionMode = 'watch' | 'eat' | 'do';
+export type DecisionMode = 'eat' | 'do';
 
 type SessionRow = {
   id: string;
