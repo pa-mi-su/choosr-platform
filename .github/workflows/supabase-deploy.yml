@@ -2,7 +2,7 @@ name: Supabase Deployment
 
 on:
   push:
-    branches: [uat, main]
+    branches: [dev, uat, main]
     paths:
       - 'supabase/**'
       - 'package.json'
@@ -28,6 +28,7 @@ jobs:
         shell: bash
         run: |
           case "${GITHUB_REF}" in
+            refs/heads/dev) environment=dev ;;
             refs/heads/uat) environment=uat ;;
             refs/heads/main) environment=prod ;;
             *)
