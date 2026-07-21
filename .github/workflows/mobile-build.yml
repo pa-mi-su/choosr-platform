@@ -212,6 +212,11 @@ jobs:
           [ "${ENABLED}" = "true" ] && [ "${PLATFORM_ENABLED:-true}" != "false" ] && echo "enabled=true" >> "$GITHUB_OUTPUT" || echo "enabled=false" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v5
         if: steps.gate.outputs.enabled == 'true'
+      - name: Select Xcode 26.3
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
       - uses: actions/setup-node@v5
         if: steps.gate.outputs.enabled == 'true'
         with:
