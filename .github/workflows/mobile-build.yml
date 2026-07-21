@@ -150,22 +150,20 @@ jobs:
           ANDROID_UPLOAD_ENABLED: ${{ vars.ANDROID_UPLOAD_ENABLED }}
           FIREBASE_DISTRIBUTION_ENABLED: ${{ vars.FIREBASE_DISTRIBUTION_ENABLED }}
         run: |
-          if [ "$APP_ENV" = "dev" ] || [ "$APP_ENV" = "prod" ] || [ "${ANDROID_UPLOAD_ENABLED:-false}" = "true" ]; then
-            bundle_args=()
-            if [ "$APP_ENV" != "prod" ]; then
-              # DEV/UAT testers use modern physical devices. Avoid compiling the React Native
-              # native stack for legacy and emulator ABIs on every pre-release pipeline run.
-              bundle_args+=("-PreactNativeArchitectures=arm64-v8a")
-            fi
-            ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release \
-              "${bundle_args[@]}" \
-              --build-cache \
-              --parallel \
-              --no-daemon \
-              --stacktrace \
-              --console=plain
+          bundle_args=()
+          if [ "$APP_ENV" != "prod" ]; then
+            # DEV/UAT testers use modern physical devices. Avoid compiling the React Native
+            # native stack for legacy and emulator ABIs on every pre-release pipeline run.
+            bundle_args+=("-PreactNativeArchitectures=arm64-v8a")
           fi
-          if [ "$APP_ENV" = "uat" ] || [ "${FIREBASE_DISTRIBUTION_ENABLED:-false}" = "true" ]; then
+          ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release \
+            "${bundle_args[@]}" \
+            --build-cache \
+            --parallel \
+            --no-daemon \
+            --stacktrace \
+            --console=plain
+          if [ "${FIREBASE_DISTRIBUTION_ENABLED:-false}" = "true" ]; then
             # Firebase pre-release builds are installed on physical tester devices. Building only
             # arm64 avoids compiling three unused emulator/legacy ABIs. Play Store
             # releases remain full Android App Bundles above.
