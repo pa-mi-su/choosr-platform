@@ -72,7 +72,10 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.android == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # React Native release bundles compile native code for every Play-supported ABI.
+    # A cold GitHub runner can legitimately take more than 25 minutes, especially
+    # while Reanimated/Worklets populate the Gradle cache for the first time.
+    timeout-minutes: 60
     environment: ${{ needs.resolve.outputs.environment }}
     steps:
       - name: Build gate
@@ -124,6 +127,16 @@ jobs:
           test -n "$ANDROID_UPLOAD_KEYSTORE_BASE64"
           printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/choosr-upload.jks"
           echo "ANDROID_UPLOAD_KEYSTORE_PATH=$RUNNER_TEMP/choosr-upload.jks" >> "$GITHUB_ENV"
+      - name: Validate Google Play upload configuration
+        if: steps.gate.outputs.enabled == 'true' && vars.ANDROID_UPLOAD_ENABLED == 'true'
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64 }}
+          GOOGLE_PLAY_PACKAGE_NAME: ${{ vars.GOOGLE_PLAY_PACKAGE_NAME }}
+          GOOGLE_PLAY_TRACK: ${{ vars.GOOGLE_PLAY_TRACK }}
+        run: |
+          test -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64" || { echo "Missing GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64 in the selected GitHub environment." >&2; exit 1; }
+          test -n "$GOOGLE_PLAY_PACKAGE_NAME" || { echo "Missing GOOGLE_PLAY_PACKAGE_NAME in the selected GitHub environment." >&2; exit 1; }
+          test -n "$GOOGLE_PLAY_TRACK" || { echo "Missing GOOGLE_PLAY_TRACK in the selected GitHub environment." >&2; exit 1; }
       - name: Build signed Android release
         if: steps.gate.outputs.enabled == 'true'
         working-directory: android
