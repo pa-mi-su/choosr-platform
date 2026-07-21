@@ -11,15 +11,6 @@ const mapsSearch = (query: string) =>
 
 export const decisionModes: DecisionModeDefinition[] = [
   {
-    id: 'watch',
-    icon: '▶',
-    eyebrow: 'WATCH TOGETHER',
-    title: 'What should we watch?',
-    description: 'Movies you can both say yes to.',
-    prompt: 'Would you watch this?',
-    matchSubtitle: 'Tonight’s watch is settled.',
-  },
-  {
     id: 'eat',
     icon: '◆',
     eyebrow: 'EAT TOGETHER',
@@ -44,56 +35,6 @@ export const modeById = Object.fromEntries(
 ) as Record<DecisionMode, DecisionModeDefinition>;
 
 export const decisionDecks: Record<DecisionMode, DecisionItem[]> = {
-  watch: [
-    {
-      id: 'past-lives',
-      mode: 'watch',
-      title: 'Past Lives',
-      kicker: 'A FILM TOGETHER',
-      meta: '2023 · 1h 46m · ★ 7.8',
-      description:
-        'Two childhood friends reunite and confront destiny, love, and the choices that shape a life.',
-      background: '#20344A',
-      accent: '#F0B7A4',
-      tags: ['Drama', 'Romance', 'Paramount+'],
-    },
-    {
-      id: 'arrival',
-      mode: 'watch',
-      title: 'Arrival',
-      kicker: 'A FILM TOGETHER',
-      meta: '2016 · 1h 56m · ★ 7.9',
-      description:
-        'A linguist communicates with mysterious visitors and discovers language can transform time.',
-      background: '#39464C',
-      accent: '#E9D9BE',
-      tags: ['Sci-Fi', 'Drama', 'Prime Video'],
-    },
-    {
-      id: 'grand-budapest',
-      mode: 'watch',
-      title: 'The Grand Budapest Hotel',
-      kicker: 'A FILM TOGETHER',
-      meta: '2014 · 1h 40m · ★ 8.1',
-      description:
-        'A legendary concierge and his lobby boy are swept into a stylish caper.',
-      background: '#A84963',
-      accent: '#F4C9B8',
-      tags: ['Comedy', 'Adventure', 'Hulu'],
-    },
-    {
-      id: 'spiderverse',
-      mode: 'watch',
-      title: 'Into the Spider-Verse',
-      kicker: 'A FILM TOGETHER',
-      meta: '2018 · 1h 57m · ★ 8.4',
-      description:
-        'A Brooklyn teenager meets heroes from other dimensions and learns to wear the mask.',
-      background: '#422B61',
-      accent: '#EF4B65',
-      tags: ['Animation', 'Action', 'Netflix'],
-    },
-  ],
   eat: [
     ['pizza', 'Pizza night', 'Comfort food · Casual', '#7A3428', '#FFC857'],
     ['sushi', 'Sushi', 'Fresh · Shareable', '#173F42', '#78D6C6'],
@@ -145,7 +86,7 @@ export function buildPreviewDeck(
   searchArea?: string,
 ): DecisionItem[] {
   const area = searchArea?.trim();
-  if (mode === 'watch' || !area) {
+  if (!area) {
     return decisionDecks[mode];
   }
   return decisionDecks[mode].map(item => ({

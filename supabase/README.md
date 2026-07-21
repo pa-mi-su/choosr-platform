@@ -40,7 +40,7 @@ schema changes only through the dashboard; create and test a migration here firs
   permanent-user safety, and live-room protection.
 - `tests/database/0005_circle.test.sql`: Circle identity, connection, contact-link,
   room-invitation, and notification-outbox behavior.
-- `functions/build-deck`: authenticated TMDB and Google Places provider adapter.
+- `functions/build-deck`: authenticated Google Places provider adapter for Eat and Do.
 - `seed.sql`: intentionally empty because decks are session-specific.
 
 ## Local verification
@@ -53,18 +53,22 @@ npm run supabase:test
 npm run supabase:stop
 ```
 
+Local development intentionally excludes provider and push credentials. Edge Functions are
+deployed only by GitHub Actions, which copies the matching GitHub environment secrets into the
+target Supabase project. Mobile clients invoke the authenticated `dispatch-notifications`
+function after transactional outbox writes; hosted environments should also add an independently
+monitored retry schedule before public launch.
+
 ## Hosted deployment checklist
 
 1. Confirm anonymous authentication is enabled in the intended Supabase project.
-2. Log the CLI into the correct Supabase account.
-3. Link this repository to the project and verify the project reference.
-4. Review `supabase db push --dry-run` output.
-5. Apply the migration with `supabase db push`.
-6. Add `TMDB_API_READ_TOKEN` and, when exact local places are enabled,
-   `GOOGLE_PLACES_API_KEY` as Supabase secrets.
-7. Deploy the `build-deck` Edge Function.
-8. Run database lint and pgTAP tests against the linked project.
-9. Verify no secret/service-role key exists in the mobile configuration or Git.
+2. Configure the target GitHub environment variables and secrets documented in
+   `docs/DEPLOYMENT_AND_PIPELINES.md`.
+3. Review the GitHub Actions dry-run output.
+4. Let the environment-gated workflow apply migrations, synchronize Edge Function secrets,
+   and deploy both functions.
+5. Run database lint and pgTAP tests against the linked project.
+6. Verify no secret/service-role key exists in the mobile configuration, Git, or local files.
 
 All migrations are deployed to the hosted Choosr project. The room implementation has passed hosted
 host/partner/third-user, private-swipe RLS, authoritative-match, and Realtime verification.

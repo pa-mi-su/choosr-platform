@@ -5,7 +5,7 @@ describe('buildRoomInvite', () => {
     const invite = buildRoomInvite({
       inviteToken: 'secret-token',
       accessCode: 'ABCD2345',
-      decisionPrompt: 'choose a movie together',
+      decisionPrompt: 'choose dinner together',
     });
 
     expect(invite.url).toBe('choosr://join/secret-token');

@@ -68,14 +68,17 @@ yarn-error.log
 !.env.dev.example
 !.env.uat.example
 !.env.prod.example
+supabase/.env.local
 src/config/generatedEnv.ts
 
 # Environment-specific Firebase client configuration. These files identify
 # projects but are generated/downloaded per deployment environment.
 android/app/src/dev/google-services.json
 android/app/src/uat/google-services.json
+android/app/google-services.json
 ios/Choosr/Firebase/dev/GoogleService-Info.plist
 ios/Choosr/Firebase/uat/GoogleService-Info.plist
+ios/Choosr/GoogleService-Info.plist
 
 # Server credentials (client Firebase configuration files are intentionally tracked)
 AuthKey_*.p8

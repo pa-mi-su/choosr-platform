@@ -26,8 +26,8 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.eyebrow}>TONIGHT, SOLVED</Text>
         <Text style={styles.title}>Swipe separately.{`\n`}Match together.</Text>
         <Text style={styles.subtitle}>
-          Decide what to watch, what to eat, or what to do—without debating
-          every option out loud.
+          Decide what to eat or what to do—without debating every option out
+          loud.
         </Text>
         <View style={styles.cards}>
           <View style={[styles.card, styles.left]}>

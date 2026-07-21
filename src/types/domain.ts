@@ -1,6 +1,6 @@
 export type SwipeDirection = 'left' | 'right';
 
-export type DecisionMode = 'watch' | 'eat' | 'do';
+export type DecisionMode = 'eat' | 'do';
 
 export type DecisionItem = {
   id: string;

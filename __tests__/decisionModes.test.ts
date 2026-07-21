@@ -5,11 +5,11 @@ import {
 } from '../src/data/decisions';
 
 describe('decision modes', () => {
-  it('ships Watch, Eat, and Do as the initial modes', () => {
-    expect(decisionModes.map(mode => mode.id)).toEqual(['watch', 'eat', 'do']);
+  it('ships Eat and Do as the initial modes', () => {
+    expect(decisionModes.map(mode => mode.id)).toEqual(['eat', 'do']);
   });
 
-  it.each(['watch', 'eat', 'do'] as const)(
+  it.each(['eat', 'do'] as const)(
     '%s has a valid shared preview deck',
     mode => {
       const deck = decisionDecks[mode];
