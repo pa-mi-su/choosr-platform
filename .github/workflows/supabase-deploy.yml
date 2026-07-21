@@ -101,6 +101,20 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          TMDB_API_READ_TOKEN: ${{ secrets.TMDB_API_READ_TOKEN }}
+          GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 }}
         run: |
+          for name in TMDB_API_READ_TOKEN GOOGLE_PLACES_API_KEY FIREBASE_SERVICE_ACCOUNT_BASE64; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required environment secret: ${name}"
+              exit 1
+            fi
+          done
+          npx supabase secrets set \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            TMDB_API_READ_TOKEN="$TMDB_API_READ_TOKEN" \
+            GOOGLE_PLACES_API_KEY="$GOOGLE_PLACES_API_KEY" \
+            FIREBASE_SERVICE_ACCOUNT_BASE64="$FIREBASE_SERVICE_ACCOUNT_BASE64"
           npx supabase functions deploy build-deck --project-ref "$SUPABASE_PROJECT_REF"
           npx supabase functions deploy dispatch-notifications --project-ref "$SUPABASE_PROJECT_REF"

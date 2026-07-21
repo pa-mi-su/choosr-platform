@@ -475,10 +475,10 @@ mode-`0600` `src/config/generatedEnv.ts`.
 | Supabase URL and publishable key    | Local `.env.<environment>`; generated config ignored | No                          |
 | `google-services.json`              | `android/app/`                                       | Yes; mobile client metadata |
 | `GoogleService-Info.plist`          | `ios/Choosr/`                                        | Yes; mobile client metadata |
-| APNs `AuthKey_*.p8`                 | Apple/Firebase credential storage only               | Never                       |
-| Firebase Admin service-account JSON | Secure local storage; base64 hosted secret           | Never                       |
-| `FIREBASE_SERVICE_ACCOUNT_BASE64`   | Supabase Edge Function secret                        | Never                       |
-| TMDB/Google Places credentials      | Supabase Edge Function secrets                       | Never                       |
+| APNs `AuthKey_*.p8`                 | GitHub environment secret; uploaded to Firebase      | Never                       |
+| Firebase Admin service-account JSON | GitHub environment secret only                       | Never                       |
+| `FIREBASE_SERVICE_ACCOUNT_BASE64`   | GitHub secret synced to Supabase by CI               | Never                       |
+| TMDB/Google Places credentials      | GitHub secrets synced to Supabase by CI              | Never                       |
 | Supabase service-role key           | Supabase-hosted server environment only              | Never                       |
 
 The deployed database migrations create all application tables, RPCs, Realtime publication
@@ -498,9 +498,10 @@ Development and UAT use `android/app/src/<environment>/google-services.json` and
 `ios/Choosr/Firebase/<environment>/GoogleService-Info.plist`. CI materializes them from the
 matching GitHub environment after the isolated Firebase projects are created.
 
-The Apple APNs `.p8` key and Firebase service-account JSON are server credentials. Keep them
-outside the repository. Files matching `AuthKey_*.p8`, `*firebase-adminsdk*.json`, and
-`*service-account*.json` are ignored as a second line of defense.
+The Apple APNs `.p8` key, Firebase service-account JSON, Android keystores, and signing
+certificates are GitHub environment secrets. They must not persist in the repository, Downloads,
+Keychain, or project-specific local credential folders. Ignore rules remain a second line of
+defense, not an approved storage mechanism.
 
 Android enables Firebase's FID-based registration with
 `firebase_messaging_installation_id_enabled`. The small Kotlin module under
@@ -546,18 +547,16 @@ stop the stack after testing.
 
 ```sh
 npm run supabase:start
-npm run supabase:push:configure
-npm run supabase:functions:serve
 npm run supabase:reset
 npm run supabase:lint
 npm run supabase:test
 npm run supabase:stop
 ```
 
-`supabase:push:configure` validates the external `choosr-dev` Firebase service-account
-credential and writes an owner-readable-only, ignored `supabase/.env.local`. Keep
-`supabase:functions:serve` running while testing invitations and push notifications. Never copy
-the Firebase service-account JSON or its encoded value into the repository.
+Local Supabase runs database migrations and tests without app secrets. Provider-backed decks and
+push delivery are tested against the hosted Dev environment. GitHub Actions synchronizes the
+environment-scoped TMDB, Google Places, and Firebase credentials into Supabase immediately before
+deploying the Edge Functions.
 
 `.env.dev` should use `http://127.0.0.1:54321` for simulators. A physical phone must use the
 Mac's private Wi-Fi address instead (for example, `http://192.168.x.x:54321`) and both devices
@@ -628,27 +627,25 @@ npx supabase db push --dry-run
 npx supabase db push
 ```
 
-Configure optional server-only provider secrets and deploy the function:
+Provider secrets and Edge Functions are deployed by the environment-gated GitHub Actions
+workflow. Do not run `supabase secrets set` with literal values from a workstation.
 
 ```sh
-npx supabase secrets set TMDB_API_READ_TOKEN=...
-npx supabase secrets set GOOGLE_PLACES_API_KEY=...
-npx supabase functions deploy build-deck
+gh secret set TMDB_API_READ_TOKEN --env dev
+gh secret set GOOGLE_PLACES_API_KEY --env dev
+gh secret set FIREBASE_SERVICE_ACCOUNT_BASE64 --env dev
+gh workflow run supabase-deploy.yml --ref dev
 ```
 
 ### Push delivery deployment
 
 1. In Firebase Console, open **Project settings → Cloud Messaging**, choose the Choosr iOS
    app, and upload the APNs authentication `.p8` with its Apple Key ID and Team ID.
-2. In **Project settings → Service accounts**, generate a Firebase Admin SDK private key.
-3. Base64-encode that JSON without printing it and store the result only as the hosted
-   Supabase secret `FIREBASE_SERVICE_ACCOUNT_BASE64`.
-4. Deploy the versioned database lease migration and Edge Function:
-
-```sh
-npx supabase db push
-npx supabase functions deploy dispatch-notifications --use-api
-```
+2. In **Project settings → Service accounts**, generate a Firebase Admin SDK private key,
+   upload its base64 value directly to the matching GitHub environment secret, verify it exists,
+   and delete the downloaded file.
+3. Trigger the environment-gated Supabase workflow. It applies versioned migrations, synchronizes
+   `FIREBASE_SERVICE_ACCOUNT_BASE64`, and deploys `dispatch-notifications`.
 
 The dispatcher uses the hosted `SUPABASE_SERVICE_ROLE_KEY` injected by Supabase, leases jobs
 with `FOR UPDATE SKIP LOCKED`, removes invalid device tokens, marks a job delivered only after
