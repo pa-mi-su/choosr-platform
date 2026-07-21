@@ -86,7 +86,7 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         </View>
       </Animated.View>
       <View style={styles.details}>
-        <Text style={styles.movie}>{item.title}</Text>
+        <Text style={styles.itemTitle}>{item.title}</Text>
         <Text style={styles.meta}>{item.meta}</Text>
         <Text style={styles.description}>{item.description}</Text>
         <Text style={styles.available}>FINAL PICK</Text>
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: '#123229', fontSize: 10, fontWeight: '900' },
   details: { alignItems: 'center', marginTop: 24 },
-  movie: { color: colors.text, fontSize: 23, fontWeight: '900' },
+  itemTitle: { color: colors.text, fontSize: 23, fontWeight: '900' },
   meta: { color: colors.muted, fontSize: 12, marginTop: 5 },
   description: {
     color: colors.muted,

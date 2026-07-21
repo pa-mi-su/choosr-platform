@@ -2,7 +2,7 @@ name: Mobile Environment Builds
 
 on:
   push:
-    branches: [uat, main]
+    branches: [dev, uat, main]
   workflow_dispatch:
 
 permissions:
@@ -28,6 +28,7 @@ jobs:
       - id: target
         run: |
           case "${GITHUB_REF}" in
+            refs/heads/dev) echo "environment=dev" >> "$GITHUB_OUTPUT"; echo "flavor=Dev" >> "$GITHUB_OUTPUT" ;;
             refs/heads/uat) echo "environment=uat" >> "$GITHUB_OUTPUT"; echo "flavor=Uat" >> "$GITHUB_OUTPUT" ;;
             refs/heads/main) echo "environment=prod" >> "$GITHUB_OUTPUT"; echo "flavor=Prod" >> "$GITHUB_OUTPUT" ;;
             *) exit 1 ;;
@@ -71,15 +72,19 @@ jobs:
     needs: resolve
     if: needs.resolve.outputs.android == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # React Native release bundles compile native code for every Play-supported ABI.
+    # A cold GitHub runner can legitimately take more than 25 minutes, especially
+    # while Reanimated/Worklets populate the Gradle cache for the first time.
+    timeout-minutes: 60
     environment: ${{ needs.resolve.outputs.environment }}
     steps:
       - name: Build gate
         id: gate
         env:
           ENABLED: ${{ vars.MOBILE_BUILD_ENABLED }}
+          PLATFORM_ENABLED: ${{ vars.ANDROID_BUILD_ENABLED }}
         run: |
-          [ "${ENABLED}" = "true" ] && echo "enabled=true" >> "$GITHUB_OUTPUT" || echo "enabled=false" >> "$GITHUB_OUTPUT"
+          [ "${ENABLED}" = "true" ] && [ "${PLATFORM_ENABLED:-true}" != "false" ] && echo "enabled=true" >> "$GITHUB_OUTPUT" || echo "enabled=false" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v5
         if: steps.gate.outputs.enabled == 'true'
       - uses: actions/setup-node@v5
@@ -122,6 +127,16 @@ jobs:
           test -n "$ANDROID_UPLOAD_KEYSTORE_BASE64"
           printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/choosr-upload.jks"
           echo "ANDROID_UPLOAD_KEYSTORE_PATH=$RUNNER_TEMP/choosr-upload.jks" >> "$GITHUB_ENV"
+      - name: Validate Google Play upload configuration
+        if: steps.gate.outputs.enabled == 'true' && vars.ANDROID_UPLOAD_ENABLED == 'true'
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64 }}
+          GOOGLE_PLAY_PACKAGE_NAME: ${{ vars.GOOGLE_PLAY_PACKAGE_NAME }}
+          GOOGLE_PLAY_TRACK: ${{ vars.GOOGLE_PLAY_TRACK }}
+        run: |
+          test -n "$GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64" || { echo "Missing GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64 in the selected GitHub environment." >&2; exit 1; }
+          test -n "$GOOGLE_PLAY_PACKAGE_NAME" || { echo "Missing GOOGLE_PLAY_PACKAGE_NAME in the selected GitHub environment." >&2; exit 1; }
+          test -n "$GOOGLE_PLAY_TRACK" || { echo "Missing GOOGLE_PLAY_TRACK in the selected GitHub environment." >&2; exit 1; }
       - name: Build signed Android release
         if: steps.gate.outputs.enabled == 'true'
         working-directory: android
@@ -132,13 +147,28 @@ jobs:
           CHOOSR_VERSION_CODE: ${{ github.run_number }}
           CHOOSR_VERSION_NAME: ${{ vars.APP_VERSION }}
           APP_ENV: ${{ needs.resolve.outputs.environment }}
+          ANDROID_UPLOAD_ENABLED: ${{ vars.ANDROID_UPLOAD_ENABLED }}
+          FIREBASE_DISTRIBUTION_ENABLED: ${{ vars.FIREBASE_DISTRIBUTION_ENABLED }}
         run: |
-          if [ "$APP_ENV" = "prod" ]; then
-            ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release --build-cache --parallel --no-daemon --stacktrace --console=plain
-          else
-            # Firebase UAT is installed on physical tester devices. Building only
+          if [ "$APP_ENV" = "dev" ] || [ "$APP_ENV" = "prod" ] || [ "${ANDROID_UPLOAD_ENABLED:-false}" = "true" ]; then
+            bundle_args=()
+            if [ "$APP_ENV" != "prod" ]; then
+              # DEV/UAT testers use modern physical devices. Avoid compiling the React Native
+              # native stack for legacy and emulator ABIs on every pre-release pipeline run.
+              bundle_args+=("-PreactNativeArchitectures=arm64-v8a")
+            fi
+            ./gradlew bundle${{ needs.resolve.outputs.flavor }}Release \
+              "${bundle_args[@]}" \
+              --build-cache \
+              --parallel \
+              --no-daemon \
+              --stacktrace \
+              --console=plain
+          fi
+          if [ "$APP_ENV" = "uat" ] || [ "${FIREBASE_DISTRIBUTION_ENABLED:-false}" = "true" ]; then
+            # Firebase pre-release builds are installed on physical tester devices. Building only
             # arm64 avoids compiling three unused emulator/legacy ABIs. Play Store
-            # production remains a full Android App Bundle above.
+            # releases remain full Android App Bundles above.
             ./gradlew assemble${{ needs.resolve.outputs.flavor }}Release \
               -PreactNativeArchitectures=arm64-v8a \
               --build-cache \
@@ -155,14 +185,14 @@ jobs:
             android/app/build/outputs/apk/**/*.apk
             android/app/build/outputs/bundle/**/*.aab
           retention-days: 7
-      - name: Distribute Android UAT to Firebase testers
-        if: steps.gate.outputs.enabled == 'true' && needs.resolve.outputs.environment == 'uat' && vars.FIREBASE_DISTRIBUTION_ENABLED == 'true'
+      - name: Distribute Android pre-release to Firebase testers
+        if: steps.gate.outputs.enabled == 'true' && needs.resolve.outputs.environment != 'prod' && vars.FIREBASE_DISTRIBUTION_ENABLED == 'true'
         env:
           FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64 }}
           FIREBASE_APP_ID: ${{ vars.FIREBASE_ANDROID_APP_ID }}
           FIREBASE_TESTER_GROUPS: ${{ vars.FIREBASE_TESTER_GROUPS }}
           FIREBASE_TESTER_EMAILS: ${{ vars.FIREBASE_TESTER_EMAILS }}
-          FIREBASE_RELEASE_NOTES: UAT ${{ vars.APP_VERSION }} (${{ github.sha }})
+          FIREBASE_RELEASE_NOTES: ${{ needs.resolve.outputs.environment }} ${{ vars.APP_VERSION }} (${{ github.sha }})
         run: |
           test -n "$FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64"
           test -n "$FIREBASE_APP_ID"
@@ -172,7 +202,7 @@ jobs:
           test -n "$binary"
           GOOGLE_APPLICATION_CREDENTIALS="$credentials" FIREBASE_BINARY_PATH="$binary" node scripts/distribute-firebase-app.mjs
       - name: Upload to Google Play
-        if: steps.gate.outputs.enabled == 'true' && needs.resolve.outputs.environment == 'prod' && vars.ANDROID_UPLOAD_ENABLED == 'true'
+        if: steps.gate.outputs.enabled == 'true' && vars.ANDROID_UPLOAD_ENABLED == 'true'
         env:
           GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64 }}
           GOOGLE_PLAY_PACKAGE_NAME: ${{ vars.GOOGLE_PLAY_PACKAGE_NAME }}
@@ -202,10 +232,16 @@ jobs:
         id: gate
         env:
           ENABLED: ${{ vars.MOBILE_BUILD_ENABLED }}
+          PLATFORM_ENABLED: ${{ vars.IOS_BUILD_ENABLED }}
         run: |
-          [ "${ENABLED}" = "true" ] && echo "enabled=true" >> "$GITHUB_OUTPUT" || echo "enabled=false" >> "$GITHUB_OUTPUT"
+          [ "${ENABLED}" = "true" ] && [ "${PLATFORM_ENABLED:-true}" != "false" ] && echo "enabled=true" >> "$GITHUB_OUTPUT" || echo "enabled=false" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v5
         if: steps.gate.outputs.enabled == 'true'
+      - name: Select Xcode 26.3
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
       - uses: actions/setup-node@v5
         if: steps.gate.outputs.enabled == 'true'
         with:
@@ -271,6 +307,12 @@ jobs:
         run: |
           echo "IOS_MARKETING_VERSION=${APP_VERSION:-1.0.0}" >> "$GITHUB_ENV"
           case "$APP_ENV" in
+            dev)
+              echo "IOS_SCHEME=Choosr-Dev" >> "$GITHUB_ENV"
+              echo "IOS_CONFIGURATION=Release-Dev" >> "$GITHUB_ENV"
+              echo "IOS_BUNDLE_ID=com.pamisu.choosr.dev" >> "$GITHUB_ENV"
+              echo "IOS_EXPORT_METHOD=app-store-connect" >> "$GITHUB_ENV"
+              ;;
             uat)
               echo "IOS_SCHEME=Choosr-UAT" >> "$GITHUB_ENV"
               echo "IOS_CONFIGURATION=Release-UAT" >> "$GITHUB_ENV"
@@ -326,14 +368,14 @@ jobs:
           name: choosr-ios-${{ needs.resolve.outputs.environment }}-${{ github.sha }}
           path: ios/build/ios/*.ipa
           retention-days: 7
-      - name: Distribute iOS UAT to Firebase testers
-        if: steps.gate.outputs.enabled == 'true' && needs.resolve.outputs.environment == 'uat' && vars.FIREBASE_DISTRIBUTION_ENABLED == 'true'
+      - name: Distribute iOS pre-release to Firebase testers
+        if: steps.gate.outputs.enabled == 'true' && needs.resolve.outputs.environment != 'prod' && vars.FIREBASE_DISTRIBUTION_ENABLED == 'true'
         env:
           FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64 }}
           FIREBASE_APP_ID: ${{ vars.FIREBASE_IOS_APP_ID }}
           FIREBASE_TESTER_GROUPS: ${{ vars.FIREBASE_TESTER_GROUPS }}
           FIREBASE_TESTER_EMAILS: ${{ vars.FIREBASE_TESTER_EMAILS }}
-          FIREBASE_RELEASE_NOTES: UAT ${{ vars.APP_VERSION }} (${{ github.sha }})
+          FIREBASE_RELEASE_NOTES: ${{ needs.resolve.outputs.environment }} ${{ vars.APP_VERSION }} (${{ github.sha }})
         run: |
           test -n "$FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64"
           test -n "$FIREBASE_APP_ID"
@@ -343,7 +385,7 @@ jobs:
           test -n "$binary"
           GOOGLE_APPLICATION_CREDENTIALS="$credentials" FIREBASE_BINARY_PATH="$binary" node scripts/distribute-firebase-app.mjs
       - name: Upload to App Store Connect
-        if: steps.gate.outputs.enabled == 'true' && needs.resolve.outputs.environment == 'prod' && vars.IOS_UPLOAD_ENABLED == 'true'
+        if: steps.gate.outputs.enabled == 'true' && vars.IOS_UPLOAD_ENABLED == 'true'
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ vars.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_API_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_API_ISSUER_ID }}

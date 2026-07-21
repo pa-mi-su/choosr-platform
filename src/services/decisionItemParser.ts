@@ -1,6 +1,6 @@
 import type { DecisionItem, DecisionMode } from '../types/domain';
 
-const modes = new Set<DecisionMode>(['watch', 'eat', 'do']);
+const modes = new Set<DecisionMode>(['eat', 'do']);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

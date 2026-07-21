@@ -75,7 +75,7 @@ function pushCopy(job: PushJob): PushCopy {
     };
   }
   const mode = typeof job.payload.mode === 'string' ? job.payload.mode : '';
-  const activity = mode === 'food' ? 'a meal' : mode === 'watch' ? 'something to watch' : 'tonight';
+  const activity = mode === 'eat' ? 'a meal' : 'something to do';
   return {
     title: "You're invited",
     body: `Open Choosr to choose ${activity} together.`,

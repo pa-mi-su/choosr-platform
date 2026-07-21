@@ -65,6 +65,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run secrets:verify
       - run: npm run env:verify
       - run: npm run format:check
       - run: npm run lint
