@@ -116,6 +116,8 @@ jobs:
           cache: gradle
       - run: npm ci
       - run: npm run env:generate:test
+      - name: Materialize CI-only Firebase placeholders
+        run: node scripts/materialize-ci-firebase-configs.mjs
       - name: Build production debug variant
         working-directory: android
         run: ./gradlew assembleProdDebug -PreactNativeArchitectures=x86_64 --build-cache --parallel --no-daemon --console=plain
