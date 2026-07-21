@@ -13,6 +13,7 @@
     "env:generate:prod": "node scripts/generate-env.mjs --environment=prod",
     "env:generate:test": "node scripts/generate-env.mjs --allow-placeholder",
     "env:verify": "node scripts/verify-environments.mjs",
+    "secrets:verify": "node scripts/verify-no-committed-secrets.mjs",
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\" \"__tests__/**/*.{ts,tsx}\" \"scripts/**/*.mjs\" \"*.{js,json,md}\" \"docs/**/*.md\" \".github/workflows/*.yml\"",
     "ios": "npm run ios:dev",
     "ios:dev": "npm run env:generate:dev && react-native run-ios --scheme Choosr-Dev",

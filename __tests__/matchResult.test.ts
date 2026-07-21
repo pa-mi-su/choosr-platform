@@ -1,24 +1,21 @@
 import { getMatchResultAction } from '../src/services/matchResult';
 import type { DecisionItem } from '../src/types/domain';
 
-const watchItem: DecisionItem = {
-  id: 'arrival',
-  mode: 'watch',
-  title: 'Arrival',
-  kicker: 'A FILM TOGETHER',
-  meta: '2016',
-  description: 'Science fiction drama.',
+const localItem: DecisionItem = {
+  id: 'sushi',
+  mode: 'eat',
+  title: 'Sushi',
+  kicker: 'DINNER TOGETHER',
+  meta: 'Fresh',
+  description: 'Find sushi nearby.',
   background: '#39464C',
   accent: '#E9D9BE',
-  tags: ['Sci-Fi'],
+  tags: ['Nearby'],
 };
 
 describe('getMatchResultAction', () => {
-  it('provides a useful watch action when the deck has no provider link', () => {
-    expect(getMatchResultAction(watchItem)).toEqual({
-      label: 'Find where to watch',
-      url: 'https://www.google.com/search?q=Arrival%20where%20to%20watch',
-    });
+  it('returns null when a decision item has no follow-up action', () => {
+    expect(getMatchResultAction(localItem)).toBeNull();
   });
 
   it('preserves the item action for local decisions', () => {
@@ -26,8 +23,6 @@ describe('getMatchResultAction', () => {
       label: 'Find sushi nearby',
       url: 'https://www.google.com/maps/search/?api=1&query=sushi',
     };
-    expect(getMatchResultAction({ ...watchItem, mode: 'eat', action })).toEqual(
-      action,
-    );
+    expect(getMatchResultAction({ ...localItem, action })).toEqual(action);
   });
 });

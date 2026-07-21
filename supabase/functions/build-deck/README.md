@@ -2,7 +2,6 @@
 
 Protected content adapter for the Choosr decision engine.
 
-- `watch` calls TMDB using `TMDB_API_READ_TOKEN`.
 - `eat` and `do` call Google Places Nearby Search using `GOOGLE_PLACES_API_KEY`.
 - Provider credentials are Supabase secrets and never mobile environment values.
 - The Places field mask intentionally excludes ratings, price, hours, and photos to keep the
