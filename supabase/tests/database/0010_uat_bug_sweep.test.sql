@@ -6,7 +6,10 @@ select has_function('public', 'remove_circle_connection', array['uuid']);
 select has_column('public', 'user_notifications', 'deleted_at', 'notifications support soft deletion');
 select has_function('public', 'delete_notifications', array['bigint[]']);
 select ok(
-  'image/webp' = any((select allowed_mime_types from storage.buckets where id = 'profile-photos')),
+  array_position(
+    (select allowed_mime_types from storage.buckets where id = 'profile-photos'),
+    'image/webp'
+  ) is not null,
   'profile photos allow normalized WebP images'
 );
 
