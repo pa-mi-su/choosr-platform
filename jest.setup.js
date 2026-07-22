@@ -26,3 +26,7 @@ jest.mock('@react-native-firebase/messaging', () => ({
 jest.mock('react-native-image-picker', () => ({
   launchImageLibrary: jest.fn(),
 }));
+jest.mock('@notifee/react-native', () => ({
+  __esModule: true,
+  default: { setBadgeCount: jest.fn(() => Promise.resolve()) },
+}));

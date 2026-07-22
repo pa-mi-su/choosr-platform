@@ -11,6 +11,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ModeSelect'>;
 const modeColors = {
   eat: { background: '#2B241F', foreground: colors.primary },
   do: { background: '#2B241F', foreground: colors.primary },
+  custom: { background: '#2B241F', foreground: colors.primary },
 } as const;
 
 export function ModeSelectScreen({
@@ -41,12 +42,19 @@ export function ModeSelectScreen({
               key={mode.id}
               accessibilityRole="button"
               accessibilityLabel={mode.title}
-              onPress={() =>
-                navigation.navigate('LocalSetup', {
-                  mode: mode.id,
-                  ...selectedPerson,
-                })
-              }
+              onPress={() => {
+                if (mode.id === 'custom') {
+                  navigation.navigate('CustomSetup', {
+                    mode: 'custom',
+                    ...selectedPerson,
+                  });
+                } else {
+                  navigation.navigate('LocalSetup', {
+                    mode: mode.id,
+                    ...selectedPerson,
+                  });
+                }
+              }}
               style={({ pressed }) => [
                 styles.option,
                 pressed && styles.pressed,
