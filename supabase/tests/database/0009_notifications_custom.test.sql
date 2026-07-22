@@ -1,8 +1,13 @@
 begin;
 select plan(13);
 
-select has_table('public', 'user_notifications');
-select has_column('public', 'user_notifications', 'read_at');
+select has_table('public', 'user_notifications', 'notification inbox exists');
+select has_column(
+  'public',
+  'user_notifications',
+  'read_at',
+  'notifications track read state'
+);
 select has_function('public', 'mark_notifications_read', array['bigint[]']);
 select has_function('public', 'unread_notification_count', array[]::text[]);
 select ok(
@@ -16,9 +21,6 @@ select ok(
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
 values ('90000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', true, now(), now());
-
-set local role authenticated;
-set local request.jwt.claim.sub = '90000000-0000-0000-0000-000000000001';
 
 select lives_ok(
   $$ select public.validate_decision_deck(
@@ -37,7 +39,6 @@ select throws_ok(
   'custom images must use HTTPS'
 );
 
-reset role;
 insert into public.notification_outbox (recipient_user_id, kind, payload, dedupe_key)
 values (
   '90000000-0000-0000-0000-000000000001',

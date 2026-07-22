@@ -17,7 +17,7 @@ begin
   if p_items is null or jsonb_typeof(p_items) <> 'array' then
     raise exception using errcode = '22023', message = 'deck_must_be_an_array';
   end if;
-  if octet_length(p_items::text) > 262144 then
+  if octet_length(p_items::text) > 131072 then
     raise exception using errcode = '22023', message = 'deck_payload_too_large';
   end if;
 
