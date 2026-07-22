@@ -1,4 +1,7 @@
 /* global jest */
+if (typeof global.WebSocket === 'undefined') {
+  global.WebSocket = require('ws');
+}
 require('react-native-gesture-handler/jestSetup');
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest'),
@@ -14,6 +17,7 @@ jest.mock('@react-native-firebase/messaging', () => ({
   getMessaging: jest.fn(() => ({})),
   getInitialNotification: jest.fn(() => Promise.resolve(null)),
   getToken: jest.fn(() => Promise.resolve('test-firebase-token-long-enough')),
+  hasPermission: jest.fn(() => Promise.resolve(1)),
   isDeviceRegisteredForRemoteMessages: jest.fn(() => true),
   onMessage: jest.fn(() => jest.fn()),
   onNotificationOpenedApp: jest.fn(() => jest.fn()),
@@ -24,6 +28,7 @@ jest.mock('@react-native-firebase/messaging', () => ({
 }));
 
 jest.mock('react-native-image-picker', () => ({
+  launchCamera: jest.fn(),
   launchImageLibrary: jest.fn(),
 }));
 jest.mock('@notifee/react-native', () => ({

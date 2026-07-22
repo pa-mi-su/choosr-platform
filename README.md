@@ -9,8 +9,8 @@ The MVP supports three creation modes:
 1. **Pick an activity** — enter a U.S. ZIP code or Canadian postal code and build a deck from
    real nearby activities.
 2. **Pick food** — use the same location flow to discover nearby restaurants.
-3. **Create your own** — create a private deck of two to ten text choices, photos, or a mixture
-   of both.
+3. **Create your own** — title a private room, add two to ten photos from the library or
+   camera, and label each photo before inviting the other participant.
 
 Users can invite an existing **Choosr Circle** connection or create a profile-free **Quick
 Room** and share a one-time link. An eight-character room code is the recovery path. Active
@@ -58,17 +58,17 @@ The real two-device client flow is implemented:
 - Native profile-photo selection with owner-scoped Supabase Storage uploads
 - One-tap room invitations for Circle connections
 - Contact-safe Circle links through the native share picker without address-book uploads
-- Native Firebase Messaging permissions, iOS token lifecycle, Android FID registration, and
-  notification routing
+- Native Firebase Messaging permissions, iOS/Android FCM token lifecycle, startup token
+  reconciliation, live unread state, and notification routing
 - Transactional push outbox with leased, retryable FCM/APNs Edge delivery
-- Live nearby Activity and Food decks from a server-side Geoapify boundary
-- Custom text-only, photo-only, and mixed text/photo rooms
+- Live nearby Activity and Food decks with venue media and cached location-image fallbacks
+- Labeled custom photo rooms with library and camera capture
 - Private, owner-scoped decision-photo storage with signed cross-device URLs
 - Active-room history and resume behavior
 - Persistent notification inbox with read/delete state and native badge reconciliation
 - Circle connection removal without deleting accounts or historical rooms
 
-The repository currently declares 135 pgTAP assertions across schema, RLS, room flow, modes,
+The repository currently declares 138 pgTAP assertions across schema, RLS, room flow, modes,
 retention, Circle, invitations, notification delivery and inbox state, synchronized closure,
 profile photos, custom-decision storage, Circle removal, and WebP support. Jest covers the
 client domain and service boundaries. Pull requests also compile Android production-debug and
@@ -90,7 +90,7 @@ Firebase App Distribution is not the primary installation channel.
 | Quick-room links and manual codes                 | Implemented                   | Custom `choosr://` links; code is recovery       |
 | Push invitations                                  | Implemented and device-tested | Firebase HTTP v1; FCM to Android and APNs to iOS |
 | Synchronized round restart and room closure       | Implemented                   | Either participant can act; all clients follow   |
-| Custom text/photo decks                           | Implemented                   | Two to ten choices; private Storage              |
+| Labeled custom photo decks                        | Implemented                   | Two to ten photos; private Storage               |
 | Active Rooms and resume                           | Implemented in Dev            | Promotion and physical UAT remain                |
 | Circle member removal                             | Implemented in Dev            | Preserves accounts and historical rooms          |
 | Notification management and app badges            | Implemented in Dev            | Promotion and physical UAT remain                |
@@ -99,30 +99,30 @@ Firebase App Distribution is not the primary installation channel.
 
 ## Technology stack
 
-| Layer                  | Technology                            | Responsibility                                                              |
-| ---------------------- | ------------------------------------- | --------------------------------------------------------------------------- |
-| Mobile runtime         | React Native 0.86, React 19.2         | Shared application and UI runtime for iOS and Android                       |
-| Language               | TypeScript 5.8                        | Domain types, navigation contracts, services, and screens                   |
-| Native projects        | Xcode/CocoaPods and Gradle/Kotlin     | Standard iOS and Android builds, signing, icons, and platform configuration |
-| Navigation             | React Navigation native stack         | Typed screen flow and native navigation transitions                         |
-| Interaction            | Gesture Handler, Reanimated, Worklets | Swipe gestures and match animations                                         |
-| Device storage         | AsyncStorage                          | Persists the anonymous Supabase session across launches                     |
-| Backend client         | Supabase JS                           | Auth, PostgREST reads, RPC writes, Realtime, and Edge Function calls        |
-| Identity               | Supabase anonymous Auth + Circle      | Instant use plus an optional persistent name, handle, and photo             |
-| Database               | PostgreSQL with Row Level Security    | Rooms, Circle connections, invitations, private swipes, and matches         |
-| Media                  | Supabase Storage + Image Picker       | Owner-scoped Circle profile-photo selection and delivery                    |
-| Write boundary         | PostgreSQL security-definer RPCs      | Validated, transactional state changes without direct table writes          |
-| Live updates           | Supabase Realtime/Postgres Changes    | Room activation, participant, match, and round notifications                |
-| Recovery               | 15-second active-only polling         | Low-traffic fallback for missed or disconnected Realtime events             |
-| Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup               |
-| Push client            | React Native Firebase + Kotlin bridge | Native permission, iOS tokens, Android FIDs, and notification routing       |
-| Push delivery          | FCM HTTP v1 + APNs                    | Cross-platform delivery through a leased transactional outbox worker        |
-| Provider boundary      | Supabase Edge Functions               | Keeps Geoapify credentials out of mobile binaries                           |
-| Nearby provider        | Geoapify                              | Normalized Activity/Food results from postal-code searches                  |
-| Zero-key local handoff | Google Maps HTTPS search URLs         | Opens nearby results after a cuisine or activity match                      |
-| App tests              | Jest, React Test Renderer             | Domain, parser, room-state, navigation-root, and deck behavior              |
-| Database tests         | pgTAP, Supabase CLI                   | Schema, RLS, grants, validation, two-person flow, and atomic matching       |
-| Code quality           | ESLint, Prettier, TypeScript          | Static analysis, formatting, and compile-time verification                  |
+| Layer                  | Technology                            | Responsibility                                                                |
+| ---------------------- | ------------------------------------- | ----------------------------------------------------------------------------- |
+| Mobile runtime         | React Native 0.86, React 19.2         | Shared application and UI runtime for iOS and Android                         |
+| Language               | TypeScript 5.8                        | Domain types, navigation contracts, services, and screens                     |
+| Native projects        | Xcode/CocoaPods and Gradle/Kotlin     | Standard iOS and Android builds, signing, icons, and platform configuration   |
+| Navigation             | React Navigation native stack         | Typed screen flow and native navigation transitions                           |
+| Interaction            | Gesture Handler, Reanimated, Worklets | Swipe gestures and match animations                                           |
+| Device storage         | AsyncStorage                          | Persists the anonymous Supabase session across launches                       |
+| Backend client         | Supabase JS                           | Auth, PostgREST reads, RPC writes, Realtime, and Edge Function calls          |
+| Identity               | Supabase anonymous Auth + Circle      | Instant use plus an optional persistent name, handle, and photo               |
+| Database               | PostgreSQL with Row Level Security    | Rooms, Circle connections, invitations, private swipes, and matches           |
+| Media                  | Supabase Storage + Image Picker       | Owner-scoped Circle profile-photo selection and delivery                      |
+| Write boundary         | PostgreSQL security-definer RPCs      | Validated, transactional state changes without direct table writes            |
+| Live updates           | Supabase Realtime/Postgres Changes    | Room activation, participant, match, and round notifications                  |
+| Recovery               | 15-second active-only polling         | Low-traffic fallback for missed or disconnected Realtime events               |
+| Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup                 |
+| Push client            | React Native Firebase + Kotlin bridge | Native permission, real FCM tokens, token rotation, and badge synchronization |
+| Push delivery          | FCM HTTP v1 + APNs                    | Cross-platform delivery through a leased transactional outbox worker          |
+| Provider boundary      | Supabase Edge Functions               | Keeps Geoapify credentials out of mobile binaries                             |
+| Nearby provider        | Geoapify                              | Normalized Activity/Food results from postal-code searches                    |
+| Zero-key local handoff | Google Maps HTTPS search URLs         | Opens nearby results after a cuisine or activity match                        |
+| App tests              | Jest, React Test Renderer             | Domain, parser, room-state, navigation-root, and deck behavior                |
+| Database tests         | pgTAP, Supabase CLI                   | Schema, RLS, grants, validation, two-person flow, and atomic matching         |
+| Code quality           | ESLint, Prettier, TypeScript          | Static analysis, formatting, and compile-time verification                    |
 
 ## System architecture
 
@@ -196,7 +196,9 @@ only be accepted by that authenticated recipient. A transactionally inserted
 `notification_outbox` row is leased by the `dispatch-notifications` Edge Function and sent
 through FCM HTTP v1. FCM delivers Android notifications directly and relays iOS notifications
 through APNs. Room creation never depends on either push vendor being available: a failed send
-remains retryable in the outbox and the in-app invitation remains authoritative.
+remains retryable in the outbox and the in-app invitation remains authoritative. The client
+also subscribes to inbox changes and reconciles the bell and native app-icon badge at startup
+and whenever the app returns to the foreground.
 
 ## End-to-end room lifecycle
 
@@ -320,8 +322,8 @@ The client does not infer room identity from a local singleton.
   Storage upload, profile binding, and replacement cleanup.
 - `src/services/pushNotifications.ts` owns native permission, installation registration,
   foreground handling, and delivery-worker wakeups. iOS uses the React Native Firebase token
-  bridge; Android uses `ChoosrPushRegistrationModule` because Firebase's current Android SDK
-  targets app instances with Firebase Installation IDs (FIDs).
+  bridge; Android uses `ChoosrPushRegistrationModule` to register the real FCM token rather
+  than incorrectly treating the Firebase Installation ID as a deliverable push token.
 - `src/services/decisionItemParser.ts` validates untrusted JSON loaded from PostgreSQL.
 - `src/data/decisions.ts` defines decision modes and deterministic curated decks.
 
@@ -423,11 +425,14 @@ alerts, and complete a formal privacy review.
 - The adapter returns up to ten normalized choices by default and never more than twenty.
 - Provider credentials remain server-side and are never mobile environment values.
 - A match carries a Google Maps HTTPS action for the final real-world handoff.
-- Missing or failed remote artwork falls back to a branded generated card.
+- Choosr uses available venue media first and caches a server-generated location image in the
+  public `discovery-images` bucket when venue media is unavailable. Provider keys never appear
+  in those returned image URLs.
 
-Custom rooms use two to ten text choices, photos, or both. Decision photos are normalized on
-the device, written to the private owner-scoped `decision-photos` bucket, and frozen into the
-room deck as signed HTTPS URLs. A failed batch cleans up files uploaded by that attempt.
+Custom rooms use a room title and two to ten individually labeled photos. Photos may come from
+the device library or camera. They are normalized on-device, written to the private
+owner-scoped `decision-photos` bucket, and frozen into the room deck as signed HTTPS URLs. A
+failed batch cleans up files uploaded by that attempt.
 
 ## Repository map
 
@@ -733,7 +738,7 @@ For a new device, confirm that the installed package and Firebase registration b
 `com.pamisu.choosr`, notification permission is granted, Google Play Services is healthy,
 the APNs key is attached to the current Firebase iOS app, and the hosted dispatcher still has
 `FIREBASE_SERVICE_ACCOUNT_BASE64`. Capture filtered device logs before changing API-key
-restrictions or replacing the supported FID-based Android registration path.
+restrictions or replacing the supported FCM registration path.
 
 ## Current limitations and release blockers
 
@@ -747,7 +752,7 @@ restrictions or replacing the supported FID-based Android registration path.
   delivery worker are implemented and have passed cross-platform physical-device delivery.
 - Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
 - A complete iPhone/iPhone, Android/Android, and cross-platform acceptance matrix remains,
-  including text/photo/mixed rooms, image fallbacks, offline recovery, token rotation, Circle
+  including labeled photo rooms, image fallbacks, offline recovery, token rotation, Circle
   removal, room resumption, notification management, and expiration.
 - Geoapify quotas, terms, attribution, licensing, cost alerts, and production fallback behavior
   require final review.
