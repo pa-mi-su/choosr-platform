@@ -41,6 +41,9 @@ select isnt(
 );
 select is((select count(*) from public.list_circle()), 0::bigint, 'removed people disappear from the Circle');
 
+create temporary table notification_baseline as
+select public.unread_notification_count() as unread;
+
 insert into public.user_notifications (
   recipient_user_id, kind, title, body, dedupe_key
 ) values (
@@ -50,9 +53,23 @@ insert into public.user_notifications (
   'Delete this notification',
   'uat-bug-sweep-delete'
 );
-select is(public.unread_notification_count(), 1, 'undeleted notification is unread');
-select is(public.delete_notifications(null), 1, 'clear all soft-deletes the notification');
-select is(public.unread_notification_count(), 0, 'deleted notification is not unread');
+select is(
+  public.unread_notification_count(),
+  (select unread + 1 from notification_baseline),
+  'undeleted notification is unread'
+);
+select is(
+  public.delete_notifications(
+    array[(select id from public.user_notifications where dedupe_key = 'uat-bug-sweep-delete')]::bigint[]
+  ),
+  1,
+  'selected notification is soft-deleted'
+);
+select is(
+  public.unread_notification_count(),
+  (select unread from notification_baseline),
+  'deleted notification is not unread'
+);
 select isnt(
   (select deleted_at from public.user_notifications where dedupe_key = 'uat-bug-sweep-delete'),
   null,
