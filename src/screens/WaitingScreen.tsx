@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { buildPreviewDeck, modeById } from '../data/decisions';
+import { fetchLiveDecisionDeck } from '../services/deckService';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
 import { buildRoomInvite } from '../services/roomInvite';
@@ -27,6 +28,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const searchArea = route.params.searchArea;
   const connectionId = route.params.connectionId;
   const connectionName = route.params.connectionName;
+  const customItems = route.params.customItems;
   const [room, setRoom] = useState<DecisionRoom | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(true);
@@ -43,9 +45,17 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     setCreating(true);
     setError(null);
     try {
+      const items =
+        mode.id === 'custom'
+          ? customItems ?? []
+          : await fetchLiveDecisionDeck({
+              mode: mode.id,
+              postalCode: searchArea,
+              maxResults: 10,
+            });
       const credentials = await createDecisionRoom({
         mode: mode.id,
-        items: buildPreviewDeck(mode.id, searchArea),
+        items: items.length ? items : buildPreviewDeck(mode.id, searchArea),
       });
       setInviteToken(credentials.inviteToken);
       setRoom({
@@ -69,7 +79,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     } finally {
       setCreating(false);
     }
-  }, [connectionId, mode.id, searchArea]);
+  }, [connectionId, customItems, mode.id, searchArea]);
 
   useEffect(() => {
     createRoom().catch(() => undefined);
@@ -111,6 +121,9 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
       inviteToken,
       accessCode: room.accessCode,
       decisionPrompt: mode.title.toLowerCase(),
+      ...(route.params.customPrompt
+        ? { decisionPrompt: route.params.customPrompt }
+        : {}),
     });
     Share.share({
       title: 'Join my Choosr room',

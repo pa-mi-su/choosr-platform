@@ -11,22 +11,31 @@ const mapsSearch = (query: string) =>
 
 export const decisionModes: DecisionModeDefinition[] = [
   {
+    id: 'do',
+    icon: '✦',
+    eyebrow: 'PICK AN ACTIVITY',
+    title: 'Pick an activity',
+    description: 'Find real things to do near a ZIP or postal code.',
+    prompt: 'Would you do this?',
+    matchSubtitle: 'You have a plan.',
+  },
+  {
     id: 'eat',
     icon: '◆',
-    eyebrow: 'EAT TOGETHER',
-    title: 'What should we eat?',
-    description: 'Match on a cuisine, then find it nearby.',
-    prompt: 'Would you eat this?',
+    eyebrow: 'PICK FOOD',
+    title: 'Pick food',
+    description: 'Choose from real restaurants nearby.',
+    prompt: 'Would you eat here?',
     matchSubtitle: 'Dinner is decided.',
   },
   {
-    id: 'do',
-    icon: '✦',
-    eyebrow: 'GO TOGETHER',
-    title: 'What should we do?',
-    description: 'Easy ideas for getting out together.',
-    prompt: 'Would you do this?',
-    matchSubtitle: 'You have a plan.',
+    id: 'custom',
+    icon: '＋',
+    eyebrow: 'CUSTOM CHOICE',
+    title: 'Create your own',
+    description: 'Add text choices or upload photos for the room.',
+    prompt: 'Is this your pick?',
+    matchSubtitle: 'Your group picked a winner.',
   },
 ];
 
@@ -79,12 +88,14 @@ export const decisionDecks: Record<DecisionMode, DecisionItem[]> = {
       url: mapsSearch(`${title} near me`),
     },
   })),
+  custom: [],
 };
 
 export function buildPreviewDeck(
   mode: DecisionMode,
   searchArea?: string,
 ): DecisionItem[] {
+  if (mode === 'custom') return [];
   const area = searchArea?.trim();
   if (!area) {
     return decisionDecks[mode];
