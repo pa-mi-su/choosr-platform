@@ -2,6 +2,7 @@ import type { DecisionItem, DecisionMode } from './domain';
 
 export type RootStackParamList = {
   Home: undefined;
+  About: undefined;
   Notifications: undefined;
   ActiveRooms: undefined;
   Circle: { connectionToken?: string } | undefined;

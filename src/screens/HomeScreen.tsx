@@ -38,10 +38,21 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
         <View style={styles.topActions}>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="About Choosr"
+            onPress={() => navigation.navigate('About')}
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.infoIcon}>i</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel={`${unreadCount} unread notifications`}
             onPress={() => navigation.navigate('Notifications')}
             style={({ pressed }) => [
-              styles.bellButton,
+              styles.iconButton,
               pressed && styles.pressed,
             ]}
           >
@@ -149,7 +160,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  bellButton: {
+  iconButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
@@ -159,6 +170,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  infoIcon: { color: colors.text, fontSize: 18, fontWeight: '900' },
   bellIcon: { color: colors.text, fontSize: 22, fontWeight: '900' },
   unreadBadge: {
     position: 'absolute',
