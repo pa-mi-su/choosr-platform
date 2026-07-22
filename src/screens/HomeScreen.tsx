@@ -90,6 +90,11 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
       </View>
       <View style={styles.actions}>
         <Button
+          label="Continue active rooms"
+          variant="secondary"
+          onPress={() => navigation.navigate('ActiveRooms')}
+        />
+        <Button
           label="Choose from My Circle"
           onPress={() => navigation.navigate('Circle')}
         />

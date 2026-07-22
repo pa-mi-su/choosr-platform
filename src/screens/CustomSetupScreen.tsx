@@ -17,6 +17,10 @@ import {
   chooseCustomPhotos,
   type CustomPhoto,
 } from '../services/customDecisionService';
+import {
+  logPhotoFailure,
+  photoFailureMessage,
+} from '../services/photoUploadService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -40,11 +44,8 @@ export function CustomSetupScreen({
       const selected = await chooseCustomPhotos(10 - total);
       setPhotos(current => [...current, ...selected].slice(0, 10 - textCount));
     } catch (cause) {
-      setError(
-        cause instanceof Error && cause.message === 'photo_too_large'
-          ? 'Each photo must be smaller than 8 MB.'
-          : 'Those photos could not be selected.',
-      );
+      logPhotoFailure('custom-selection', cause);
+      setError(photoFailureMessage(cause, 8));
     }
   };
   const continueToRoom = async () => {
@@ -66,8 +67,9 @@ export function CustomSetupScreen({
         connectionId: route.params.connectionId,
         connectionName: route.params.connectionName,
       });
-    } catch {
-      setError('Your custom choices could not be prepared. Please retry.');
+    } catch (cause) {
+      logPhotoFailure('custom-upload', cause);
+      setError(photoFailureMessage(cause, 8));
     } finally {
       setLoading(false);
     }

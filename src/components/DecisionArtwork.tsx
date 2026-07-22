@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ImageBackground,
   StyleSheet,
@@ -17,6 +17,13 @@ export function DecisionArtwork({
   item: DecisionItem;
   style?: ViewStyle;
 }): React.JSX.Element {
+  const [retry, setRetry] = useState(0);
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    setRetry(0);
+    setImageFailed(false);
+  }, [item.imageUrl]);
+
   const content = (
     <>
       <View style={[styles.orb, { backgroundColor: item.accent }]} />
@@ -29,14 +36,25 @@ export function DecisionArtwork({
       </View>
     </>
   );
-  if (item.imageUrl) {
+  if (item.imageUrl && !imageFailed) {
+    const separator = item.imageUrl.includes('?') ? '&' : '?';
     return (
       <ImageBackground
-        source={{ uri: item.imageUrl }}
+        source={{
+          uri:
+            retry === 0
+              ? item.imageUrl
+              : `${item.imageUrl}${separator}choosr_retry=${retry}`,
+          cache: retry === 0 ? 'default' : 'reload',
+        }}
         resizeMode="cover"
         style={[styles.artwork, { backgroundColor: item.background }, style]}
         imageStyle={styles.image}
         accessibilityLabel={`${item.title} photo`}
+        onError={() => {
+          if (retry === 0) setRetry(1);
+          else setImageFailed(true);
+        }}
       >
         {content}
       </ImageBackground>

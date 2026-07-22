@@ -82,9 +82,10 @@ type ConnectionRow = {
   id: string;
   requester_user_id: string;
   addressee_user_id: string;
-  status: 'pending' | 'accepted' | 'declined';
+  status: 'pending' | 'accepted' | 'declined' | 'removed';
   created_at: string;
   responded_at: string | null;
+  removed_at: string | null;
 };
 
 type RoomInvitationRow = {
@@ -109,6 +110,7 @@ type UserNotificationRow = {
   dedupe_key: string;
   created_at: string;
   read_at: string | null;
+  deleted_at: string | null;
 };
 
 type Table<Row, Insert, Update> = {
@@ -179,6 +181,10 @@ export type Database = {
         Args: { p_connection_id: string; p_accept: boolean };
         Returns: undefined;
       };
+      remove_circle_connection: {
+        Args: { p_connection_id: string };
+        Returns: undefined;
+      };
       create_circle_invite: {
         Args: Record<never, never>;
         Returns: { invite_token: string; expires_at: string }[];
@@ -232,6 +238,10 @@ export type Database = {
         Returns: number;
       };
       mark_notifications_read: {
+        Args: { p_notification_ids?: number[] | null };
+        Returns: number;
+      };
+      delete_notifications: {
         Args: { p_notification_ids?: number[] | null };
         Returns: number;
       };

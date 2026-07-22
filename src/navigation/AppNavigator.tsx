@@ -13,6 +13,7 @@ import { NoMatchScreen } from '../screens/NoMatchScreen';
 import { CircleScreen } from '../screens/CircleScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { CustomSetupScreen } from '../screens/CustomSetupScreen';
+import { ActiveRoomsScreen } from '../screens/ActiveRoomsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 export function AppNavigator(): React.JSX.Element {
@@ -26,6 +27,7 @@ export function AppNavigator(): React.JSX.Element {
     >
       <Stack.Screen name="Home" component={HomeScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="ActiveRooms" component={ActiveRoomsScreen} />
       <Stack.Screen name="Circle" component={CircleScreen} />
       <Stack.Screen name="ModeSelect" component={ModeSelectScreen} />
       <Stack.Screen name="LocalSetup" component={LocalSetupScreen} />

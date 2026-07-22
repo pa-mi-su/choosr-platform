@@ -33,6 +33,13 @@ export type RoomOutcome = {
   matchedItemId: string | null;
 };
 
+export type RoomHistoryItem = DecisionRoom & {
+  createdAt: string;
+  totalChoices: number;
+  completedChoices: number;
+  matchedItemId: string | null;
+};
+
 export type RoomSubscriptionTable = 'sessions' | 'participants' | 'matches';
 
 const toItemPayload = (item: DecisionItem): Json => ({
@@ -134,6 +141,60 @@ export async function loadDecisionRoom(
     expiresAt: session.expires_at,
     participantCount: count ?? 0,
   };
+}
+
+export async function loadRoomHistory(): Promise<RoomHistoryItem[]> {
+  await ensureAnonymousSession();
+  const { data: sessions, error } = await supabase
+    .from('sessions')
+    .select(
+      'id, access_code, mode, status, round_number, expires_at, created_at',
+    )
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) throw error;
+
+  return Promise.all(
+    sessions.map(async session => {
+      const [participants, items, swipes, match] = await Promise.all([
+        supabase
+          .from('participants')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id),
+        supabase
+          .from('session_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id)
+          .eq('round', session.round_number),
+        supabase
+          .from('swipes')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id)
+          .eq('round', session.round_number),
+        supabase
+          .from('matches')
+          .select('item_id')
+          .eq('session_id', session.id)
+          .maybeSingle(),
+      ]);
+      const queryError =
+        participants.error ?? items.error ?? swipes.error ?? match.error;
+      if (queryError) throw queryError;
+      return {
+        sessionId: session.id,
+        accessCode: session.access_code,
+        mode: session.mode,
+        status: session.status,
+        roundNumber: session.round_number,
+        expiresAt: session.expires_at,
+        createdAt: session.created_at,
+        participantCount: participants.count ?? 0,
+        totalChoices: items.count ?? 0,
+        completedChoices: swipes.count ?? 0,
+        matchedItemId: match.data?.item_id ?? null,
+      };
+    }),
+  );
 }
 
 export async function loadRoomOutcome(sessionId: string): Promise<RoomOutcome> {
