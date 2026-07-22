@@ -2,6 +2,7 @@ import React from 'react';
 import { render } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { env } from '../src/config/generatedEnv';
 import { AboutScreen } from '../src/screens/AboutScreen';
 
 describe('AboutScreen', () => {
@@ -23,7 +24,11 @@ describe('AboutScreen', () => {
     expect(
       screen.getByText('Decide together.\nWithout the debate.'),
     ).toBeTruthy();
-    expect(screen.getByText('Version 1.0.0 (1)')).toBeTruthy();
-    expect(screen.getByText('DEV BUILD')).toBeTruthy();
+    expect(
+      screen.getByText(`Version ${env.appVersion} (${env.buildNumber})`),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(`${env.environment.toUpperCase()} BUILD`),
+    ).toBeTruthy();
   });
 });
