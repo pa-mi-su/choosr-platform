@@ -14,8 +14,19 @@ export function LocalSetupScreen({
   route,
 }: Props): React.JSX.Element {
   const [searchArea, setSearchArea] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const mode = modeById[route.params.mode];
-  const continueToRoom = () =>
+  const continueToRoom = () => {
+    const postalCode = searchArea.trim();
+    if (
+      !/^([0-9]{5}(?:-[0-9]{4})?|[A-Za-z][0-9][A-Za-z][ -]?[0-9][A-Za-z][0-9])$/.test(
+        postalCode,
+      )
+    ) {
+      setError('Enter a valid U.S. ZIP or Canadian postal code.');
+      return;
+    }
+    setError(null);
     navigation.navigate('Waiting', {
       mode: mode.id,
       ...(route.params.connectionId
@@ -24,8 +35,9 @@ export function LocalSetupScreen({
             connectionName: route.params.connectionName,
           }
         : {}),
-      ...(searchArea.trim() ? { searchArea: searchArea.trim() } : {}),
+      searchArea: postalCode,
     });
+  };
 
   return (
     <Screen testID="local-setup-screen" style={styles.screen}>
@@ -40,8 +52,8 @@ export function LocalSetupScreen({
         <Text style={styles.eyebrow}>{mode.eyebrow}</Text>
         <Text style={styles.title}>Where should we look?</Text>
         <Text style={styles.subtitle}>
-          Add a city, neighborhood, or postal code. Leave it blank to let Maps
-          use your location after you match.
+          Enter the ZIP or postal code where you want to look. Choosr will build
+          a private deck of up to 10 nearby choices.
         </Text>
         <TextInput
           testID="search-area-input"
@@ -49,18 +61,23 @@ export function LocalSetupScreen({
           autoCapitalize="words"
           autoCorrect={false}
           maxLength={80}
-          placeholder="Downtown Toronto or M5V"
+          placeholder="10001 or M5V 2T6"
           placeholderTextColor={colors.faint}
           selectionColor={colors.primary}
           value={searchArea}
-          onChangeText={setSearchArea}
+          onChangeText={value => {
+            setSearchArea(value);
+            if (error) setError(null);
+          }}
           onSubmitEditing={continueToRoom}
           style={styles.input}
         />
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.privacyBox}>
-          <Text style={styles.privacyTitle}>LOCATION STAYS OPTIONAL</Text>
+          <Text style={styles.privacyTitle}>NO LOCATION TRACKING</Text>
           <Text style={styles.privacyText}>
-            Choosr does not need your contacts or a permanent location profile.
+            We use this code for this Room only. Choosr does not create a
+            permanent location profile.
           </Text>
         </View>
       </View>
@@ -139,4 +156,5 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 5,
   },
+  error: { color: colors.danger, fontSize: 12, marginTop: 9 },
 });

@@ -265,6 +265,12 @@ jobs:
             destination="ios/Choosr/Firebase/${APP_ENV}/GoogleService-Info.plist"
           fi
           printf '%s' "$FIREBASE_IOS_CONFIG_BASE64" | base64 --decode > "$destination"
+          # The Xcode project includes this canonical path in Copy Bundle Resources.
+          # DEV/UAT also retain their environment-specific copy for the selection
+          # build phase, but the canonical file must exist before that phase runs.
+          if [ "$destination" != "ios/Choosr/GoogleService-Info.plist" ]; then
+            cp "$destination" "ios/Choosr/GoogleService-Info.plist"
+          fi
           npm run "env:generate:${APP_ENV}"
       - name: Install CocoaPods dependencies
         if: steps.gate.outputs.enabled == 'true'

@@ -1,0 +1,68 @@
+name: Upload Existing Android Artifact to Google Play
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Workflow run containing the signed Android artifact
+        required: true
+        type: string
+      artifact_name:
+        description: Exact Android artifact name
+        required: true
+        type: string
+      release_name:
+        description: Google Play release name
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  upload:
+    name: Upload existing bundle to Google Play
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v5
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: recovered-android-artifact
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Validate and upload signed bundle
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64 }}
+          GOOGLE_PLAY_PACKAGE_NAME: ${{ vars.GOOGLE_PLAY_PACKAGE_NAME }}
+          GOOGLE_PLAY_TRACK: ${{ vars.GOOGLE_PLAY_TRACK }}
+          GOOGLE_PLAY_RELEASE_STATUS: ${{ vars.GOOGLE_PLAY_RELEASE_STATUS }}
+          GOOGLE_PLAY_RELEASE_NAME: ${{ inputs.release_name }}
+        run: |
+          set -euo pipefail
+          test -n "$GOOGLE_PLAY_SERVICE_ACCOUNT"
+          test -n "$GOOGLE_PLAY_PACKAGE_NAME"
+          test -n "$GOOGLE_PLAY_TRACK"
+
+          credentials="$RUNNER_TEMP/google-play-service-account.json"
+          decoded="$RUNNER_TEMP/google-play-service-account.decoded"
+
+          if printf '%s' "$GOOGLE_PLAY_SERVICE_ACCOUNT" | base64 --decode > "$decoded" 2>/dev/null && jq -e '.type == "service_account" and (.private_key | length > 0)' "$decoded" >/dev/null; then
+            mv "$decoded" "$credentials"
+          else
+            printf '%s' "$GOOGLE_PLAY_SERVICE_ACCOUNT" > "$credentials"
+            jq -e '.type == "service_account" and (.private_key | length > 0)' "$credentials" >/dev/null
+          fi
+
+          bundle=$(find recovered-android-artifact -name '*.aab' -type f -print -quit)
+          test -n "$bundle"
+          GOOGLE_APPLICATION_CREDENTIALS="$credentials" \
+            GOOGLE_PLAY_BUNDLE_PATH="$bundle" \
+            node scripts/upload-google-play.mjs

@@ -5,8 +5,8 @@ import {
 } from '../src/data/decisions';
 
 describe('decision modes', () => {
-  it('ships Eat and Do as the initial modes', () => {
-    expect(decisionModes.map(mode => mode.id)).toEqual(['eat', 'do']);
+  it('ships Activity, Food, and Custom as the initial modes', () => {
+    expect(decisionModes.map(mode => mode.id)).toEqual(['do', 'eat', 'custom']);
   });
 
   it.each(['eat', 'do'] as const)(

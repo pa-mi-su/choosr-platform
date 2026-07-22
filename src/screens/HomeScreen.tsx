@@ -1,33 +1,76 @@
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { Brand, Button, Screen } from '../components/UI';
+import {
+  loadUnreadNotificationCount,
+  subscribeToNotificationState,
+} from '../services/notificationService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 export function HomeScreen({ navigation }: Props): React.JSX.Element {
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUnreadNotificationCount()
+        .then(setUnreadCount)
+        .catch(() => undefined);
+    }, []),
+  );
+  useEffect(() => {
+    const subscription = subscribeToNotificationState(() => {
+      loadUnreadNotificationCount()
+        .then(setUnreadCount)
+        .catch(() => undefined);
+    });
+    return () => subscription.remove();
+  }, []);
+
   return (
     <Screen testID="home-screen" style={styles.screen}>
       <View style={styles.orangeGlow} />
       <View style={styles.top}>
         <Brand compact />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open my Choosr Circle"
-          onPress={() => navigation.navigate('Circle')}
-          style={({ pressed }) => [styles.pill, pressed && styles.pressed]}
-        >
-          <Text style={styles.peopleIcon}>●●</Text>
-          <Text style={styles.pillText}>MY CIRCLE</Text>
-        </Pressable>
+        <View style={styles.topActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${unreadCount} unread notifications`}
+            onPress={() => navigation.navigate('Notifications')}
+            style={({ pressed }) => [
+              styles.bellButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.bellIcon}>🔔</Text>
+            {unreadCount > 0 ? (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadText}>
+                  {Math.min(unreadCount, 99)}
+                </Text>
+              </View>
+            ) : null}
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open my Choosr Circle"
+            onPress={() => navigation.navigate('Circle')}
+            style={({ pressed }) => [styles.pill, pressed && styles.pressed]}
+          >
+            <Text style={styles.peopleIcon}>●●</Text>
+            <Text style={styles.pillText}>MY CIRCLE</Text>
+          </Pressable>
+        </View>
       </View>
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>TONIGHT, SOLVED</Text>
         <Text style={styles.title}>Swipe separately.{`\n`}Match together.</Text>
         <Text style={styles.subtitle}>
-          Decide what to eat or what to do—without debating every option out
-          loud.
+          Pick an activity, choose food, or create anything—without debating
+          every option out loud.
         </Text>
         <View style={styles.cards}>
           <View style={[styles.card, styles.left]}>
@@ -100,6 +143,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bellButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  bellIcon: { color: colors.text, fontSize: 22, fontWeight: '900' },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.danger,
+  },
+  unreadText: { color: colors.white, fontSize: 9, fontWeight: '900' },
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
