@@ -19,10 +19,9 @@ rooms are persisted so a participant can leave and resume at the first unfinishe
 Choosr is a React Native Community CLI application with standard native iOS and Android
 projects. It does **not** use Expo, Expo Go, EAS, or an Expo runtime.
 
-This README contains the working product and engineering overview. For the detailed product
+This README is the working product and engineering source of truth, including the MVP product
 definition, lifecycle rules, architecture, security model, environment strategy, CI/CD flow,
-and physical-device UAT matrix, see the
-[MVP Product and Technical Charter](docs/MVP_PRODUCT_AND_TECHNICAL_CHARTER.md).
+and physical-device UAT requirements.
 
 > **Product promise:** Stop debating. Swipe separately. Match together.
 
@@ -758,8 +757,6 @@ restrictions or replacing the supported FID-based Android registration path.
 ## Product and engineering documents
 
 - This README — current implemented product and technical source of truth
-- `docs/MVP_PRODUCT_AND_TECHNICAL_CHARTER.md` — detailed current MVP definition, architecture,
-  environment and delivery model, acceptance matrix, and stakeholder narrative
 - `docs/PRODUCT_CHARTER.md` — earlier product-direction snapshot retained for history
 - `docs/ENGINEERING_AUDIT.md` — architecture, SOLID, security, and release audit
 - `docs/VISUAL_DIRECTION.md` — brand references, palette, icon, and motion rules
