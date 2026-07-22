@@ -4,6 +4,7 @@ import { ensureAnonymousSession } from './anonymousAuth';
 import { dispatchPendingNotifications } from './pushNotifications';
 import { profilePhotoUrl } from './profilePhotoService';
 import { photoFailureMessage } from './photoUploadService';
+import { serviceFailureMessage } from './serviceError';
 
 export type ChoosrProfile = {
   userId: string;
@@ -240,5 +241,8 @@ export function circleErrorMessage(error: unknown): string {
   if (message.includes('room_') || message.includes('invitation_'))
     return 'That invitation is no longer available.';
   if (message.includes('photo_')) return photoFailureMessage(error, 5);
-  return 'Choosr could not complete that action. Please try again.';
+  return serviceFailureMessage(
+    error,
+    'Choosr could not complete that action. Please try again.',
+  );
 }

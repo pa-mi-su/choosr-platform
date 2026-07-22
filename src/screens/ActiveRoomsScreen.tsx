@@ -17,6 +17,7 @@ import {
   loadRoomHistory,
   type RoomHistoryItem,
 } from '../services/sessionService';
+import { serviceFailureMessage } from '../services/serviceError';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -44,8 +45,14 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     setError(null);
     try {
       setRooms(await loadRoomHistory());
-    } catch {
-      setError('Your rooms could not be loaded. Pull down to retry.');
+    } catch (cause) {
+      setRooms([]);
+      setError(
+        serviceFailureMessage(
+          cause,
+          'Your rooms could not be loaded. Pull down to retry.',
+        ),
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -68,12 +75,27 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   };
 
   const sections = ['active', 'completed', 'expired'] as const;
-  const rows = sections.flatMap(section => [
-    { kind: 'heading' as const, id: `heading:${section}`, section },
-    ...rooms
-      .filter(room => bucket(room) === section)
-      .map(room => ({ kind: 'room' as const, id: room.sessionId, room })),
-  ]);
+  const rows = error
+    ? []
+    : sections.flatMap(section => {
+        const sectionRooms = rooms.filter(room => bucket(room) === section);
+        return [
+          { kind: 'heading' as const, id: `heading:${section}`, section },
+          ...(section === 'active' && sectionRooms.length === 0
+            ? [
+                {
+                  kind: 'empty-active' as const,
+                  id: 'empty:active',
+                },
+              ]
+            : []),
+          ...sectionRooms.map(room => ({
+            kind: 'room' as const,
+            id: room.sessionId,
+            room,
+          })),
+        ];
+      });
 
   return (
     <Screen testID="active-rooms-screen" style={styles.screen}>
@@ -106,6 +128,17 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
             error ? <Text style={styles.error}>{error}</Text> : null
           }
           renderItem={({ item }) => {
+            if (item.kind === 'empty-active') {
+              return (
+                <View style={styles.emptyCard}>
+                  <Text style={styles.emptyTitle}>No active rooms</Text>
+                  <Text style={styles.emptyText}>
+                    Rooms you start or join will appear here, and unfinished
+                    rooms can be resumed later.
+                  </Text>
+                </View>
+              );
+            }
             if (item.kind === 'heading') {
               const count = rooms.filter(
                 room => bucket(room) === item.section,
@@ -204,4 +237,18 @@ const styles = StyleSheet.create({
   cardMeta: { color: colors.muted, fontSize: 11, marginTop: 4 },
   continue: { color: colors.primary, fontSize: 12, fontWeight: '900' },
   error: { color: colors.danger, fontSize: 12, textAlign: 'center' },
+  emptyCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 18,
+    padding: 18,
+  },
+  emptyTitle: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  emptyText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 6,
+  },
 });
