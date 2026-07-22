@@ -1,5 +1,9 @@
 import notifee from '@notifee/react-native';
-import { DeviceEventEmitter, type EmitterSubscription } from 'react-native';
+import {
+  AppState,
+  DeviceEventEmitter,
+  type EmitterSubscription,
+} from 'react-native';
 
 import { supabase } from '../lib/supabase';
 import { ensureAnonymousSession } from './anonymousAuth';
@@ -52,6 +56,54 @@ export async function loadUnreadNotificationCount(): Promise<number> {
   if (error) throw error;
   await notifee.setBadgeCount(data).catch(() => undefined);
   return data;
+}
+
+export async function refreshNotificationState(): Promise<number> {
+  const count = await loadUnreadNotificationCount();
+  notifyNotificationStateChanged();
+  return count;
+}
+
+export function registerNotificationSynchronization(): () => void {
+  let active = true;
+  let removeChannel: (() => void) | undefined;
+  const refresh = () => {
+    refreshNotificationState().catch(() => undefined);
+  };
+
+  ensureAnonymousSession()
+    .then(session => {
+      if (!active) return;
+      const channel = supabase
+        .channel(`notification-inbox:${session.user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'user_notifications',
+            filter: `recipient_user_id=eq.${session.user.id}`,
+          },
+          refresh,
+        )
+        .subscribe();
+      removeChannel = () => {
+        supabase.removeChannel(channel).catch(() => undefined);
+      };
+      refresh();
+    })
+    .catch(() => undefined);
+
+  const appState = AppState.addEventListener('change', state => {
+    if (state === 'active') refresh();
+  });
+  refresh();
+
+  return () => {
+    active = false;
+    appState.remove();
+    removeChannel?.();
+  };
 }
 
 export async function markNotificationsRead(ids: number[]): Promise<void> {

@@ -1,7 +1,9 @@
 import { decode } from 'base64-arraybuffer';
 import {
+  launchCamera,
   launchImageLibrary,
   type Asset,
+  type CameraOptions,
   type ImageLibraryOptions,
 } from 'react-native-image-picker';
 
@@ -59,6 +61,26 @@ const pickerFailure = (code?: string): PhotoFailure => {
   return new PhotoFailure('photo_not_available');
 };
 
+const preparedAssets = (
+  selection: Awaited<ReturnType<typeof launchImageLibrary>>,
+  maxBytes: number,
+): PreparedPhoto[] => {
+  if (selection.didCancel) return [];
+  if (selection.errorCode) throw pickerFailure(selection.errorCode);
+
+  return (selection.assets ?? []).map(asset => {
+    if (!asset.base64) throw new PhotoFailure('photo_not_available');
+    const bytes = decode(asset.base64);
+    if (bytes.byteLength > maxBytes) throw new PhotoFailure('photo_too_large');
+    return {
+      ...asset,
+      base64: asset.base64,
+      bytes,
+      ...identifyImage(bytes),
+    };
+  });
+};
+
 export async function choosePreparedPhotos(input: {
   maxBytes: number;
   maxDimension: number;
@@ -73,22 +95,22 @@ export async function choosePreparedPhotos(input: {
     includeBase64: true,
     assetRepresentationMode: 'compatible',
   };
-  const selection = await launchImageLibrary(options);
-  if (selection.didCancel) return [];
-  if (selection.errorCode) throw pickerFailure(selection.errorCode);
+  return preparedAssets(await launchImageLibrary(options), input.maxBytes);
+}
 
-  return (selection.assets ?? []).map(asset => {
-    if (!asset.base64) throw new PhotoFailure('photo_not_available');
-    const bytes = decode(asset.base64);
-    if (bytes.byteLength > input.maxBytes)
-      throw new PhotoFailure('photo_too_large');
-    return {
-      ...asset,
-      base64: asset.base64,
-      bytes,
-      ...identifyImage(bytes),
-    };
-  });
+export async function takePreparedPhoto(input: {
+  maxBytes: number;
+  maxDimension: number;
+}): Promise<PreparedPhoto | undefined> {
+  const options: CameraOptions = {
+    mediaType: 'photo',
+    maxWidth: input.maxDimension,
+    maxHeight: input.maxDimension,
+    quality: 0.8,
+    includeBase64: true,
+    saveToPhotos: false,
+  };
+  return preparedAssets(await launchCamera(options), input.maxBytes)[0];
 }
 
 export function normalizePhotoFailure(error: unknown): PhotoFailure {

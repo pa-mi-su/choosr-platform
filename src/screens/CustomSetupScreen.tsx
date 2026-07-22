@@ -15,6 +15,7 @@ import { Brand, Button, Screen } from '../components/UI';
 import {
   buildCustomDecisionDeck,
   chooseCustomPhotos,
+  takeCustomPhoto,
   type CustomPhoto,
 } from '../services/customDecisionService';
 import {
@@ -31,33 +32,41 @@ export function CustomSetupScreen({
   route,
 }: Props): React.JSX.Element {
   const [prompt, setPrompt] = useState('');
-  const [choices, setChoices] = useState(['', '']);
   const [photos, setPhotos] = useState<CustomPhoto[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const textCount = choices.filter(value => value.trim()).length;
-  const total = textCount + photos.length;
+  const total = photos.length;
 
   const addPhotos = async () => {
     setError(null);
     try {
       const selected = await chooseCustomPhotos(10 - total);
-      setPhotos(current => [...current, ...selected].slice(0, 10 - textCount));
+      setPhotos(current => [...current, ...selected].slice(0, 10));
     } catch (cause) {
       logPhotoFailure('custom-selection', cause);
       setError(photoFailureMessage(cause, 8));
     }
   };
+  const takePhoto = async () => {
+    setError(null);
+    try {
+      const selected = await takeCustomPhoto();
+      if (selected) setPhotos(current => [...current, selected].slice(0, 10));
+    } catch (cause) {
+      logPhotoFailure('custom-camera', cause);
+      setError(photoFailureMessage(cause, 8));
+    }
+  };
   const continueToRoom = async () => {
-    if (!prompt.trim())
-      return setError('Tell everyone what you want help choosing.');
-    if (total < 2) return setError('Add at least two text choices or photos.');
+    if (!prompt.trim()) return setError('Give this room a title.');
+    if (total < 2) return setError('Add at least two photos.');
+    if (photos.some(photo => !photo.label.trim()))
+      return setError('Label every photo before creating the room.');
     setLoading(true);
     setError(null);
     try {
       const customItems = await buildCustomDecisionDeck({
         prompt,
-        choices,
         photos,
       });
       navigation.navigate('Waiting', {
@@ -86,10 +95,13 @@ export function CustomSetupScreen({
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.eyebrow}>CUSTOM CHOICE</Text>
-        <Text style={styles.title}>What do you want to choose?</Text>
+        <Text style={styles.title}>Create a photo choice</Text>
+        <Text style={styles.helper}>
+          Give the room a title, then add and label each photo.
+        </Text>
         <TextInput
-          accessibilityLabel="Custom decision question"
-          placeholder="Help me pick what to wear tonight"
+          accessibilityLabel="Custom room title"
+          placeholder="Pick my guitar"
           placeholderTextColor={colors.faint}
           maxLength={80}
           value={prompt}
@@ -97,67 +109,41 @@ export function CustomSetupScreen({
           style={styles.prompt}
         />
         <View style={styles.sectionTop}>
-          <Text style={styles.sectionTitle}>TEXT CHOICES</Text>
+          <Text style={styles.sectionTitle}>PHOTO CHOICES</Text>
           <Text style={styles.count}>{total} / 10</Text>
         </View>
-        {choices.map((choice, index) => (
-          <View key={index} style={styles.choiceRow}>
-            <TextInput
-              accessibilityLabel={`Choice ${index + 1}`}
-              placeholder={`Choice ${index + 1}`}
-              placeholderTextColor={colors.faint}
-              maxLength={80}
-              value={choice}
-              onChangeText={value =>
-                setChoices(current =>
-                  current.map((item, itemIndex) =>
-                    itemIndex === index ? value : item,
-                  ),
-                )
-              }
-              style={styles.choiceInput}
-            />
-            {choices.length > 2 ? (
-              <Pressable
-                onPress={() =>
-                  setChoices(current =>
-                    current.filter((_, itemIndex) => itemIndex !== index),
-                  )
-                }
-                style={styles.remove}
-              >
-                <Text style={styles.removeText}>×</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ))}
-        <Button
-          label="Add another text choice"
-          variant="secondary"
-          disabled={choices.length + photos.length >= 10}
-          onPress={() => setChoices(current => [...current, ''])}
-        />
-        <View style={styles.divider}>
-          <View style={styles.line} />
-          <Text style={styles.or}>OR ADD PHOTOS</Text>
-          <View style={styles.line} />
-        </View>
         {photos.length ? (
-          <View style={styles.photoGrid}>
+          <View style={styles.photoList}>
             {photos.map((photo, index) => (
-              <Pressable
-                key={`${photo.uri}-${index}`}
-                onPress={() =>
-                  setPhotos(current =>
-                    current.filter((_, itemIndex) => itemIndex !== index),
-                  )
-                }
-              >
+              <View key={`${photo.uri}-${index}`} style={styles.photoChoice}>
                 <Image source={{ uri: photo.uri }} style={styles.photo} />
-                <View style={styles.photoRemove}>
-                  <Text style={styles.photoRemoveText}>×</Text>
-                </View>
-              </Pressable>
+                <TextInput
+                  accessibilityLabel={`Label photo ${index + 1}`}
+                  placeholder="Label this photo"
+                  placeholderTextColor={colors.faint}
+                  maxLength={80}
+                  value={photo.label}
+                  onChangeText={label =>
+                    setPhotos(current =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, label } : item,
+                      ),
+                    )
+                  }
+                  style={styles.choiceInput}
+                />
+                <Pressable
+                  accessibilityLabel={`Remove photo ${index + 1}`}
+                  onPress={() =>
+                    setPhotos(current =>
+                      current.filter((_, itemIndex) => itemIndex !== index),
+                    )
+                  }
+                  style={styles.remove}
+                >
+                  <Text style={styles.removeText}>×</Text>
+                </Pressable>
+              </View>
             ))}
           </View>
         ) : null}
@@ -166,6 +152,12 @@ export function CustomSetupScreen({
           variant="secondary"
           disabled={total >= 10}
           onPress={addPhotos}
+        />
+        <Button
+          label="Take a photo"
+          variant="secondary"
+          disabled={total >= 10}
+          onPress={takePhoto}
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
@@ -199,6 +191,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1.2,
   },
+  helper: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   prompt: {
     minHeight: 62,
     color: colors.text,
@@ -221,7 +214,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
   },
   count: { color: colors.faint, fontSize: 10 },
-  choiceRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   choiceInput: {
     flex: 1,
     height: 52,
@@ -239,32 +231,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   removeText: { color: colors.danger, fontSize: 26 },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    marginVertical: 5,
-  },
-  line: { flex: 1, height: 1, backgroundColor: colors.border },
-  or: { color: colors.faint, fontSize: 9, fontWeight: '900' },
-  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  photoList: { gap: 9 },
+  photoChoice: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   photo: {
     width: 72,
     height: 90,
     borderRadius: 12,
     backgroundColor: colors.raised,
   },
-  photoRemove: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.danger,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoRemoveText: { color: colors.white, fontSize: 15, fontWeight: '900' },
   error: { color: colors.danger, fontSize: 12, textAlign: 'center' },
 });

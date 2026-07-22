@@ -1,6 +1,10 @@
+import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
+
 import { colorsFor } from '../presentation.ts';
 import { fetchWithTimeout } from '../http.ts';
 import type { DeckRequest, ProviderItem } from '../types.ts';
+
+const IMAGE_BUCKET = 'discovery-images';
 
 type GeoFeature = {
   properties?: {
@@ -57,23 +61,120 @@ async function coordinatesFor(request: DeckRequest, key: string) {
 }
 
 async function imageFor(
-  placeId: string,
+  place: NonNullable<GeoFeature['properties']>,
   key: string,
 ): Promise<string | undefined> {
-  const query = new URLSearchParams({
-    id: placeId,
-    features: 'details',
-    apiKey: key,
-  });
-  const response = await fetchWithTimeout(
-    `https://api.geoapify.com/v2/place-details?${query}`,
+  try {
+    const query = new URLSearchParams({
+      id: place.place_id!,
+      features: 'details',
+      apiKey: key,
+    });
+    const response = await fetchWithTimeout(
+      `https://api.geoapify.com/v2/place-details?${query}`,
+    );
+    if (response.ok) {
+      const details = (await response.json()) as GeoCollection;
+      const mediaImage =
+        details.features?.[0]?.properties?.wiki_and_media?.image;
+      if (isPublicHttpsUrl(mediaImage)) return mediaImage;
+    }
+  } catch {
+    // Artwork is optional; continue to the cached map fallback.
+  }
+  return mapImageFor(place, key);
+}
+
+function isPublicHttpsUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    return (
+      url.protocol === 'https:' &&
+      hostname !== 'localhost' &&
+      hostname !== '0.0.0.0' &&
+      hostname !== '127.0.0.1' &&
+      hostname !== '::1' &&
+      !hostname.endsWith('.local') &&
+      !/^10\./.test(hostname) &&
+      !/^192\.168\./.test(hostname) &&
+      !/^172\.(1[6-9]|2\d|3[01])\./.test(hostname) &&
+      !/^169\.254\./.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function imageObjectName(placeId: string) {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(placeId),
   );
-  if (!response.ok) return undefined;
-  const details = (await response.json()) as GeoCollection;
-  const image = details.features?.[0]?.properties?.wiki_and_media?.image;
-  return typeof image === 'string' && image.startsWith('https://')
-    ? image
-    : undefined;
+  return `${Array.from(new Uint8Array(digest))
+    .map(value => value.toString(16).padStart(2, '0'))
+    .join('')}.jpg`;
+}
+
+async function mapImageFor(
+  place: NonNullable<GeoFeature['properties']>,
+  key: string,
+) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (
+    !supabaseUrl ||
+    !serviceKey ||
+    !place.place_id ||
+    !Number.isFinite(place.lat) ||
+    !Number.isFinite(place.lon)
+  )
+    return undefined;
+
+  try {
+    const objectName = await imageObjectName(place.place_id);
+    const supabase = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: existing } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .list('', { limit: 1, search: objectName });
+    const publicUrl = supabase.storage
+      .from(IMAGE_BUCKET)
+      .getPublicUrl(objectName).data.publicUrl;
+    if (existing?.some(object => object.name === objectName)) return publicUrl;
+
+    const query = new URLSearchParams({
+      style: 'osm-bright',
+      width: '800',
+      height: '600',
+      format: 'jpeg',
+      center: `lonlat:${place.lon},${place.lat}`,
+      zoom: '15',
+      marker: `lonlat:${place.lon},${place.lat};type:material;color:#ff5b22;size:large`,
+      apiKey: key,
+    });
+    const response = await fetchWithTimeout(
+      `https://maps.geoapify.com/v1/staticmap?${query}`,
+      {},
+      6000,
+    );
+    if (!response.ok) return undefined;
+    const bytes = await response.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength > 2 * 1024 * 1024)
+      return undefined;
+    const { error } = await supabase.storage
+      .from(IMAGE_BUCKET)
+      .upload(objectName, bytes, {
+        contentType: 'image/jpeg',
+        cacheControl: '604800',
+        upsert: true,
+      });
+    return error ? undefined : publicUrl;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function buildPlacesDeck(
@@ -120,7 +221,7 @@ export async function buildPlacesDeck(
     })
     .slice(0, limit);
   const images = await Promise.all(
-    places.map(place => imageFor(place.properties!.place_id!, key)),
+    places.map(place => imageFor(place.properties!, key)),
   );
 
   return places.map((feature, index) => {

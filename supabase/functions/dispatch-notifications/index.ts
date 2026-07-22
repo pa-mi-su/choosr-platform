@@ -23,6 +23,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 }
 
+function reportSummary(summary: Record<string, number>) {
+  console.info(
+    JSON.stringify({ event: 'notification_dispatch_completed', ...summary }),
+  );
+  return jsonResponse(summary);
+}
+
 function requireEnv(name: string): string {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing ${name}.`);
@@ -155,10 +162,20 @@ Deno.serve(async request => {
       { p_limit: 25 },
     );
     if (claimError) throw claimError;
-    if (!jobs?.length) return jsonResponse({ processed: 0, delivered: 0 });
+    if (!jobs?.length)
+      return reportSummary({
+        processed: 0,
+        delivered: 0,
+        failed: 0,
+        recipientsWithoutDevices: 0,
+        invalidTokensRemoved: 0,
+      });
 
     const accessToken = await getGoogleAccessToken(account);
     let delivered = 0;
+    let failed = 0;
+    let recipientsWithoutDevices = 0;
+    let invalidTokensRemoved = 0;
     for (const job of jobs as PushJob[]) {
       const { count: unreadCount, error: unreadError } = await supabase
         .from('user_notifications')
@@ -177,6 +194,8 @@ Deno.serve(async request => {
           p_id: job.id,
           p_error: 'Recipient has no registered device.',
         });
+        failed += 1;
+        recipientsWithoutDevices += 1;
         continue;
       }
 
@@ -201,6 +220,9 @@ Deno.serve(async request => {
             : Promise.resolve(),
         ),
       );
+      invalidTokensRemoved += results.filter(
+        result => result.invalidToken,
+      ).length;
       if (results.some(result => result.ok)) {
         await supabase.rpc('complete_notification_job', { p_id: job.id });
         delivered += 1;
@@ -212,11 +234,24 @@ Deno.serve(async request => {
             .filter(Boolean)
             .join(' | '),
         });
+        failed += 1;
       }
     }
-    return jsonResponse({ processed: jobs.length, delivered });
+    const summary = {
+      processed: jobs.length,
+      delivered,
+      failed,
+      recipientsWithoutDevices,
+      invalidTokensRemoved,
+    };
+    return reportSummary(summary);
   } catch (error) {
-    console.error(error);
+    console.error(
+      JSON.stringify({
+        event: 'notification_dispatch_failed',
+        code: error instanceof Error ? error.name : 'unknown',
+      }),
+    );
     return jsonResponse(
       { error: 'Notification delivery is unavailable.' },
       503,
