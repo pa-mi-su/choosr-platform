@@ -1,16 +1,42 @@
 # Choosr Platform
 
-Choosr is a private, real-time decision app for exactly two people. One person creates a
-temporary room, shares an eight-character code, and both people independently accept or
-pass on the same ordered options. Choosr reveals only the first option both people accept.
+Choosr is a private, real-time mobile decision app for exactly two people. Both participants
+swipe independently through the same ordered choices, individual rejections remain private,
+and Choosr reveals only the first option both people accept.
 
-The initial decision modes are **Eat** (match on a cuisine) and **Do** (match on a nearby
-activity). The decision engine is intentionally content-agnostic. A future Custom mode will let
-people create a private deck from their own labels and photos—for example, outfits, trips, gifts,
-or anything else they want to decide together.
+The MVP supports three creation modes:
+
+1. **Pick an activity** — enter a U.S. ZIP code or Canadian postal code and build a deck from
+   real nearby activities.
+2. **Pick food** — use the same location flow to discover nearby restaurants.
+3. **Create your own** — create a private deck of two to ten text choices, photos, or a mixture
+   of both.
+
+Users can invite an existing **Choosr Circle** connection or create a profile-free **Quick
+Room** and share a one-time link. An eight-character room code is the recovery path. Active
+rooms are persisted so a participant can leave and resume at the first unfinished choice.
 
 Choosr is a React Native Community CLI application with standard native iOS and Android
 projects. It does **not** use Expo, Expo Go, EAS, or an Expo runtime.
+
+This README is the working product and engineering source of truth, including the MVP product
+definition, lifecycle rules, architecture, security model, environment strategy, CI/CD flow,
+and physical-device UAT requirements.
+
+> **Product promise:** Stop debating. Swipe separately. Match together.
+
+## Product principles
+
+- **Private by default:** passes remain private, rooms expire, and location is collected only
+  for the current room.
+- **Agreement is the event:** PostgreSQL—not either phone—creates the authoritative match.
+- **Low friction:** anonymous Supabase Auth provides a secure identity without a registration
+  form; Circle is an optional repeat-use layer.
+- **Server authority:** authenticated RPCs and Row Level Security control rooms, membership,
+  swipes, matches, notifications, media ownership, and Circle relationships.
+- **Cross-platform equality:** iPhone and Android use the same backend state and match rules.
+- **Graceful presentation:** missing provider artwork falls back to a branded card instead of
+  breaking the room.
 
 ## Engineering status
 
@@ -35,37 +61,41 @@ The real two-device client flow is implemented:
 - Native Firebase Messaging permissions, iOS token lifecycle, Android FID registration, and
   notification routing
 - Transactional push outbox with leased, retryable FCM/APNs Edge delivery
-- Eat and Do curated decks
+- Live nearby Activity and Food decks from a server-side Geoapify boundary
+- Custom text-only, photo-only, and mixed text/photo rooms
+- Private, owner-scoped decision-photo storage with signed cross-device URLs
+- Active-room history and resume behavior
+- Persistent notification inbox with read/delete state and native badge reconciliation
+- Circle connection removal without deleting accounts or historical rooms
 
-The repository declares 110 pgTAP assertions across schema, room flow, modes, retention,
-Circle, push delivery, synchronized closure, and profile photos. All migrations are deployed
-to the hosted Supabase project. Physical iOS/Android testing has verified cross-platform
-rooms, matches, Circle invitations, push delivery, and synchronized closure. Hosted lifecycle
-checks also cover third-user rejection, private-swipe RLS, authoritative matching, and
-participant/match Realtime events.
+The repository currently declares 135 pgTAP assertions across schema, RLS, room flow, modes,
+retention, Circle, invitations, notification delivery and inbox state, synchronized closure,
+profile photos, custom-decision storage, Circle removal, and WebP support. Jest covers the
+client domain and service boundaries. Pull requests also compile Android production-debug and
+an unsigned iOS Production simulator build when shared or native code changes.
 
-The repository uses the same controlled promotion model as Sanctuary:
-`feature/* -> dev -> uat -> prod -> main`. GitHub Actions validate application code, database
-migrations, Android, and iOS. Development uses local Supabase and direct native builds; `uat`
-deploys the hosted acceptance backend and distributes private Android/iOS builds through
-Firebase App Distribution; `main` deploys production and creates Google Play internal and
-TestFlight candidates. All external gates remain disabled until their resources and credentials
-are provisioned.
+Delivery follows `feature/fix branch -> dev -> uat -> prod -> main`. The `dev`, `uat`, and
+`main` branches deploy to their isolated GitHub Environments; `prod` is a release-review branch
+and intentionally does not deploy. Signed mobile builds are uploaded to the matching Google
+Play and App Store Connect records. Public release is still a deliberate store-console action.
+Firebase App Distribution is not the primary installation channel.
 
 ### Current capability matrix
 
 | Capability                                        | Status                        | Notes                                            |
 | ------------------------------------------------- | ----------------------------- | ------------------------------------------------ |
-| Eat and Do rooms                                  | Implemented                   | Uses curated normalized decks today              |
+| Activity and Food rooms                           | Implemented                   | Live server-side nearby discovery                |
 | Cross-platform private swiping and matching       | Implemented                   | PostgreSQL is authoritative                      |
 | Circle profiles, handles, connections, and photos | Implemented                   | Optional layer over anonymous Auth               |
 | Quick-room links and manual codes                 | Implemented                   | Custom `choosr://` links; code is recovery       |
 | Push invitations                                  | Implemented and device-tested | Firebase HTTP v1; FCM to Android and APNs to iOS |
 | Synchronized round restart and room closure       | Implemented                   | Either participant can act; all clients follow   |
-| Live Google Places adapter                        | Implemented server boundary   | Not yet called by host room creation             |
-| Custom user-created photo decks                   | Planned                       | Next product expansion; no external catalog      |
+| Custom text/photo decks                           | Implemented                   | Two to ten choices; private Storage              |
+| Active Rooms and resume                           | Implemented in Dev            | Promotion and physical UAT remain                |
+| Circle member removal                             | Implemented in Dev            | Preserves accounts and historical rooms          |
+| Notification management and app badges            | Implemented in Dev            | Promotion and physical UAT remain                |
 | HTTPS universal/app links and install landing     | Not implemented               | Required before polished external distribution   |
-| Store-ready production release                    | Not ready                     | See release blockers below                       |
+| Public production release                         | Not ready                     | Store, privacy, abuse, and operations remain     |
 
 ## Technology stack
 
@@ -87,8 +117,8 @@ are provisioned.
 | Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup               |
 | Push client            | React Native Firebase + Kotlin bridge | Native permission, iOS tokens, Android FIDs, and notification routing       |
 | Push delivery          | FCM HTTP v1 + APNs                    | Cross-platform delivery through a leased transactional outbox worker        |
-| Provider boundary      | Supabase Edge Functions               | Keeps Google Places credentials out of mobile binaries                      |
-| Local provider         | Google Places adapter                 | Normalized nearby Eat/Do results when server credentials are configured     |
+| Provider boundary      | Supabase Edge Functions               | Keeps Geoapify credentials out of mobile binaries                           |
+| Nearby provider        | Geoapify                              | Normalized Activity/Food results from postal-code searches                  |
 | Zero-key local handoff | Google Maps HTTPS search URLs         | Opens nearby results after a cuisine or activity match                      |
 | App tests              | Jest, React Test Renderer             | Domain, parser, room-state, navigation-root, and deck behavior              |
 | Database tests         | pgTAP, Supabase CLI                   | Schema, RLS, grants, validation, two-person flow, and atomic matching       |
@@ -108,7 +138,7 @@ flowchart LR
     Host -->|"Active-only recovery reads every 15 seconds"| DB
     Partner -->|"Active-only recovery reads every 15 seconds"| DB
     Host -.->|"Optional live deck"| Edge["build-deck Edge Function"]
-    Edge --> Places["Google Places"]
+    Edge --> Places["Geoapify"]
     Host -->|"Profile photo"| Storage[("Supabase Storage")]
     Partner -->|"Profile photo"| Storage
     RPC --> Outbox[("Notification outbox")]
@@ -386,19 +416,18 @@ alerts, and complete a formal privacy review.
 
 ## Content and provider strategy
 
-The mobile room flow currently uses normalized curated decks from `src/data/decisions.ts`.
-This keeps local development and zero-cost testing deterministic.
+`supabase/functions/build-deck` is the protected live-provider boundary for Activity and Food:
 
-`supabase/functions/build-deck` is the protected live-provider boundary:
+- The host supplies a valid U.S. ZIP code or Canadian postal code.
+- Geoapify geocodes it and finds nearby activities or restaurants within a bounded radius.
+- The adapter returns up to ten normalized choices by default and never more than twenty.
+- Provider credentials remain server-side and are never mobile environment values.
+- A match carries a Google Maps HTTPS action for the final real-world handoff.
+- Missing or failed remote artwork falls back to a branded generated card.
 
-- Optional live `eat` and `do` enrichment uses `GOOGLE_PLACES_API_KEY`; without it CI skips the live deck function and the app continues with curated decks.
-- Provider-specific records are converted into the generic `DecisionItem` contract.
-- Secrets are Supabase secrets, never mobile `.env` values.
-- Google Places fields are intentionally minimized to control SKU/cost exposure.
-
-`fetchLiveDecisionDeck()` exists in the mobile service layer, but host room creation does
-not yet call it. Provider quotas, attribution, graceful fallbacks, and this final UI wiring
-must be completed before live discovery is considered production-ready.
+Custom rooms use two to ten text choices, photos, or both. Decision photos are normalized on
+the device, written to the private owner-scoped `decision-photos` bucket, and frozen into the
+room deck as signed HTTPS URLs. A failed batch cleans up files uploaded by that attempt.
 
 ## Repository map
 
@@ -467,16 +496,16 @@ mode-`0600` `src/config/generatedEnv.ts`.
 
 ### Configuration ownership
 
-| Value/file                          | Where it belongs                                     | Safe to commit?             |
-| ----------------------------------- | ---------------------------------------------------- | --------------------------- |
-| Supabase URL and publishable key    | Local `.env.<environment>`; generated config ignored | No                          |
-| `google-services.json`              | `android/app/`                                       | Yes; mobile client metadata |
-| `GoogleService-Info.plist`          | `ios/Choosr/`                                        | Yes; mobile client metadata |
-| APNs `AuthKey_*.p8`                 | GitHub environment secret; uploaded to Firebase      | Never                       |
-| Firebase Admin service-account JSON | GitHub environment secret only                       | Never                       |
-| `FIREBASE_SERVICE_ACCOUNT_BASE64`   | GitHub secret synced to Supabase by CI               | Never                       |
-| Google Places credentials           | GitHub secrets synced to Supabase by CI              | Never                       |
-| Supabase service-role key           | Supabase-hosted server environment only              | Never                       |
+| Value/file                          | Where it belongs                                     | Safe to commit? |
+| ----------------------------------- | ---------------------------------------------------- | --------------- |
+| Supabase URL and publishable key    | Local `.env.<environment>`; generated config ignored | No              |
+| Firebase Android client config      | Matching GitHub Environment; materialized by CI      | No              |
+| Firebase iOS client config          | Matching GitHub Environment; materialized by CI      | No              |
+| APNs `AuthKey_*.p8`                 | GitHub environment secret; uploaded to Firebase      | Never           |
+| Firebase Admin service-account JSON | GitHub environment secret only                       | Never           |
+| `FIREBASE_SERVICE_ACCOUNT_BASE64`   | GitHub secret synced to Supabase by CI               | Never           |
+| Geoapify credentials                | GitHub secrets synced to Supabase by CI              | Never           |
+| Supabase service-role key           | Supabase-hosted server environment only              | Never           |
 
 The deployed database migrations create all application tables, RPCs, Realtime publication
 entries, Cron jobs, notification outbox boundaries, and the `profile-photos` Storage bucket.
@@ -484,21 +513,15 @@ Dashboard-only schema changes are not part of the supported workflow.
 
 ### Firebase client configuration
 
-The production Firebase client files are currently present at these paths:
-
-```text
-android/app/google-services.json
-ios/Choosr/GoogleService-Info.plist
-```
-
 Development and UAT use `android/app/src/<environment>/google-services.json` and
 `ios/Choosr/Firebase/<environment>/GoogleService-Info.plist`. CI materializes them from the
-matching GitHub environment after the isolated Firebase projects are created.
+matching GitHub Environment. Production uses the corresponding production destinations.
 
 The Apple APNs `.p8` key, Firebase service-account JSON, Android keystores, and signing
-certificates are GitHub environment secrets. They must not persist in the repository, Downloads,
-Keychain, or project-specific local credential folders. Ignore rules remain a second line of
-defense, not an approved storage mechanism.
+certificates are GitHub Environment secrets. They must not persist in the repository, Downloads,
+a developer's persistent login Keychain, or project-specific local credential folders. CI may
+import signing material only into a temporary runner keychain under `$RUNNER_TEMP`, which is
+destroyed with the runner. Ignore rules remain a second line of defense, not approved storage.
 
 Android enables Firebase's FID-based registration with
 `firebase_messaging_installation_id_enabled`. The small Kotlin module under
@@ -552,8 +575,7 @@ npm run supabase:stop
 
 Local Supabase runs database migrations and tests without app secrets. Provider-backed decks and
 push delivery are tested against the hosted Dev environment. GitHub Actions synchronizes the
-Firebase credential into Supabase before deploying push delivery. When an environment also has a
-Google Places key, CI synchronizes it and deploys the optional live deck function.
+Firebase and Geoapify credentials into Supabase before deploying the Edge Functions.
 
 `.env.dev` should use `http://127.0.0.1:54321` for simulators. A physical phone must use the
 Mac's private Wi-Fi address instead (for example, `http://192.168.x.x:54321`) and both devices
@@ -605,8 +627,9 @@ xcodebuild \
 
 ## Hosted Supabase deployment
 
-All versioned migrations through `20260720143000_add_profile_photos.sql` are deployed. Use
-this workflow for future migrations and for linking a fresh engineering checkout.
+Database changes are forward-only, versioned migrations. Never edit or remove an applied
+migration; correct it with a new compensating migration. Use this workflow for future
+migrations and for linking a fresh engineering checkout.
 
 Authenticate and link the CLI to the intended project:
 
@@ -625,8 +648,9 @@ npx supabase db push
 ```
 
 Provider secrets and Edge Functions are deployed by the environment-gated GitHub Actions
-workflow. Do not run `supabase secrets set` with literal values from a workstation. Google Places
-is optional and does not block migrations, push delivery, or mobile distribution.
+workflow. Do not run `supabase secrets set` with literal values from a workstation. Geoapify is
+required for hosted Activity/Food discovery but does not block database migrations, push
+delivery, or mobile distribution.
 
 ```sh
 gh secret set FIREBASE_SERVICE_ACCOUNT_BASE64 --env dev
@@ -713,21 +737,22 @@ restrictions or replacing the supported FID-based Android registration path.
 
 ## Current limitations and release blockers
 
-- Live provider deck creation is not yet wired into the host screen.
-- Subsequent curated rounds currently reuse the prior normalized deck.
+- The Dev bug sweep still requires promotion and cross-platform physical-device UAT.
+- Rooms support exactly two participants; group semantics are outside the current MVP.
+- Circle identities are anonymous-session backed; durable account upgrade, recovery, and
+  cross-device identity linking are not yet exposed.
 - A branded HTTPS universal/app-link gateway and hosted install fallback page remain; the
   installed-app `choosr://` room/Circle links and manual-code fallback are implemented.
 - Background push, APNs/FCM credentials, native registration, the database outbox, and the
   delivery worker are implemented and have passed cross-platform physical-device delivery.
 - Manual-code join abuse controls and anonymous Auth CAPTCHA are required before launch.
-- Retention Cron run history should be monitored after its first hourly and daily executions.
-- A complete iPhone/iPhone, Android/Android, and expanded cross-platform acceptance matrix
-  remains, including offline recovery, token rotation, declined invitations, and expiration.
-- Provider quotas, attribution, licensing checks, and production fallback behavior remain.
-- CI, branch-aware native variants, guarded deployments, signed artifact creation, App Store
-  Connect upload, and Google Play track upload are implemented in the repository. External
-  environment creation, account-owned credentials, signing activation, store records,
-  privacy/terms pages, crash reporting, and final store review remain.
+- A complete iPhone/iPhone, Android/Android, and cross-platform acceptance matrix remains,
+  including text/photo/mixed rooms, image fallbacks, offline recovery, token rotation, Circle
+  removal, room resumption, notification management, and expiration.
+- Geoapify quotas, terms, attribution, licensing, cost alerts, and production fallback behavior
+  require final review.
+- Final store metadata, declarations, screenshots, privacy/terms pages, crash reporting,
+  production observability, support procedures, accessibility review, and store review remain.
 
 ## Product and engineering documents
 
@@ -745,7 +770,5 @@ restrictions or replacing the supported FID-based Android registration path.
 - UAT iOS/Android identifier: `com.pamisu.choosr.uat`
 - Production iOS/Android identifier: `com.pamisu.choosr`
 - Apple Developer App ID: `com.pamisu.choosr` with Push Notifications enabled
-- Firebase project: `choosr-platform`, with matching iOS and Android app registrations
-- The former `com.choosr.app` Firebase registrations are unused legacy records. Current native
-  configuration and tested push delivery use `com.pamisu.choosr`; remove the legacy records
-  only after confirming no external test build still depends on them.
+- Firebase and Supabase projects are isolated by environment and materialized from the matching
+  GitHub Environment during CI. Credential-bearing project identifiers are not documented here.

@@ -175,6 +175,7 @@ export async function loadRoomHistory(): Promise<RoomHistoryItem[]> {
           .from('matches')
           .select('item_id')
           .eq('session_id', session.id)
+          .eq('round', session.round_number)
           .maybeSingle(),
       ]);
       const queryError =
