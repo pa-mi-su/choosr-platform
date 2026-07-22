@@ -31,6 +31,7 @@ export async function loadNotifications(): Promise<ChoosrNotification[]> {
   const { data, error } = await supabase
     .from('user_notifications')
     .select('id, kind, title, body, payload, created_at, read_at')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(50);
   if (error) throw error;
@@ -49,7 +50,29 @@ export async function loadUnreadNotificationCount(): Promise<number> {
   await ensureAnonymousSession();
   const { data, error } = await supabase.rpc('unread_notification_count');
   if (error) throw error;
+  await notifee.setBadgeCount(data).catch(() => undefined);
   return data;
+}
+
+export async function markNotificationsRead(ids: number[]): Promise<void> {
+  if (!ids.length) return;
+  await ensureAnonymousSession();
+  const { error } = await supabase.rpc('mark_notifications_read', {
+    p_notification_ids: ids,
+  });
+  if (error) throw error;
+  await loadUnreadNotificationCount();
+  notifyNotificationStateChanged();
+}
+
+export async function deleteNotifications(ids?: number[]): Promise<void> {
+  await ensureAnonymousSession();
+  const { error } = await supabase.rpc('delete_notifications', {
+    p_notification_ids: ids ?? null,
+  });
+  if (error) throw error;
+  await loadUnreadNotificationCount();
+  notifyNotificationStateChanged();
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
@@ -58,6 +81,6 @@ export async function markAllNotificationsRead(): Promise<void> {
     p_notification_ids: null,
   });
   if (error) throw error;
-  await notifee.setBadgeCount(0);
+  await loadUnreadNotificationCount();
   notifyNotificationStateChanged();
 }

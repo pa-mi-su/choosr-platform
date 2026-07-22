@@ -1,9 +1,11 @@
-import { decode } from 'base64-arraybuffer';
-import { launchImageLibrary, type Asset } from 'react-native-image-picker';
-
 import { supabase } from '../lib/supabase';
 import type { DecisionItem } from '../types/domain';
 import { ensureAnonymousSession } from './anonymousAuth';
+import {
+  choosePreparedPhotos,
+  normalizePhotoFailure,
+  type PreparedPhoto,
+} from './photoUploadService';
 
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const palette = [
@@ -14,26 +16,15 @@ const palette = [
   ['#244B3A', '#70D6A6'],
 ] as const;
 
-export type CustomPhoto = Asset & { base64: string };
+export type CustomPhoto = PreparedPhoto;
 
 export async function chooseCustomPhotos(
   remaining: number,
 ): Promise<CustomPhoto[]> {
-  const selection = await launchImageLibrary({
-    mediaType: 'photo',
-    maxWidth: 1600,
-    maxHeight: 1600,
-    quality: 0.8,
+  return choosePreparedPhotos({
+    maxBytes: MAX_PHOTO_BYTES,
+    maxDimension: 1600,
     selectionLimit: Math.max(1, Math.min(remaining, 10)),
-    includeBase64: true,
-  });
-  if (selection.didCancel) return [];
-  if (selection.errorCode) throw new Error(selection.errorCode);
-  return (selection.assets ?? []).map(asset => {
-    if (!asset.base64) throw new Error('photo_not_available');
-    if (asset.fileSize && asset.fileSize > MAX_PHOTO_BYTES)
-      throw new Error('photo_too_large');
-    return asset as CustomPhoto;
   });
 }
 
@@ -51,38 +42,26 @@ export async function buildCustomDecisionDeck(input: {
   const session = await ensureAnonymousSession();
   const uploadedPaths: string[] = [];
   try {
-    const photoItems = await Promise.all(
-      input.photos.map(async (photo, index) => {
-        const mimeType = photo.type?.startsWith('image/')
-          ? photo.type
-          : 'image/jpeg';
-        const extension =
-          mimeType === 'image/png'
-            ? 'png'
-            : mimeType === 'image/webp'
-            ? 'webp'
-            : 'jpg';
-        const path = `${
-          session.user.id
-        }/choice-${Date.now()}-${index}.${extension}`;
-        const bytes = decode(photo.base64);
-        if (bytes.byteLength > MAX_PHOTO_BYTES)
-          throw new Error('photo_too_large');
-        const { error: uploadError } = await supabase.storage
-          .from('decision-photos')
-          .upload(path, bytes, {
-            contentType: mimeType,
-            cacheControl: '172800',
-          });
-        if (uploadError) throw uploadError;
-        uploadedPaths.push(path);
-        const { data, error: signedError } = await supabase.storage
-          .from('decision-photos')
-          .createSignedUrl(path, 48 * 60 * 60);
-        if (signedError) throw signedError;
-        return { path, imageUrl: data.signedUrl };
-      }),
-    );
+    const photoItems: Array<{ path: string; imageUrl: string }> = [];
+    for (const [index, photo] of input.photos.entries()) {
+      const path = `${session.user.id}/choice-${Date.now()}-${index}.${
+        photo.extension
+      }`;
+      const { error: uploadError } = await supabase.storage
+        .from('decision-photos')
+        .upload(path, photo.bytes, {
+          contentType: photo.contentType,
+          cacheControl: '172800',
+          upsert: false,
+        });
+      if (uploadError) throw uploadError;
+      uploadedPaths.push(path);
+      const { data, error: signedError } = await supabase.storage
+        .from('decision-photos')
+        .createSignedUrl(path, 48 * 60 * 60);
+      if (signedError) throw signedError;
+      photoItems.push({ path, imageUrl: data.signedUrl });
+    }
 
     return [
       ...textChoices.map((title, index) => {
@@ -119,6 +98,6 @@ export async function buildCustomDecisionDeck(input: {
   } catch (error) {
     if (uploadedPaths.length)
       await supabase.storage.from('decision-photos').remove(uploadedPaths);
-    throw error;
+    throw normalizePhotoFailure(error);
   }
 }

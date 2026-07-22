@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -9,10 +10,13 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { Brand, Button, Screen } from '../components/UI';
 import {
   loadNotifications,
+  deleteNotifications,
+  markNotificationsRead,
   markAllNotificationsRead,
   type ChoosrNotification,
 } from '../services/notificationService';
@@ -40,13 +44,6 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
     try {
       const notifications = await loadNotifications();
       setItems(notifications);
-      await markAllNotificationsRead();
-      setItems(current =>
-        current.map(item => ({
-          ...item,
-          readAt: item.readAt ?? new Date().toISOString(),
-        })),
-      );
     } catch {
       setError('Notifications could not be loaded. Pull down to retry.');
     } finally {
@@ -54,6 +51,61 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
       setRefreshing(false);
     }
   }, []);
+
+  const markRead = async (item: ChoosrNotification) => {
+    if (item.readAt) return;
+    try {
+      await markNotificationsRead([item.id]);
+      setItems(current =>
+        current.map(value =>
+          value.id === item.id
+            ? { ...value, readAt: new Date().toISOString() }
+            : value,
+        ),
+      );
+    } catch {
+      setError('That notification could not be updated.');
+    }
+  };
+
+  const remove = async (id: number) => {
+    try {
+      await deleteNotifications([id]);
+      setItems(current => current.filter(item => item.id !== id));
+    } catch {
+      setError('That notification could not be deleted.');
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      await markAllNotificationsRead();
+      const now = new Date().toISOString();
+      setItems(current =>
+        current.map(item => ({ ...item, readAt: item.readAt ?? now })),
+      );
+    } catch {
+      setError('Notifications could not be updated.');
+    }
+  };
+
+  const confirmClear = () =>
+    Alert.alert(
+      'Clear all notifications?',
+      'This removes every notification from your inbox.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear all',
+          style: 'destructive',
+          onPress: () => {
+            deleteNotifications()
+              .then(() => setItems([]))
+              .catch(() => setError('Notifications could not be cleared.'));
+          },
+        },
+      ],
+    );
 
   useEffect(() => {
     load().catch(() => undefined);
@@ -66,7 +118,21 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
         <Button label="Close" variant="quiet" onPress={navigation.goBack} />
       </View>
       <Text style={styles.eyebrow}>YOUR UPDATES</Text>
-      <Text style={styles.title}>Notifications</Text>
+      <View style={styles.titleRow}>
+        <Text style={styles.title}>Notifications</Text>
+        {items.length ? (
+          <View style={styles.headerActions}>
+            <Pressable onPress={markAllRead}>
+              <Text style={styles.headerAction}>Read all</Text>
+            </Pressable>
+            <Pressable onPress={confirmClear}>
+              <Text style={[styles.headerAction, styles.clearAction]}>
+                Clear
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
@@ -99,24 +165,59 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
             </View>
           }
           renderItem={({ item }) => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`${item.title}. ${item.body}`}
-              onPress={() => navigation.navigate('Circle')}
-              style={({ pressed }) => [styles.card, pressed && styles.pressed]}
+            <Swipeable
+              friction={2}
+              rightThreshold={42}
+              renderRightActions={() => (
+                <View style={styles.swipeActions}>
+                  {!item.readAt ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Mark ${item.title} as read`}
+                      onPress={() => markRead(item)}
+                      style={[styles.swipeAction, styles.readAction]}
+                    >
+                      <Text style={styles.swipeActionText}>Read</Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete ${item.title}`}
+                    onPress={() => remove(item.id)}
+                    style={[styles.swipeAction, styles.deleteAction]}
+                  >
+                    <Text style={styles.swipeActionText}>Delete</Text>
+                  </Pressable>
+                </View>
+              )}
             >
-              <View style={styles.icon}>
-                <Text style={styles.iconText}>
-                  {item.kind === 'room_invitation' ? '✓' : '●●'}
-                </Text>
-              </View>
-              <View style={styles.copy}>
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <Text style={styles.cardBody}>{item.body}</Text>
-                <Text style={styles.date}>{when(item.createdAt)}</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${item.title}. ${item.body}`}
+                onPress={() => {
+                  markRead(item).catch(() => undefined);
+                  navigation.navigate('Circle');
+                }}
+                style={({ pressed }) => [
+                  styles.card,
+                  !item.readAt && styles.unreadCard,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={styles.icon}>
+                  <Text style={styles.iconText}>
+                    {item.kind === 'room_invitation' ? '✓' : '●●'}
+                  </Text>
+                </View>
+                <View style={styles.copy}>
+                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <Text style={styles.cardBody}>{item.body}</Text>
+                  <Text style={styles.date}>{when(item.createdAt)}</Text>
+                </View>
+                {!item.readAt ? <View style={styles.unreadDot} /> : null}
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+            </Swipeable>
           )}
         />
       )}
@@ -145,6 +246,14 @@ const styles = StyleSheet.create({
     letterSpacing: -1.4,
     marginTop: 7,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  headerActions: { flexDirection: 'row', gap: 14, paddingBottom: 5 },
+  headerAction: { color: colors.primary, fontSize: 11, fontWeight: '900' },
+  clearAction: { color: colors.danger },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { paddingTop: 24, paddingBottom: 24, gap: 10 },
   emptyList: { flexGrow: 1, justifyContent: 'center' },
@@ -157,6 +266,23 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 15,
   },
+  unreadCard: { borderColor: colors.primary },
+  unreadDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.danger,
+    marginHorizontal: 8,
+  },
+  swipeActions: { flexDirection: 'row' },
+  swipeAction: {
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  readAction: { backgroundColor: colors.accent },
+  deleteAction: { backgroundColor: colors.danger },
+  swipeActionText: { color: colors.white, fontSize: 12, fontWeight: '900' },
   pressed: { opacity: 0.72 },
   icon: {
     width: 48,

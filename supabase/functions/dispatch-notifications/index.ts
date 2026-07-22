@@ -164,7 +164,8 @@ Deno.serve(async request => {
         .from('user_notifications')
         .select('id', { count: 'exact', head: true })
         .eq('recipient_user_id', job.recipient_user_id)
-        .is('read_at', null);
+        .is('read_at', null)
+        .is('deleted_at', null);
       if (unreadError) throw unreadError;
       const { data: devices, error: deviceError } = await supabase
         .from('device_push_tokens')
