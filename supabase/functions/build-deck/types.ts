@@ -4,7 +4,9 @@ export type DeckRequest = {
   mode: DecisionMode;
   latitude?: number;
   longitude?: number;
+  postalCode?: string;
   radiusMeters?: number;
+  maxResults?: number;
   region?: string;
 };
 
@@ -18,6 +20,7 @@ export type ProviderItem = {
   background: string;
   accent: string;
   tags: string[];
+  imageUrl?: string;
   action?: { label: string; url: string };
 };
 
@@ -58,13 +61,24 @@ export function parseDeckRequest(value: unknown): DeckRequest {
   const mode = parseMode(body.mode);
   const latitude = optionalNumber(body.latitude, 'latitude', -90, 90);
   const longitude = optionalNumber(body.longitude, 'longitude', -180, 180);
+  const postalCode =
+    typeof body.postalCode === 'string' ? body.postalCode.trim() : undefined;
+  if (
+    postalCode !== undefined &&
+    !/^([0-9]{5}(?:-[0-9]{4})?|[A-Za-z][0-9][A-Za-z][ -]?[0-9][A-Za-z][0-9])$/.test(
+      postalCode,
+    )
+  ) {
+    throw new DeckRequestError('Invalid postalCode.');
+  }
   const radiusMeters = optionalNumber(
     body.radiusMeters,
     'radiusMeters',
     500,
     25000,
   );
-  if (latitude === undefined || longitude === undefined) {
+  const maxResults = optionalNumber(body.maxResults, 'maxResults', 1, 20);
+  if (!postalCode && (latitude === undefined || longitude === undefined)) {
     throw new DeckRequestError(
       'A valid latitude and longitude are required for local modes.',
     );
@@ -79,6 +93,8 @@ export function parseDeckRequest(value: unknown): DeckRequest {
     region: region.toUpperCase(),
     ...(latitude === undefined ? {} : { latitude }),
     ...(longitude === undefined ? {} : { longitude }),
+    ...(postalCode === undefined ? {} : { postalCode }),
     ...(radiusMeters === undefined ? {} : { radiusMeters }),
+    ...(maxResults === undefined ? {} : { maxResults }),
   };
 }

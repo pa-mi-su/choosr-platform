@@ -16,7 +16,7 @@ export type SessionStatus =
 
 export type ParticipantRole = 'host' | 'partner';
 export type SwipeDirection = 'left' | 'right';
-export type DecisionMode = 'eat' | 'do';
+export type DecisionMode = 'eat' | 'do' | 'custom';
 
 type SessionRow = {
   id: string;
@@ -99,6 +99,18 @@ type RoomInvitationRow = {
   responded_at: string | null;
 };
 
+type UserNotificationRow = {
+  id: number;
+  recipient_user_id: string;
+  kind: 'connection_request' | 'room_invitation';
+  title: string;
+  body: string;
+  payload: Json;
+  dedupe_key: string;
+  created_at: string;
+  read_at: string | null;
+};
+
 type Table<Row, Insert, Update> = {
   Row: Row;
   Insert: Insert;
@@ -117,6 +129,7 @@ export type Database = {
       profiles: Table<ProfileRow, never, never>;
       connections: Table<ConnectionRow, never, never>;
       room_invitations: Table<RoomInvitationRow, never, never>;
+      user_notifications: Table<UserNotificationRow, never, never>;
     };
     Views: Record<never, never>;
     Functions: {
@@ -213,6 +226,14 @@ export type Database = {
       register_push_token: {
         Args: { p_platform: 'ios' | 'android'; p_token: string };
         Returns: undefined;
+      };
+      unread_notification_count: {
+        Args: Record<never, never>;
+        Returns: number;
+      };
+      mark_notifications_read: {
+        Args: { p_notification_ids?: number[] | null };
+        Returns: number;
       };
       join_session: {
         Args: {

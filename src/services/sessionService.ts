@@ -45,6 +45,7 @@ const toItemPayload = (item: DecisionItem): Json => ({
   background: item.background,
   accent: item.accent,
   tags: item.tags,
+  ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
   ...(item.action ? { action: item.action } : {}),
 });
 

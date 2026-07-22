@@ -101,7 +101,7 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-          GOOGLE_PLACES_API_KEY: ${{ secrets.GOOGLE_PLACES_API_KEY }}
+          GEOAPIFY_API_KEY: ${{ secrets.GEOAPIFY_API_KEY }}
           FIREBASE_SERVICE_ACCOUNT_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BASE64 }}
         run: |
           if [ -z "${FIREBASE_SERVICE_ACCOUNT_BASE64:-}" ]; then
@@ -112,13 +112,14 @@ jobs:
             --project-ref "$SUPABASE_PROJECT_REF" \
             FIREBASE_SERVICE_ACCOUNT_BASE64="$FIREBASE_SERVICE_ACCOUNT_BASE64"
 
-          if [ -n "${GOOGLE_PLACES_API_KEY:-}" ]; then
+          if [ -n "${GEOAPIFY_API_KEY:-}" ]; then
             npx supabase secrets set \
               --project-ref "$SUPABASE_PROJECT_REF" \
-              GOOGLE_PLACES_API_KEY="$GOOGLE_PLACES_API_KEY"
+              GEOAPIFY_API_KEY="$GEOAPIFY_API_KEY"
             npx supabase functions deploy build-deck --project-ref "$SUPABASE_PROJECT_REF"
           else
-            echo "GOOGLE_PLACES_API_KEY is not configured; skipping optional live Places deck deployment."
+            echo "::error::GEOAPIFY_API_KEY is required for Activity and Food decks."
+            exit 1
           fi
 
           npx supabase functions deploy dispatch-notifications --project-ref "$SUPABASE_PROJECT_REF"

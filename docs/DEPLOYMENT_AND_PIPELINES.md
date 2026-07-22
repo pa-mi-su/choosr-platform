@@ -91,25 +91,25 @@ Create `dev`, `uat`, and `prod` GitHub environments. Configure these independent
 
 ### Secrets
 
-| Secret                                         | Purpose                                                                       |
-| ---------------------------------------------- | ----------------------------------------------------------------------------- |
-| `SUPABASE_ACCESS_TOKEN`                        | CLI authentication; scope and rotate deliberately                             |
-| `SUPABASE_DB_PASSWORD`                         | Database migration connection                                                 |
-| `GOOGLE_PLACES_API_KEY`                        | Optional Google Places server key; without it CI skips the live deck function |
-| `FIREBASE_SERVICE_ACCOUNT_BASE64`              | Firebase Admin JSON for push delivery                                         |
-| `APPLE_APNS_AUTH_KEY_BASE64`                   | Team-scoped APNs key retained for controlled setup                            |
-| `FIREBASE_ANDROID_CONFIG_BASE64`               | Base64 environment `google-services.json`                                     |
-| `FIREBASE_IOS_CONFIG_BASE64`                   | Base64 environment `GoogleService-Info.plist`                                 |
-| `FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64` | Firebase App Distribution service-account JSON                                |
-| `ANDROID_UPLOAD_KEYSTORE_BASE64`               | Android upload keystore                                                       |
-| `ANDROID_UPLOAD_KEYSTORE_PASSWORD`             | Keystore password                                                             |
-| `ANDROID_UPLOAD_KEY_ALIAS`                     | Upload alias                                                                  |
-| `ANDROID_UPLOAD_KEY_PASSWORD`                  | Upload key password                                                           |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64`           | Play Publisher service-account JSON                                           |
-| `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`      | Apple distribution certificate and key                                        |
-| `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`        | `.p12` password                                                               |
-| `IOS_PROVISIONING_PROFILE_BASE64`              | Profile matching the environment bundle ID                                    |
-| `APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64`     | App Store Connect `.p8` key                                                   |
+| Secret                                         | Purpose                                                   |
+| ---------------------------------------------- | --------------------------------------------------------- |
+| `SUPABASE_ACCESS_TOKEN`                        | CLI authentication; scope and rotate deliberately         |
+| `SUPABASE_DB_PASSWORD`                         | Database migration connection                             |
+| `GEOAPIFY_API_KEY`                             | Geoapify server key for ZIP-based Activity and Food decks |
+| `FIREBASE_SERVICE_ACCOUNT_BASE64`              | Firebase Admin JSON for push delivery                     |
+| `APPLE_APNS_AUTH_KEY_BASE64`                   | Team-scoped APNs key retained for controlled setup        |
+| `FIREBASE_ANDROID_CONFIG_BASE64`               | Base64 environment `google-services.json`                 |
+| `FIREBASE_IOS_CONFIG_BASE64`                   | Base64 environment `GoogleService-Info.plist`             |
+| `FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64` | Firebase App Distribution service-account JSON            |
+| `ANDROID_UPLOAD_KEYSTORE_BASE64`               | Android upload keystore                                   |
+| `ANDROID_UPLOAD_KEYSTORE_PASSWORD`             | Keystore password                                         |
+| `ANDROID_UPLOAD_KEY_ALIAS`                     | Upload alias                                              |
+| `ANDROID_UPLOAD_KEY_PASSWORD`                  | Upload key password                                       |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64`           | Play Publisher service-account JSON                       |
+| `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`      | Apple distribution certificate and key                    |
+| `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`        | `.p12` password                                           |
+| `IOS_PROVISIONING_PROFILE_BASE64`              | Profile matching the environment bundle ID                |
+| `APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64`     | App Store Connect `.p8` key                               |
 
 GitHub environment secrets are the source of truth for provider and notification-worker
 credentials. The Supabase workflow synchronizes configured values into the matching hosted

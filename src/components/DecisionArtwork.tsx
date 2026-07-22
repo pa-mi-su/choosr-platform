@@ -1,5 +1,11 @@
 import React from 'react';
-import { StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import {
+  ImageBackground,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from 'react-native';
 
 import { colors } from '../theme';
 import type { DecisionItem } from '../types/domain';
@@ -11,11 +17,8 @@ export function DecisionArtwork({
   item: DecisionItem;
   style?: ViewStyle;
 }): React.JSX.Element {
-  return (
-    <View
-      style={[styles.artwork, { backgroundColor: item.background }, style]}
-      accessibilityLabel={`${item.title} artwork`}
-    >
+  const content = (
+    <>
       <View style={[styles.orb, { backgroundColor: item.accent }]} />
       <View style={styles.copy}>
         <Text style={styles.kicker}>{item.kicker}</Text>
@@ -24,12 +27,34 @@ export function DecisionArtwork({
         </Text>
         <Text style={styles.meta}>{item.meta}</Text>
       </View>
+    </>
+  );
+  if (item.imageUrl) {
+    return (
+      <ImageBackground
+        source={{ uri: item.imageUrl }}
+        resizeMode="cover"
+        style={[styles.artwork, { backgroundColor: item.background }, style]}
+        imageStyle={styles.image}
+        accessibilityLabel={`${item.title} photo`}
+      >
+        {content}
+      </ImageBackground>
+    );
+  }
+  return (
+    <View
+      style={[styles.artwork, { backgroundColor: item.background }, style]}
+      accessibilityLabel={`${item.title} artwork`}
+    >
+      {content}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   artwork: { overflow: 'hidden', borderRadius: 24, minHeight: 320 },
+  image: { borderRadius: 24 },
   orb: {
     position: 'absolute',
     width: 290,

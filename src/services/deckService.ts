@@ -7,7 +7,9 @@ export type DiscoveryInput = {
   mode: DecisionMode;
   latitude?: number;
   longitude?: number;
+  postalCode?: string;
   radiusMeters?: number;
+  maxResults?: number;
   region?: string;
 };
 

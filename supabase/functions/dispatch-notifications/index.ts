@@ -75,7 +75,8 @@ function pushCopy(job: PushJob): PushCopy {
     };
   }
   const mode = typeof job.payload.mode === 'string' ? job.payload.mode : '';
-  const activity = mode === 'eat' ? 'a meal' : 'something to do';
+  const activity =
+    mode === 'eat' ? 'food' : mode === 'do' ? 'an activity' : 'a custom choice';
   return {
     title: "You're invited",
     body: `Open Choosr to choose ${activity} together.`,
@@ -96,6 +97,7 @@ async function sendMessage(input: {
   accessToken: string;
   token: string;
   job: PushJob;
+  unreadCount: number;
 }): Promise<{ ok: boolean; invalidToken: boolean; error?: string }> {
   const response = await fetch(
     `https://fcm.googleapis.com/v1/projects/${input.account.project_id}/messages:send`,
@@ -110,8 +112,13 @@ async function sendMessage(input: {
           token: input.token,
           notification: pushCopy(input.job),
           data: stringData(input.job),
-          android: { priority: 'high' },
-          apns: { payload: { aps: { sound: 'default', badge: 1 } } },
+          android: {
+            priority: 'high',
+            notification: { notification_count: input.unreadCount },
+          },
+          apns: {
+            payload: { aps: { sound: 'default', badge: input.unreadCount } },
+          },
         },
       }),
     },
@@ -130,7 +137,8 @@ async function sendMessage(input: {
 }
 
 Deno.serve(async request => {
-  if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed.' }, 405);
+  if (request.method !== 'POST')
+    return jsonResponse({ error: 'Method not allowed.' }, 405);
   if (!request.headers.get('Authorization')?.startsWith('Bearer ')) {
     return jsonResponse({ error: 'Authentication required.' }, 401);
   }
@@ -152,6 +160,12 @@ Deno.serve(async request => {
     const accessToken = await getGoogleAccessToken(account);
     let delivered = 0;
     for (const job of jobs as PushJob[]) {
+      const { count: unreadCount, error: unreadError } = await supabase
+        .from('user_notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_user_id', job.recipient_user_id)
+        .is('read_at', null);
+      if (unreadError) throw unreadError;
       const { data: devices, error: deviceError } = await supabase
         .from('device_push_tokens')
         .select('token')
@@ -167,13 +181,22 @@ Deno.serve(async request => {
 
       const results = await Promise.all(
         devices.map(device =>
-          sendMessage({ account, accessToken, token: device.token, job }),
+          sendMessage({
+            account,
+            accessToken,
+            token: device.token,
+            job,
+            unreadCount: Math.max(unreadCount ?? 1, 1),
+          }),
         ),
       );
       await Promise.all(
         devices.map((device, index) =>
           results[index].invalidToken
-            ? supabase.from('device_push_tokens').delete().eq('token', device.token)
+            ? supabase
+                .from('device_push_tokens')
+                .delete()
+                .eq('token', device.token)
             : Promise.resolve(),
         ),
       );
@@ -183,13 +206,19 @@ Deno.serve(async request => {
       } else {
         await supabase.rpc('fail_notification_job', {
           p_id: job.id,
-          p_error: results.map(result => result.error).filter(Boolean).join(' | '),
+          p_error: results
+            .map(result => result.error)
+            .filter(Boolean)
+            .join(' | '),
         });
       }
     }
     return jsonResponse({ processed: jobs.length, delivered });
   } catch (error) {
     console.error(error);
-    return jsonResponse({ error: 'Notification delivery is unavailable.' }, 503);
+    return jsonResponse(
+      { error: 'Notification delivery is unavailable.' },
+      503,
+    );
   }
 });

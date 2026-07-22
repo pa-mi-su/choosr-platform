@@ -2,101 +2,150 @@ import { colorsFor } from '../presentation.ts';
 import { fetchWithTimeout } from '../http.ts';
 import type { DeckRequest, ProviderItem } from '../types.ts';
 
-type LocalizedText = { text?: string };
-type GooglePlace = {
-  id?: string;
-  displayName?: LocalizedText;
-  formattedAddress?: string;
-  primaryTypeDisplayName?: LocalizedText;
-  googleMapsUri?: string;
+type GeoFeature = {
+  properties?: {
+    place_id?: string;
+    name?: string;
+    formatted?: string;
+    address_line1?: string;
+    categories?: string[];
+    distance?: number;
+    lat?: number;
+    lon?: number;
+    wiki_and_media?: { image?: string };
+  };
 };
-type GooglePlacesResponse = { places?: GooglePlace[] };
+type GeoCollection = { features?: GeoFeature[] };
+type GeocodeResult = { lat?: number; lon?: number };
 
-type UsablePlace = GooglePlace & {
-  id: string;
-  displayName: { text: string };
-  googleMapsUri: string;
+const categoryLabel = (categories: string[] | undefined, isFood: boolean) => {
+  const leaf = categories?.find(value =>
+    isFood ? value.startsWith('catering.') : value.startsWith('entertainment.'),
+  );
+  if (!leaf) return isFood ? 'Restaurant' : 'Local activity';
+  return (
+    leaf.split('.').at(-1)?.replaceAll('_', ' ') ??
+    (isFood ? 'Restaurant' : 'Activity')
+  );
 };
 
-const isUsablePlace = (place: GooglePlace): place is UsablePlace =>
-  typeof place.id === 'string' &&
-  typeof place.displayName?.text === 'string' &&
-  typeof place.googleMapsUri === 'string';
+async function coordinatesFor(request: DeckRequest, key: string) {
+  if (Number.isFinite(request.latitude) && Number.isFinite(request.longitude)) {
+    return {
+      latitude: request.latitude as number,
+      longitude: request.longitude as number,
+    };
+  }
+  const query = new URLSearchParams({
+    text: request.postalCode ?? '',
+    format: 'json',
+    limit: '1',
+    apiKey: key,
+    filter: `countrycode:${/^\d/.test(request.postalCode ?? '') ? 'us' : 'ca'}`,
+  });
+  const response = await fetchWithTimeout(
+    `https://api.geoapify.com/v1/geocode/search?${query}`,
+  );
+  if (!response.ok)
+    throw new Error(`Postal-code lookup failed with ${response.status}.`);
+  const results = (await response.json()) as { results?: GeocodeResult[] };
+  const first = results.results?.[0];
+  if (!Number.isFinite(first?.lat) || !Number.isFinite(first?.lon)) {
+    throw new Error('That ZIP or postal code could not be found.');
+  }
+  return { latitude: first!.lat as number, longitude: first!.lon as number };
+}
+
+async function imageFor(
+  placeId: string,
+  key: string,
+): Promise<string | undefined> {
+  const query = new URLSearchParams({
+    id: placeId,
+    features: 'details',
+    apiKey: key,
+  });
+  const response = await fetchWithTimeout(
+    `https://api.geoapify.com/v2/place-details?${query}`,
+  );
+  if (!response.ok) return undefined;
+  const details = (await response.json()) as GeoCollection;
+  const image = details.features?.[0]?.properties?.wiki_and_media?.image;
+  return typeof image === 'string' && image.startsWith('https://')
+    ? image
+    : undefined;
+}
 
 export async function buildPlacesDeck(
   request: DeckRequest,
 ): Promise<ProviderItem[]> {
-  const key = Deno.env.get('GOOGLE_PLACES_API_KEY');
-  if (!key) {
-    throw new Error('GOOGLE_PLACES_API_KEY is not configured.');
-  }
-  if (
-    !Number.isFinite(request.latitude) ||
-    !Number.isFinite(request.longitude)
-  ) {
-    throw new Error('A valid latitude and longitude are required.');
-  }
+  const key = Deno.env.get('GEOAPIFY_API_KEY');
+  if (!key) throw new Error('GEOAPIFY_API_KEY is not configured.');
+  const { latitude, longitude } = await coordinatesFor(request, key);
   const isFood = request.mode === 'eat';
-  const response = await fetchWithTimeout(
-    'https://places.googleapis.com/v1/places:searchNearby',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Goog-Api-Key': key,
-        'X-Goog-FieldMask':
-          'places.id,places.displayName,places.formattedAddress,places.primaryTypeDisplayName,places.googleMapsUri',
-      },
-      body: JSON.stringify({
-        includedTypes: isFood
-          ? ['restaurant']
-          : [
-              'bowling_alley',
-              'cafe',
-              'museum',
-              'park',
-              'performing_arts_theater',
-            ],
-        maxResultCount: 20,
-        rankPreference: 'POPULARITY',
-        locationRestriction: {
-          circle: {
-            center: {
-              latitude: request.latitude,
-              longitude: request.longitude,
-            },
-            radius: Math.min(
-              Math.max(request.radiusMeters ?? 5000, 500),
-              25000,
-            ),
-          },
-        },
-      }),
-    },
+  const configuredLimit = Number(Deno.env.get('DISCOVERY_RESULT_LIMIT') ?? 10);
+  const limit = Math.min(
+    Math.max(request.maxResults ?? configuredLimit, 1),
+    20,
   );
-  if (!response.ok) {
-    throw new Error(`Google Places request failed with ${response.status}.`);
-  }
-  const payload = (await response.json()) as GooglePlacesResponse;
-  return (payload.places ?? []).filter(isUsablePlace).map((place, index) => {
+  const categories = isFood
+    ? 'catering.restaurant'
+    : 'entertainment,leisure.park';
+  const query = new URLSearchParams({
+    categories,
+    filter: `circle:${longitude},${latitude},${Math.min(
+      Math.max(request.radiusMeters ?? 15000, 500),
+      25000,
+    )}`,
+    bias: `proximity:${longitude},${latitude}`,
+    conditions: 'named',
+    limit: String(limit),
+    apiKey: key,
+  });
+  const response = await fetchWithTimeout(
+    `https://api.geoapify.com/v2/places?${query}`,
+  );
+  if (!response.ok)
+    throw new Error(`Nearby search failed with ${response.status}.`);
+  const payload = (await response.json()) as GeoCollection;
+  const places = (payload.features ?? [])
+    .filter(feature => {
+      const place = feature.properties;
+      return (
+        typeof place?.place_id === 'string' &&
+        typeof place.name === 'string' &&
+        Number.isFinite(place.lat) &&
+        Number.isFinite(place.lon)
+      );
+    })
+    .slice(0, limit);
+  const images = await Promise.all(
+    places.map(place => imageFor(place.properties!.place_id!, key)),
+  );
+
+  return places.map((feature, index) => {
+    const place = feature.properties!;
     const [background, accent] = colorsFor(index);
-    const title = place.displayName.text;
+    const distanceMiles =
+      typeof place.distance === 'number'
+        ? `${(place.distance / 1609.344).toFixed(1)} mi away`
+        : 'Nearby';
+    const label = categoryLabel(place.categories, isFood);
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      `${place.name} ${place.formatted ?? ''}`,
+    )}`;
     return {
-      id: `google:${place.id}`,
+      id: `geoapify:${place.place_id}`,
       mode: request.mode,
-      title,
-      kicker: isFood ? 'DINNER TOGETHER' : 'A PLAN TOGETHER',
-      meta:
-        place.primaryTypeDisplayName?.text ??
-        (isFood ? 'Restaurant' : 'Local activity'),
-      description: place.formattedAddress ?? 'Nearby',
+      title: place.name!,
+      kicker: isFood ? 'PICK FOOD' : 'PICK AN ACTIVITY',
+      meta: `${label} · ${distanceMiles}`,
+      description: place.formatted ?? place.address_line1 ?? distanceMiles,
       background,
       accent,
       tags: [isFood ? 'Food' : 'Activity', 'Nearby'],
-      action: {
-        label: `Open ${title} in Maps`,
-        url: place.googleMapsUri,
-      },
+      ...(images[index] ? { imageUrl: images[index] } : {}),
+      action: { label: `Open ${place.name} in Maps`, url: mapsUrl },
     };
   });
 }

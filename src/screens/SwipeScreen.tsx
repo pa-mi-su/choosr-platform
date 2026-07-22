@@ -223,7 +223,9 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
         </View>
       </View>
       <View style={styles.progress}>
-        <Text style={styles.prompt}>{modeDefinition.prompt}</Text>
+        <Text style={styles.prompt} numberOfLines={2}>
+          {mode === 'custom' ? item.description : modeDefinition.prompt}
+        </Text>
         <Text style={styles.count}>
           {index + 1} / {deck.length}
         </Text>

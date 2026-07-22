@@ -21,7 +21,7 @@ const forbiddenContent = [
   /-----BEGIN (?:RSA |EC )?PRIVATE KEY-----/,
   /"private_key"\s*:\s*"-----BEGIN PRIVATE KEY/,
   /\bsb_secret_[A-Za-z0-9_-]+/,
-  /^(?:GOOGLE_PLACES_API_KEY|FIREBASE_SERVICE_ACCOUNT_BASE64|SUPABASE_DB_PASSWORD|SUPABASE_ACCESS_TOKEN)=[^\s.][^\s]{7,}$/m,
+  /^(?:GEOAPIFY_API_KEY|GOOGLE_PLACES_API_KEY|FIREBASE_SERVICE_ACCOUNT_BASE64|SUPABASE_DB_PASSWORD|SUPABASE_ACCESS_TOKEN)=[^\s.][^\s]{7,}$/m,
 ];
 
 const violations = [];

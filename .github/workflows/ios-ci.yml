@@ -36,6 +36,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run env:generate:test
+      - name: Materialize CI-only Firebase placeholders
+        run: node scripts/materialize-ci-firebase-configs.mjs
       - name: Install CocoaPods dependencies
         working-directory: ios
         run: pod install

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Alert, StatusBar, StyleSheet } from 'react-native';
+import { StatusBar, StyleSheet } from 'react-native';
 import {
   NavigationContainer,
   type LinkingOptions,
@@ -18,6 +18,7 @@ import {
   openCircleFromNotification,
 } from './src/navigation/navigationRef';
 import { registerPushListeners } from './src/services/pushNotifications';
+import { notifyNotificationStateChanged } from './src/services/notificationService';
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: roomLinkingPrefixes,
@@ -35,17 +36,7 @@ export default function App(): React.JSX.Element {
     () =>
       registerPushListeners({
         onOpen: openCircleFromNotification,
-        onForeground: message => {
-          Alert.alert(
-            message.notification?.title ?? 'New Choosr invitation',
-            message.notification?.body ??
-              'Open your Circle to see who invited you.',
-            [
-              { text: 'Later', style: 'cancel' },
-              { text: 'View invite', onPress: openCircleFromNotification },
-            ],
-          );
-        },
+        onForeground: notifyNotificationStateChanged,
       }),
     [],
   );
