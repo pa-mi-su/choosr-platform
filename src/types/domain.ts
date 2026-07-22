@@ -1,6 +1,6 @@
 export type SwipeDirection = 'left' | 'right';
 
-export type DecisionMode = 'eat' | 'do';
+export type DecisionMode = 'eat' | 'do' | 'custom';
 
 export type DecisionItem = {
   id: string;
@@ -12,6 +12,7 @@ export type DecisionItem = {
   background: string;
   accent: string;
   tags: string[];
+  imageUrl?: string;
   action?: {
     label: string;
     url: string;

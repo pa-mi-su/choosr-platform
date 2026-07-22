@@ -54,8 +54,8 @@ select policies_are(
 
 select results_eq(
   $$ select count(*)::bigint from pg_policies where schemaname = 'public' $$,
-  array[5::bigint],
-  'exactly five restrictive read policies exist'
+  array[6::bigint],
+  'exactly six restrictive read policies exist'
 );
 
 select results_eq(

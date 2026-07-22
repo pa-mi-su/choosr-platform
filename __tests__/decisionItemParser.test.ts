@@ -21,6 +21,22 @@ describe('decision item parser', () => {
     expect(parseDecisionItem(validItem)).toEqual(validItem);
   });
 
+  it('accepts a custom photo choice with an HTTPS image', () => {
+    const item = {
+      id: 'custom-photo',
+      mode: 'custom',
+      title: 'Photo 1',
+      kicker: validItem.kicker,
+      meta: validItem.meta,
+      description: validItem.description,
+      background: validItem.background,
+      accent: validItem.accent,
+      tags: validItem.tags,
+      imageUrl: 'https://example.com/photo.jpg',
+    };
+    expect(parseDecisionItem(item)).toEqual(item);
+  });
+
   it('rejects a malformed provider payload', () => {
     expect(() => parseDecisionItem({ ...validItem, title: null })).toThrow(
       'Invalid decision item field: title.',
@@ -34,6 +50,15 @@ describe('decision item parser', () => {
         action: { label: 'Open', url: 'http://insecure.example' },
       }),
     ).toThrow('Decision item action must use HTTPS.');
+  });
+
+  it('rejects unsafe image schemes', () => {
+    expect(() =>
+      parseDecisionItem({
+        ...validItem,
+        imageUrl: 'http://insecure.example/photo.jpg',
+      }),
+    ).toThrow('Decision item image must use HTTPS.');
   });
 
   it('rejects invalid presentation colors', () => {

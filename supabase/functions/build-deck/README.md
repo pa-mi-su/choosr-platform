@@ -2,11 +2,12 @@
 
 Protected content adapter for the Choosr decision engine.
 
-- `eat` and `do` call Google Places Nearby Search using `GOOGLE_PLACES_API_KEY`.
+- `eat` and `do` geocode a ZIP/postal code and query Geoapify Places using
+  `GEOAPIFY_API_KEY`. The free commercial tier is sufficient for MVP traffic.
 - Provider credentials are Supabase secrets and never mobile environment values.
-- The Places field mask intentionally excludes ratings, price, hours, and photos to keep the
-  initial request in the smallest practical data shape. Review current Google SKU rules before
-  adding fields.
+- `DISCOVERY_RESULT_LIMIT` optionally changes the server default (10, bounded to 1–20).
+- Place-details media is used only when a licensed image is available; the client renders a
+  designed fallback rather than scraping Google or Yelp imagery.
 
 Local setup:
 

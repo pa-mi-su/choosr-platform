@@ -1,6 +1,6 @@
 import type { DecisionItem, DecisionMode } from '../types/domain';
 
-const modes = new Set<DecisionMode>(['eat', 'do']);
+const modes = new Set<DecisionMode>(['eat', 'do', 'custom']);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -41,6 +41,13 @@ export function parseDecisionItem(value: unknown): DecisionItem {
   }
 
   let action: DecisionItem['action'];
+  let imageUrl: string | undefined;
+  if (value.imageUrl !== undefined) {
+    imageUrl = requiredString(value.imageUrl, 'imageUrl', 4096);
+    if (!imageUrl.startsWith('https://')) {
+      throw new Error('Decision item image must use HTTPS.');
+    }
+  }
   if (value.action !== undefined) {
     if (!isRecord(value.action)) {
       throw new Error('Invalid decision item field: action.');
@@ -65,6 +72,7 @@ export function parseDecisionItem(value: unknown): DecisionItem {
     background: color(value.background, 'background'),
     accent: color(value.accent, 'accent'),
     tags: value.tags,
+    ...(imageUrl ? { imageUrl } : {}),
     ...(action ? { action } : {}),
   };
 }
