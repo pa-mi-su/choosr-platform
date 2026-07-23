@@ -3,6 +3,10 @@ import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
 import { colorsFor } from '../presentation.ts';
 import { fetchWithTimeout } from '../http.ts';
 import type { DeckRequest, ProviderItem } from '../types.ts';
+import {
+  extractWebsiteImageFromHtml,
+  isPublicWebUrl,
+} from './websitePreview.ts';
 
 const IMAGE_BUCKET = 'discovery-images';
 
@@ -16,6 +20,14 @@ type GeoFeature = {
     distance?: number;
     lat?: number;
     lon?: number;
+    website?: string;
+    contact?: { website?: string };
+    datasource?: {
+      raw?: {
+        website?: string;
+        'contact:website'?: string;
+      };
+    };
     wiki_and_media?: { image?: string };
   };
 };
@@ -63,6 +75,7 @@ async function coordinatesFor(request: DeckRequest, key: string) {
 async function imageFor(
   place: NonNullable<GeoFeature['properties']>,
   key: string,
+  isFood: boolean,
 ): Promise<string | undefined> {
   try {
     const query = new URLSearchParams({
@@ -75,36 +88,109 @@ async function imageFor(
     );
     if (response.ok) {
       const details = (await response.json()) as GeoCollection;
-      const mediaImage =
-        details.features?.[0]?.properties?.wiki_and_media?.image;
-      if (isPublicHttpsUrl(mediaImage)) return mediaImage;
+      const detail = details.features?.[0]?.properties;
+      const mediaImage = detail?.wiki_and_media?.image;
+      if (isPublicWebUrl(mediaImage, { httpsOnly: true })) return mediaImage;
+      if (isFood) {
+        const website =
+          detail?.website ??
+          detail?.contact?.website ??
+          detail?.datasource?.raw?.website ??
+          detail?.datasource?.raw?.['contact:website'] ??
+          place.website ??
+          place.contact?.website ??
+          place.datasource?.raw?.website ??
+          place.datasource?.raw?.['contact:website'];
+        return websiteImageFor(website);
+      }
     }
   } catch {
-    // Artwork is optional; continue to the cached map fallback.
+    // Artwork is optional; continue to the mode-specific fallback.
   }
-  return mapImageFor(place, key);
+  return isFood ? undefined : mapImageFor(place, key);
 }
 
-function isPublicHttpsUrl(value: unknown): value is string {
-  if (typeof value !== 'string') return false;
+const MAX_WEBSITE_HTML_BYTES = 512 * 1024;
+const MAX_WEBSITE_REDIRECTS = 3;
+
+async function limitedHtml(response: Response) {
+  if (!response.body) return undefined;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let html = '';
   try {
-    const url = new URL(value);
-    const hostname = url.hostname.toLowerCase();
-    return (
-      url.protocol === 'https:' &&
-      hostname !== 'localhost' &&
-      hostname !== '0.0.0.0' &&
-      hostname !== '127.0.0.1' &&
-      hostname !== '::1' &&
-      !hostname.endsWith('.local') &&
-      !/^10\./.test(hostname) &&
-      !/^192\.168\./.test(hostname) &&
-      !/^172\.(1[6-9]|2\d|3[01])\./.test(hostname) &&
-      !/^169\.254\./.test(hostname)
-    );
-  } catch {
-    return false;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_WEBSITE_HTML_BYTES) {
+        await reader.cancel();
+        return undefined;
+      }
+      html += decoder.decode(value, { stream: true });
+    }
+    return html + decoder.decode();
+  } finally {
+    reader.releaseLock();
   }
+}
+
+async function websiteImageFor(value: unknown) {
+  if (typeof value !== 'string') return undefined;
+  let current: URL;
+  try {
+    const firstWebsite = value.trim().split(';')[0]?.trim();
+    if (!firstWebsite) return undefined;
+    current = new URL(
+      /^[a-z][a-z\d+.-]*:/i.test(firstWebsite)
+        ? firstWebsite
+        : `https://${firstWebsite}`,
+    );
+    if (current.protocol === 'http:') current.protocol = 'https:';
+  } catch {
+    return undefined;
+  }
+
+  for (let redirects = 0; redirects <= MAX_WEBSITE_REDIRECTS; redirects += 1) {
+    if (!isPublicWebUrl(current.toString(), { httpsOnly: true }))
+      return undefined;
+    try {
+      const response = await fetchWithTimeout(
+        current,
+        {
+          redirect: 'manual',
+          headers: {
+            Accept: 'text/html,application/xhtml+xml',
+            'User-Agent': 'ChoosrLinkPreview/1.0',
+          },
+        },
+        5000,
+      );
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location');
+        if (!location) return undefined;
+        current = new URL(location, current);
+        continue;
+      }
+      if (!response.ok) return undefined;
+      const contentType = response.headers.get('content-type')?.toLowerCase();
+      if (contentType && !contentType.includes('text/html')) return undefined;
+      const contentLength = Number(response.headers.get('content-length') ?? 0);
+      if (
+        Number.isFinite(contentLength) &&
+        contentLength > MAX_WEBSITE_HTML_BYTES
+      )
+        return undefined;
+      const html = await limitedHtml(response);
+      return html
+        ? extractWebsiteImageFromHtml(html, current.toString())
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }
 
 async function imageObjectName(placeId: string) {
@@ -221,7 +307,7 @@ export async function buildPlacesDeck(
     })
     .slice(0, limit);
   const images = await Promise.all(
-    places.map(place => imageFor(place.properties!, key)),
+    places.map(place => imageFor(place.properties!, key, isFood)),
   );
 
   return places.map((feature, index) => {
