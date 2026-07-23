@@ -22,18 +22,9 @@ import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ActiveRooms'>;
-
-const bucket = (room: RoomHistoryItem): 'active' | 'completed' | 'expired' => {
-  if (
-    room.status === 'expired' ||
-    room.status === 'cancelled' ||
-    new Date(room.expiresAt).getTime() <= Date.now()
-  )
-    return 'expired';
-  if (room.status === 'matched' || room.status === 'completed')
-    return 'completed';
-  return 'active';
-};
+type ActiveRoomRow =
+  | { kind: 'empty-active'; id: string }
+  | { kind: 'room'; id: string; room: RoomHistoryItem };
 
 export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   const [rooms, setRooms] = useState<RoomHistoryItem[]>([]);
@@ -66,7 +57,7 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   );
 
   const open = async (room: RoomHistoryItem) => {
-    if (bucket(room) !== 'active' || room.status !== 'active') return;
+    if (room.status !== 'active') return;
     navigation.navigate('Swipe', {
       sessionId: room.sessionId,
       roundNumber: room.roundNumber,
@@ -74,28 +65,15 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     });
   };
 
-  const sections = ['active', 'completed', 'expired'] as const;
-  const rows = error
+  const rows: ActiveRoomRow[] = error
     ? []
-    : sections.flatMap(section => {
-        const sectionRooms = rooms.filter(room => bucket(room) === section);
-        return [
-          { kind: 'heading' as const, id: `heading:${section}`, section },
-          ...(section === 'active' && sectionRooms.length === 0
-            ? [
-                {
-                  kind: 'empty-active' as const,
-                  id: 'empty:active',
-                },
-              ]
-            : []),
-          ...sectionRooms.map(room => ({
-            kind: 'room' as const,
-            id: room.sessionId,
-            room,
-          })),
-        ];
-      });
+    : rooms.length === 0
+    ? [{ kind: 'empty-active' as const, id: 'empty:active' }]
+    : rooms.map(room => ({
+        kind: 'room' as const,
+        id: room.sessionId,
+        room,
+      }));
 
   return (
     <Screen testID="active-rooms-screen" style={styles.screen}>
@@ -139,19 +117,8 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                 </View>
               );
             }
-            if (item.kind === 'heading') {
-              const count = rooms.filter(
-                room => bucket(room) === item.section,
-              ).length;
-              return (
-                <Text style={styles.sectionTitle}>
-                  {item.section.toUpperCase()} · {count}
-                </Text>
-              );
-            }
             const room = item.room;
-            const resumable =
-              bucket(room) === 'active' && room.status === 'active';
+            const resumable = room.status === 'active';
             return (
               <Pressable
                 accessibilityRole="button"
@@ -214,13 +181,6 @@ const styles = StyleSheet.create({
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { paddingTop: 20, paddingBottom: 30, gap: 9 },
-  sectionTitle: {
-    color: colors.faint,
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 1.5,
-    marginTop: 14,
-  },
   card: {
     flexDirection: 'row',
     alignItems: 'center',

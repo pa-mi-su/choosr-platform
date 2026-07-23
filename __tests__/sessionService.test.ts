@@ -24,12 +24,16 @@ const queryResult = (value: unknown) => {
   } = {
     select: jest.fn(),
     eq: jest.fn(),
+    in: jest.fn(),
+    gt: jest.fn(),
     order: jest.fn(),
     limit: jest.fn(),
     maybeSingle: jest.fn(),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
+  builder.in.mockReturnValue(builder);
+  builder.gt.mockReturnValue(builder);
   builder.order.mockReturnValue(builder);
   builder.limit.mockResolvedValue(value);
   builder.maybeSingle.mockResolvedValue(value);
@@ -43,12 +47,12 @@ describe('loadRoomHistory', () => {
     mockEnsureAnonymousSession.mockResolvedValue({});
   });
 
-  it('loads only the match from the current round', async () => {
+  it('loads active rooms and only the match from the current round', async () => {
     const session = {
       id: 'session-1',
       access_code: 'ABCDEFGH',
       mode: 'custom',
-      status: 'completed',
+      status: 'active',
       round_number: 2,
       expires_at: '2026-07-23T00:00:00.000Z',
       created_at: '2026-07-22T00:00:00.000Z',
@@ -80,6 +84,8 @@ describe('loadRoomHistory', () => {
     ]);
     expect(match.eq).toHaveBeenCalledWith('session_id', 'session-1');
     expect(match.eq).toHaveBeenCalledWith('round', 2);
+    expect(sessions.in).toHaveBeenCalledWith('status', ['waiting', 'active']);
+    expect(sessions.gt).toHaveBeenCalledWith('expires_at', expect.any(String));
   });
 
   it('returns an empty history as a successful result', async () => {
