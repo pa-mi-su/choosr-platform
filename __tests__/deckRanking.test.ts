@@ -1,7 +1,7 @@
 import {
-  cappedCardDwellMs,
-  MAX_CARD_DWELL_MS,
-} from '../src/services/cardDwell';
+  rankForChoice,
+  toggleRankedChoice,
+} from '../src/services/choiceRanking';
 import { shuffleDecisionDeck } from '../src/services/deckService';
 import type { DecisionItem } from '../src/types/domain';
 
@@ -30,12 +30,15 @@ describe('discovery deck ranking inputs', () => {
     expect(original.map(value => value.id)).toEqual(['one', 'two', 'three']);
   });
 
-  it('caps active consideration time and rejects invalid measurements', () => {
-    expect(cappedCardDwellMs(10_432.4)).toBe(10_432);
-    expect(cappedCardDwellMs(MAX_CARD_DWELL_MS + 20_000)).toBe(
-      MAX_CARD_DWELL_MS,
-    );
-    expect(cappedCardDwellMs(-10)).toBe(0);
-    expect(cappedCardDwellMs(Number.NaN)).toBe(0);
+  it('builds and compacts a private top-three ranking', () => {
+    let ranked = toggleRankedChoice([], 'one');
+    ranked = toggleRankedChoice(ranked, 'two');
+    ranked = toggleRankedChoice(ranked, 'three');
+    expect(toggleRankedChoice(ranked, 'four')).toEqual(ranked);
+    expect(rankForChoice(ranked, 'two')).toBe(2);
+
+    ranked = toggleRankedChoice(ranked, 'two');
+    expect(ranked).toEqual(['one', 'three']);
+    expect(rankForChoice(ranked, 'three')).toBe(2);
   });
 });

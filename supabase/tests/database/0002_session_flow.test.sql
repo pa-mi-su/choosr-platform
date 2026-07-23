@@ -1,5 +1,5 @@
 begin;
-select plan(20);
+select plan(22);
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
 values
@@ -95,8 +95,7 @@ select is(
       (select session_id from test_room),
       1,
       'past-lives',
-      'right',
-      30000
+      'right'
     )
   ),
   'next',
@@ -110,8 +109,7 @@ begin
     (select session_id from test_room),
     1,
     'arrival',
-    'right',
-    12000
+    'right'
   );
 end;
 $$;
@@ -123,12 +121,24 @@ select is(
       (select session_id from test_room),
       1,
       'spiderverse',
-      'left',
-      1000
+      'left'
+    )
+  ),
+  'rank',
+  'finishing the full deck moves the participant to private ranking'
+);
+
+select is(
+  (
+    select outcome
+    from public.submit_rankings(
+      (select session_id from test_room),
+      1,
+      array['arrival', 'past-lives']
     )
   ),
   'waiting',
-  'finishing first waits for the other participant'
+  'the first private ranking waits for the other participant'
 );
 
 set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000001';
@@ -140,8 +150,7 @@ select is(
       (select session_id from test_room),
       1,
       'past-lives',
-      'right',
-      9000
+      'right'
     )
   ),
   'next',
@@ -155,8 +164,7 @@ begin
     (select session_id from test_room),
     1,
     'arrival',
-    'right',
-    6000
+    'right'
   );
 end;
 $$;
@@ -168,12 +176,23 @@ select is(
       (select session_id from test_room),
       1,
       'spiderverse',
-      'left',
-      1000
+      'left'
+    )
+  ),
+  'rank',
+  'the final swipe never resolves before explicit ranking'
+);
+select is(
+  (
+    select outcome
+    from public.submit_rankings(
+      (select session_id from test_room),
+      1,
+      array['arrival', 'past-lives']
     )
   ),
   'match',
-  'the final swipe resolves the completed decks'
+  'the second private ranking resolves the strongest mutual choice'
 );
 select is(
   (select count(*) from public.matches),
@@ -183,7 +202,7 @@ select is(
 select is(
   (select item_id from public.matches),
   'arrival',
-  'a mutual Yes decided within the limit outranks one that reaches the cap'
+  'the mutual number-one choice wins'
 );
 select is(
   (select status from public.sessions limit 1),

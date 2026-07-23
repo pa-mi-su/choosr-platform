@@ -153,7 +153,6 @@ describe('submitDecisionReliably', () => {
         round: 1,
         itemId: 'choice-2',
         direction: 'right',
-        dwellMs: 8000,
       }),
     ).resolves.toEqual({
       outcome: 'next',
@@ -189,7 +188,6 @@ describe('submitDecisionReliably', () => {
         round: 1,
         itemId: 'choice-2',
         direction: 'left',
-        dwellMs: 2000,
       }),
     ).resolves.toEqual({
       outcome: 'no-match',
@@ -214,7 +212,6 @@ describe('submitDecisionReliably', () => {
         round: 1,
         itemId: 'choice-2',
         direction: 'right',
-        dwellMs: 5000,
       }),
     ).rejects.toBe(networkError);
   });

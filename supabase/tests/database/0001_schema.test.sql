@@ -1,11 +1,13 @@
 begin;
-select plan(24);
+select plan(29);
 
 select has_table('public', 'sessions', 'sessions table exists');
 select has_table('public', 'participants', 'participants table exists');
 select has_table('public', 'session_items', 'session_items table exists');
 select has_table('public', 'swipes', 'swipes table exists');
 select has_table('public', 'matches', 'matches table exists');
+select has_table('public', 'ranking_submissions', 'ranking submissions table exists');
+select has_table('public', 'choice_rankings', 'private choice rankings table exists');
 
 select ok(
   (select relrowsecurity from pg_class where oid = 'public.sessions'::regclass),
@@ -27,6 +29,14 @@ select ok(
   (select relrowsecurity from pg_class where oid = 'public.matches'::regclass),
   'matches has RLS enabled'
 );
+select ok(
+  (select relrowsecurity from pg_class where oid = 'public.ranking_submissions'::regclass),
+  'ranking submissions have RLS enabled'
+);
+select ok(
+  (select relrowsecurity from pg_class where oid = 'public.choice_rankings'::regclass),
+  'choice rankings have RLS enabled'
+);
 
 select has_function('public', 'validate_decision_deck', array['text', 'jsonb']);
 select has_function('public', 'create_decision_session', array['text', 'jsonb', 'text']);
@@ -35,8 +45,9 @@ select has_function('public', 'touch_presence', array['uuid']);
 select has_function(
   'public',
   'submit_swipe',
-  array['uuid', 'integer', 'text', 'text', 'integer']
+  array['uuid', 'integer', 'text', 'text']
 );
+select has_function('public', 'submit_rankings', array['uuid', 'integer', 'text[]']);
 select hasnt_function('public', 'create_session', array['text[]', 'text']);
 select has_function('public', 'start_decision_round', array['uuid', 'jsonb']);
 select has_function('public', 'cancel_session', array['uuid']);
@@ -48,7 +59,7 @@ select has_column(
   'item_payload',
   'session items freeze display payloads'
 );
-select has_column('public', 'swipes', 'dwell_ms', 'swipes store capped consideration time');
+select has_column('public', 'choice_rankings', 'rank', 'private choices store explicit rank');
 
 select policies_are(
   'public',
@@ -59,8 +70,8 @@ select policies_are(
 
 select results_eq(
   $$ select count(*)::bigint from pg_policies where schemaname = 'public' $$,
-  array[6::bigint],
-  'exactly six restrictive read policies exist'
+  array[8::bigint],
+  'exactly eight restrictive read policies exist'
 );
 
 select results_eq(

@@ -58,7 +58,22 @@ type SwipeRow = {
   round: number;
   item_id: string;
   direction: SwipeDirection;
-  dwell_ms: number;
+  created_at: string;
+};
+
+type RankingSubmissionRow = {
+  session_id: string;
+  participant_id: string;
+  round: number;
+  created_at: string;
+};
+
+type ChoiceRankingRow = {
+  session_id: string;
+  participant_id: string;
+  round: number;
+  item_id: string;
+  rank: number;
   created_at: string;
 };
 
@@ -129,6 +144,8 @@ export type Database = {
       session_items: Table<SessionItemRow, never, never>;
       swipes: Table<SwipeRow, never, never>;
       matches: Table<MatchRow, never, never>;
+      ranking_submissions: Table<RankingSubmissionRow, never, never>;
+      choice_rankings: Table<ChoiceRankingRow, never, never>;
       profiles: Table<ProfileRow, never, never>;
       connections: Table<ConnectionRow, never, never>;
       room_invitations: Table<RoomInvitationRow, never, never>;
@@ -272,10 +289,21 @@ export type Database = {
           p_round: number;
           p_item_id: string;
           p_direction: SwipeDirection;
-          p_dwell_ms?: number;
         };
         Returns: {
-          outcome: 'next' | 'waiting' | 'match' | 'no-match';
+          outcome: 'next' | 'rank' | 'match' | 'no-match';
+          match_id: string | null;
+          matched_item_id: string | null;
+        }[];
+      };
+      submit_rankings: {
+        Args: {
+          p_session_id: string;
+          p_round: number;
+          p_item_ids: string[];
+        };
+        Returns: {
+          outcome: 'waiting' | 'match' | 'no-match';
           match_id: string | null;
           matched_item_id: string | null;
         }[];

@@ -8,6 +8,7 @@ import { LocalSetupScreen } from '../screens/LocalSetupScreen';
 import { WaitingScreen } from '../screens/WaitingScreen';
 import { JoinScreen } from '../screens/JoinScreen';
 import { SwipeScreen } from '../screens/SwipeScreen';
+import { RankChoicesScreen } from '../screens/RankChoicesScreen';
 import { MatchScreen } from '../screens/MatchScreen';
 import { NoMatchScreen } from '../screens/NoMatchScreen';
 import { CircleScreen } from '../screens/CircleScreen';
@@ -39,6 +40,11 @@ export function AppNavigator(): React.JSX.Element {
       <Stack.Screen
         name="Swipe"
         component={SwipeScreen}
+        options={{ gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="RankChoices"
+        component={RankChoicesScreen}
         options={{ gestureEnabled: false }}
       />
       <Stack.Screen name="Match" component={MatchScreen} />

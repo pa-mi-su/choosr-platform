@@ -44,6 +44,8 @@ export type RoomHistoryItem = DecisionRoom & {
 export type RoomSubscriptionTable = 'sessions' | 'participants' | 'matches';
 export type DecisionSubmissionOutcome =
   Database['public']['Functions']['submit_swipe']['Returns'][number];
+export type RankingSubmissionOutcome =
+  Database['public']['Functions']['submit_rankings']['Returns'][number];
 
 const toItemPayload = (item: DecisionItem): Json => ({
   id: item.id,
@@ -250,14 +252,12 @@ export async function submitDecision(input: {
   round: number;
   itemId: string;
   direction: SwipeDirection;
-  dwellMs: number;
 }): Promise<DecisionSubmissionOutcome | undefined> {
   const { data, error } = await supabase.rpc('submit_swipe', {
     p_session_id: input.sessionId,
     p_round: input.round,
     p_item_id: input.itemId,
     p_direction: input.direction,
-    p_dwell_ms: input.dwellMs,
   });
   if (error) {
     throw error;
@@ -288,7 +288,6 @@ export async function submitDecisionReliably(input: {
   round: number;
   itemId: string;
   direction: SwipeDirection;
-  dwellMs: number;
 }): Promise<DecisionSubmissionOutcome | undefined> {
   try {
     return await submitDecision(input);
@@ -352,6 +351,66 @@ export async function loadOwnSwipeItemIds(
     throw error;
   }
   return new Set(data.map(row => row.item_id));
+}
+
+export async function loadOwnAcceptedItemIds(
+  sessionId: string,
+  round: number,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from('swipes')
+    .select('item_id')
+    .eq('session_id', sessionId)
+    .eq('round', round)
+    .eq('direction', 'right');
+  if (error) {
+    throw error;
+  }
+  return new Set(data.map(row => row.item_id));
+}
+
+export async function loadOwnRankingSubmission(
+  sessionId: string,
+  round: number,
+): Promise<{ submitted: boolean; itemIds: string[] }> {
+  const [submission, rankings] = await Promise.all([
+    supabase
+      .from('ranking_submissions')
+      .select('participant_id')
+      .eq('session_id', sessionId)
+      .eq('round', round)
+      .maybeSingle(),
+    supabase
+      .from('choice_rankings')
+      .select('item_id, rank')
+      .eq('session_id', sessionId)
+      .eq('round', round)
+      .order('rank'),
+  ]);
+  const error = submission.error ?? rankings.error;
+  if (error) {
+    throw error;
+  }
+  return {
+    submitted: Boolean(submission.data),
+    itemIds: (rankings.data ?? []).map(row => row.item_id),
+  };
+}
+
+export async function submitDecisionRankings(input: {
+  sessionId: string;
+  round: number;
+  itemIds: string[];
+}): Promise<RankingSubmissionOutcome | undefined> {
+  const { data, error } = await supabase.rpc('submit_rankings', {
+    p_session_id: input.sessionId,
+    p_round: input.round,
+    p_item_ids: input.itemIds,
+  });
+  if (error) {
+    throw error;
+  }
+  return data[0];
 }
 
 export async function startDecisionRound(input: {
