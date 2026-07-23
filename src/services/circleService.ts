@@ -3,6 +3,8 @@ import type { DecisionMode } from '../types/domain';
 import { ensureAnonymousSession } from './anonymousAuth';
 import { dispatchPendingNotifications } from './pushNotifications';
 import { profilePhotoUrl } from './profilePhotoService';
+import { photoFailureMessage } from './photoUploadService';
+import { serviceFailureMessage } from './serviceError';
 
 export type ChoosrProfile = {
   userId: string;
@@ -117,6 +119,16 @@ export async function answerConnection(
   }
 }
 
+export async function removeCircleConnection(
+  connectionId: string,
+): Promise<void> {
+  await ensureAnonymousSession();
+  const { error } = await supabase.rpc('remove_circle_connection', {
+    p_connection_id: connectionId,
+  });
+  if (error) throw error;
+}
+
 export async function createCircleInvite(): Promise<{
   inviteToken: string;
   expiresAt: string;
@@ -216,6 +228,8 @@ export function circleErrorMessage(error: unknown): string {
     return 'No Choosr user has that handle.';
   if (message.includes('connection_already_exists'))
     return 'That person is already in your Circle.';
+  if (message.includes('connection_unavailable'))
+    return 'That Circle connection is no longer available.';
   if (message.includes('cannot_connect_to_self'))
     return 'Choose somebody other than yourself.';
   if (message.includes('circle_invite_expired'))
@@ -226,11 +240,9 @@ export function circleErrorMessage(error: unknown): string {
     return 'That Circle invitation is not valid.';
   if (message.includes('room_') || message.includes('invitation_'))
     return 'That invitation is no longer available.';
-  if (message.includes('photo_too_large'))
-    return 'Choose a photo smaller than 5 MB.';
-  if (message.includes('camera_unavailable'))
-    return 'The photo library is not available on this device.';
-  if (message.includes('permission'))
-    return 'Allow photo access in Settings to choose a profile photo.';
-  return 'Choosr could not complete that action. Please try again.';
+  if (message.includes('photo_')) return photoFailureMessage(error, 5);
+  return serviceFailureMessage(
+    error,
+    'Choosr could not complete that action. Please try again.',
+  );
 }

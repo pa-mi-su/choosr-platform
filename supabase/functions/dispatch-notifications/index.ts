@@ -1,5 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
 import { importPKCS8, SignJWT } from 'npm:jose@6.1.3';
+import {
+  buildServiceAccountClaims,
+  readBearerAccessToken,
+} from './googleAuth.ts';
 
 type ServiceAccount = {
   project_id: string;
@@ -23,6 +27,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
 }
 
+function reportSummary(summary: Record<string, number>) {
+  console.info(
+    JSON.stringify({ event: 'notification_dispatch_completed', ...summary }),
+  );
+  return jsonResponse(summary);
+}
+
 function requireEnv(name: string): string {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing ${name}.`);
@@ -41,15 +52,8 @@ function loadServiceAccount(): ServiceAccount {
 async function getGoogleAccessToken(account: ServiceAccount): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const key = await importPKCS8(account.private_key, 'RS256');
-  const assertion = await new SignJWT({
-    scope: 'https://www.googleapis.com/auth/firebase.messaging',
-  })
+  const assertion = await new SignJWT(buildServiceAccountClaims(account, now))
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-    .setIssuer(account.client_email)
-    .setSubject(account.client_email)
-    .setAudience('https://oauth2.googleapis.com/token')
-    .setIssuedAt(now)
-    .setExpirationTime(now + 3600)
     .sign(key);
 
   const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -61,10 +65,10 @@ async function getGoogleAccessToken(account: ServiceAccount): Promise<string> {
     }),
   });
   const result = await response.json();
-  if (!response.ok || typeof result.access_token !== 'string') {
+  if (!response.ok) {
     throw new Error(`Google OAuth failed (${response.status}).`);
   }
-  return result.access_token;
+  return readBearerAccessToken(result);
 }
 
 function pushCopy(job: PushJob): PushCopy {
@@ -139,7 +143,11 @@ async function sendMessage(input: {
 Deno.serve(async request => {
   if (request.method !== 'POST')
     return jsonResponse({ error: 'Method not allowed.' }, 405);
-  if (!request.headers.get('Authorization')?.startsWith('Bearer ')) {
+  const hasBearerAuthorization = request.headers
+    .get('Authorization')
+    ?.startsWith('Bearer ');
+  const hasProjectApiKey = Boolean(request.headers.get('apikey'));
+  if (!hasBearerAuthorization && !hasProjectApiKey) {
     return jsonResponse({ error: 'Authentication required.' }, 401);
   }
 
@@ -155,16 +163,27 @@ Deno.serve(async request => {
       { p_limit: 25 },
     );
     if (claimError) throw claimError;
-    if (!jobs?.length) return jsonResponse({ processed: 0, delivered: 0 });
+    if (!jobs?.length)
+      return reportSummary({
+        processed: 0,
+        delivered: 0,
+        failed: 0,
+        recipientsWithoutDevices: 0,
+        invalidTokensRemoved: 0,
+      });
 
     const accessToken = await getGoogleAccessToken(account);
     let delivered = 0;
+    let failed = 0;
+    let recipientsWithoutDevices = 0;
+    let invalidTokensRemoved = 0;
     for (const job of jobs as PushJob[]) {
       const { count: unreadCount, error: unreadError } = await supabase
         .from('user_notifications')
         .select('id', { count: 'exact', head: true })
         .eq('recipient_user_id', job.recipient_user_id)
-        .is('read_at', null);
+        .is('read_at', null)
+        .is('deleted_at', null);
       if (unreadError) throw unreadError;
       const { data: devices, error: deviceError } = await supabase
         .from('device_push_tokens')
@@ -176,6 +195,8 @@ Deno.serve(async request => {
           p_id: job.id,
           p_error: 'Recipient has no registered device.',
         });
+        failed += 1;
+        recipientsWithoutDevices += 1;
         continue;
       }
 
@@ -200,6 +221,9 @@ Deno.serve(async request => {
             : Promise.resolve(),
         ),
       );
+      invalidTokensRemoved += results.filter(
+        result => result.invalidToken,
+      ).length;
       if (results.some(result => result.ok)) {
         await supabase.rpc('complete_notification_job', { p_id: job.id });
         delivered += 1;
@@ -211,11 +235,24 @@ Deno.serve(async request => {
             .filter(Boolean)
             .join(' | '),
         });
+        failed += 1;
       }
     }
-    return jsonResponse({ processed: jobs.length, delivered });
+    const summary = {
+      processed: jobs.length,
+      delivered,
+      failed,
+      recipientsWithoutDevices,
+      invalidTokensRemoved,
+    };
+    return reportSummary(summary);
   } catch (error) {
-    console.error(error);
+    console.error(
+      JSON.stringify({
+        event: 'notification_dispatch_failed',
+        code: error instanceof Error ? error.name : 'unknown',
+      }),
+    );
     return jsonResponse(
       { error: 'Notification delivery is unavailable.' },
       503,

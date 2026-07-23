@@ -4,6 +4,7 @@ import {
   getInitialNotification,
   getMessaging,
   getToken,
+  hasPermission,
   isDeviceRegisteredForRemoteMessages,
   onMessage,
   onNotificationOpenedApp,
@@ -21,6 +22,15 @@ import { registerAndroidPushInstallation } from './androidPushRegistration';
 const PUSH_ENABLED_KEY = 'choosr.push.enabled';
 const ANDROID_NOTIFICATION_PERMISSION =
   'android.permission.POST_NOTIFICATIONS' as Permission;
+const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
+
+export type NotificationDispatchSummary = {
+  processed: number;
+  delivered: number;
+  failed: number;
+  recipientsWithoutDevices: number;
+  invalidTokensRemoved: number;
+};
 
 async function registerToken(token: string): Promise<void> {
   await ensureAnonymousSession();
@@ -53,6 +63,32 @@ async function requestPlatformPermission(): Promise<boolean> {
   );
 }
 
+async function hasPlatformPermission(): Promise<boolean> {
+  if (Platform.OS === 'android') {
+    if (Number(Platform.Version) < 33) return true;
+    return PermissionsAndroid.check(ANDROID_NOTIFICATION_PERMISSION);
+  }
+  const status = await hasPermission(getMessaging());
+  return (
+    status === AuthorizationStatus.AUTHORIZED ||
+    status === AuthorizationStatus.PROVISIONAL
+  );
+}
+
+const diagnosticCode = (error: unknown): string => {
+  if (typeof error === 'object' && error && 'code' in error) {
+    const code = String(error.code);
+    return /^[a-z0-9_./-]{1,80}$/i.test(code) ? code : 'unknown';
+  }
+  return error instanceof Error ? error.name : 'unknown';
+};
+
+const logPushFailure = (context: string, error: unknown): void => {
+  if (__DEV__) {
+    console.warn(`[push:${context}] ${diagnosticCode(error)}`);
+  }
+};
+
 async function syncCurrentToken(): Promise<void> {
   if (Platform.OS === 'android') {
     await registerToken(await registerAndroidPushInstallation());
@@ -75,23 +111,26 @@ export async function enablePushNotifications(): Promise<boolean> {
     await syncCurrentToken();
     await AsyncStorage.setItem(PUSH_ENABLED_KEY, 'true');
     return true;
-  } catch {
+  } catch (error) {
+    logPushFailure('enable', error);
     return false;
   }
 }
 
 export async function refreshPushRegistration(): Promise<boolean> {
-  if ((await AsyncStorage.getItem(PUSH_ENABLED_KEY)) !== 'true') return false;
   try {
+    if (!(await hasPlatformPermission())) return false;
     await syncCurrentToken();
+    await AsyncStorage.setItem(PUSH_ENABLED_KEY, 'true');
     return true;
-  } catch {
+  } catch (error) {
+    logPushFailure('refresh', error);
     return false;
   }
 }
 
 export async function isPushEnabled(): Promise<boolean> {
-  return (await AsyncStorage.getItem(PUSH_ENABLED_KEY)) === 'true';
+  return hasPlatformPermission();
 }
 
 export function registerPushListeners(input: {
@@ -102,16 +141,16 @@ export function registerPushListeners(input: {
   const unsubscribeOpen = onNotificationOpenedApp(messaging, input.onOpen);
   const unsubscribeMessage = onMessage(messaging, input.onForeground);
   const unsubscribeToken = onTokenRefresh(messaging, token => {
-    registerToken(token).catch(() => undefined);
+    registerToken(token).catch(error => logPushFailure('token-refresh', error));
   });
 
   getInitialNotification(messaging)
     .then(message => {
       if (message) input.onOpen(message);
     })
-    .catch(() => undefined);
+    .catch(error => logPushFailure('initial-notification', error));
 
-  refreshPushRegistration().catch(() => undefined);
+  refreshPushRegistration().catch(error => logPushFailure('startup', error));
 
   return () => {
     unsubscribeOpen();
@@ -120,8 +159,26 @@ export function registerPushListeners(input: {
   };
 }
 
-export async function dispatchPendingNotifications(): Promise<void> {
-  await supabase.functions
-    .invoke('dispatch-notifications', { body: {} })
-    .catch(() => undefined);
+export async function dispatchPendingNotifications(): Promise<
+  NotificationDispatchSummary | undefined
+> {
+  let lastError: unknown;
+  for (const delayMs of DISPATCH_RETRY_DELAYS_MS) {
+    if (delayMs) {
+      await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+    }
+    try {
+      const { data, error } =
+        await supabase.functions.invoke<NotificationDispatchSummary>(
+          'dispatch-notifications',
+          { body: {} },
+        );
+      if (error) throw error;
+      return data ?? undefined;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  logPushFailure('dispatch', lastError);
+  return undefined;
 }

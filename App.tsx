@@ -18,7 +18,10 @@ import {
   openCircleFromNotification,
 } from './src/navigation/navigationRef';
 import { registerPushListeners } from './src/services/pushNotifications';
-import { notifyNotificationStateChanged } from './src/services/notificationService';
+import {
+  refreshNotificationState,
+  registerNotificationSynchronization,
+} from './src/services/notificationService';
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: roomLinkingPrefixes,
@@ -32,11 +35,14 @@ const linking: LinkingOptions<RootStackParamList> = {
 
 export default function App(): React.JSX.Element {
   useEffect(() => registerAuthAutoRefresh(), []);
+  useEffect(() => registerNotificationSynchronization(), []);
   useEffect(
     () =>
       registerPushListeners({
         onOpen: openCircleFromNotification,
-        onForeground: notifyNotificationStateChanged,
+        onForeground: () => {
+          refreshNotificationState().catch(() => undefined);
+        },
       }),
     [],
   );

@@ -2,7 +2,9 @@ import type { DecisionItem, DecisionMode } from './domain';
 
 export type RootStackParamList = {
   Home: undefined;
+  About: undefined;
   Notifications: undefined;
+  ActiveRooms: undefined;
   Circle: { connectionToken?: string } | undefined;
   ModeSelect: { connectionId?: string; connectionName?: string } | undefined;
   LocalSetup: {
@@ -18,6 +20,8 @@ export type RootStackParamList = {
   Waiting: {
     mode: DecisionMode;
     searchArea?: string;
+    searchLatitude?: number;
+    searchLongitude?: number;
     connectionId?: string;
     connectionName?: string;
     customPrompt?: string;

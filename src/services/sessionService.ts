@@ -7,6 +7,7 @@ import type {
   SwipeDirection,
 } from '../types/domain';
 import type { Json, SessionStatus } from '../types/database';
+import type { Database } from '../types/database';
 import { ensureAnonymousSession } from './anonymousAuth';
 import { parseDecisionItem } from './decisionItemParser';
 
@@ -33,7 +34,16 @@ export type RoomOutcome = {
   matchedItemId: string | null;
 };
 
+export type RoomHistoryItem = DecisionRoom & {
+  createdAt: string;
+  totalChoices: number;
+  completedChoices: number;
+  matchedItemId: string | null;
+};
+
 export type RoomSubscriptionTable = 'sessions' | 'participants' | 'matches';
+export type DecisionSubmissionOutcome =
+  Database['public']['Functions']['submit_swipe']['Returns'][number];
 
 const toItemPayload = (item: DecisionItem): Json => ({
   id: item.id,
@@ -136,6 +146,63 @@ export async function loadDecisionRoom(
   };
 }
 
+export async function loadRoomHistory(): Promise<RoomHistoryItem[]> {
+  await ensureAnonymousSession();
+  const { data: sessions, error } = await supabase
+    .from('sessions')
+    .select(
+      'id, access_code, mode, status, round_number, expires_at, created_at',
+    )
+    .in('status', ['waiting', 'active'])
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(30);
+  if (error) throw error;
+
+  return Promise.all(
+    sessions.map(async session => {
+      const [participants, items, swipes, match] = await Promise.all([
+        supabase
+          .from('participants')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id),
+        supabase
+          .from('session_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id)
+          .eq('round', session.round_number),
+        supabase
+          .from('swipes')
+          .select('id', { count: 'exact', head: true })
+          .eq('session_id', session.id)
+          .eq('round', session.round_number),
+        supabase
+          .from('matches')
+          .select('item_id')
+          .eq('session_id', session.id)
+          .eq('round', session.round_number)
+          .maybeSingle(),
+      ]);
+      const queryError =
+        participants.error ?? items.error ?? swipes.error ?? match.error;
+      if (queryError) throw queryError;
+      return {
+        sessionId: session.id,
+        accessCode: session.access_code,
+        mode: session.mode,
+        status: session.status,
+        roundNumber: session.round_number,
+        expiresAt: session.expires_at,
+        createdAt: session.created_at,
+        participantCount: participants.count ?? 0,
+        totalChoices: items.count ?? 0,
+        completedChoices: swipes.count ?? 0,
+        matchedItemId: match.data?.item_id ?? null,
+      };
+    }),
+  );
+}
+
 export async function loadRoomOutcome(sessionId: string): Promise<RoomOutcome> {
   const { data: session, error: sessionError } = await supabase
     .from('sessions')
@@ -183,7 +250,7 @@ export async function submitDecision(input: {
   round: number;
   itemId: string;
   direction: SwipeDirection;
-}) {
+}): Promise<DecisionSubmissionOutcome | undefined> {
   const { data, error } = await supabase.rpc('submit_swipe', {
     p_session_id: input.sessionId,
     p_round: input.round,
@@ -194,6 +261,79 @@ export async function submitDecision(input: {
     throw error;
   }
   return data[0];
+}
+
+function isAmbiguousNetworkFailure(cause: unknown): boolean {
+  const message =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === 'object' && cause && 'message' in cause
+      ? String(cause.message)
+      : String(cause);
+  return /failed to fetch|network request failed|fetch failed|load failed/i.test(
+    message,
+  );
+}
+
+/**
+ * A mobile connection can drop after PostgreSQL commits a swipe but before the
+ * RPC response reaches the device. Reconcile that ambiguous result against the
+ * caller's private swipe rows so a persisted final choice moves to the waiting
+ * screen instead of presenting a false submission error.
+ */
+export async function submitDecisionReliably(input: {
+  sessionId: string;
+  round: number;
+  itemId: string;
+  direction: SwipeDirection;
+}): Promise<DecisionSubmissionOutcome | undefined> {
+  try {
+    return await submitDecision(input);
+  } catch (cause) {
+    if (!isAmbiguousNetworkFailure(cause)) {
+      throw cause;
+    }
+
+    let persistedItemIds: Set<string>;
+    try {
+      persistedItemIds = await loadOwnSwipeItemIds(
+        input.sessionId,
+        input.round,
+      );
+    } catch {
+      throw cause;
+    }
+    if (!persistedItemIds.has(input.itemId)) {
+      throw cause;
+    }
+
+    try {
+      const room = await loadRoomOutcome(input.sessionId);
+      if (room.status === 'matched' && room.matchedItemId) {
+        return {
+          outcome: 'match',
+          match_id: null,
+          matched_item_id: room.matchedItemId,
+        };
+      }
+      if (room.status === 'completed') {
+        return {
+          outcome: 'no-match',
+          match_id: null,
+          matched_item_id: null,
+        };
+      }
+    } catch {
+      // Persistence is already confirmed. Realtime and polling will reconcile
+      // a terminal result even if this secondary outcome read also drops.
+    }
+
+    return {
+      outcome: 'next',
+      match_id: null,
+      matched_item_id: null,
+    };
+  }
 }
 
 export async function loadOwnSwipeItemIds(

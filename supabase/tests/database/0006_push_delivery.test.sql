@@ -1,5 +1,18 @@
 begin;
-select plan(14);
+select plan(17);
+
+select has_extension('pg_net', 'pg_net is available for scheduled dispatch');
+select has_function(
+  'private',
+  'dispatch_pending_notifications',
+  array[]::text[],
+  'the private scheduled dispatcher exists'
+);
+select is(
+  (select count(*) from cron.job where jobname = 'choosr-notification-dispatch'),
+  1::bigint,
+  'notification delivery is scheduled independently of mobile clients'
+);
 
 select has_column(
   'public',

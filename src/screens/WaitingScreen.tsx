@@ -6,7 +6,7 @@ import { Brand, Button, Screen } from '../components/UI';
 import { buildPreviewDeck, modeById } from '../data/decisions';
 import { fetchLiveDecisionDeck } from '../services/deckService';
 import { useRoomSync } from '../hooks/useRoomSync';
-import { roomErrorMessage } from '../services/roomFlow';
+import { loadItemsWithFallback, roomErrorMessage } from '../services/roomFlow';
 import { buildRoomInvite } from '../services/roomInvite';
 import {
   circleErrorMessage,
@@ -26,11 +26,14 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Waiting'>;
 export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const mode = modeById[route.params.mode];
   const searchArea = route.params.searchArea;
+  const searchLatitude = route.params.searchLatitude;
+  const searchLongitude = route.params.searchLongitude;
   const connectionId = route.params.connectionId;
   const connectionName = route.params.connectionName;
   const customItems = route.params.customItems;
   const [room, setRoom] = useState<DecisionRoom | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [creationError, setCreationError] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [creating, setCreating] = useState(true);
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [circleInviteSent, setCircleInviteSent] = useState(false);
@@ -43,16 +46,22 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     }
     creationStarted.current = true;
     setCreating(true);
-    setError(null);
+    setCreationError(null);
+    setInviteError(null);
     try {
       const items =
         mode.id === 'custom'
           ? customItems ?? []
-          : await fetchLiveDecisionDeck({
-              mode: mode.id,
-              postalCode: searchArea,
-              maxResults: 10,
-            });
+          : await loadItemsWithFallback(
+              () =>
+                fetchLiveDecisionDeck({
+                  mode: mode.id,
+                  latitude: searchLatitude,
+                  longitude: searchLongitude,
+                  maxResults: 10,
+                }),
+              buildPreviewDeck(mode.id, searchArea),
+            );
       const credentials = await createDecisionRoom({
         mode: mode.id,
         items: items.length ? items : buildPreviewDeck(mode.id, searchArea),
@@ -70,16 +79,23 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
           await inviteCirclePerson(credentials.sessionId, connectionId);
           setCircleInviteSent(true);
         } catch (cause) {
-          setError(circleErrorMessage(cause));
+          setInviteError(circleErrorMessage(cause));
         }
       }
     } catch (cause) {
       creationStarted.current = false;
-      setError(roomErrorMessage(cause));
+      setCreationError(roomErrorMessage(cause));
     } finally {
       setCreating(false);
     }
-  }, [connectionId, customItems, mode.id, searchArea]);
+  }, [
+    connectionId,
+    customItems,
+    mode.id,
+    searchArea,
+    searchLatitude,
+    searchLongitude,
+  ]);
 
   useEffect(() => {
     createRoom().catch(() => undefined);
@@ -99,9 +115,9 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
         return;
       }
       setRoom(currentRoom);
-      setError(null);
+      setCreationError(null);
     } catch (cause) {
-      setError(roomErrorMessage(cause));
+      setCreationError(roomErrorMessage(cause));
     }
   }, [navigation, sessionId]);
 
@@ -113,6 +129,16 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   });
 
   const ready = room?.status === 'active' && room.participantCount === 2;
+  const retryCircleInvite = async () => {
+    if (!room || !connectionId) return;
+    setInviteError(null);
+    try {
+      await inviteCirclePerson(room.sessionId, connectionId);
+      setCircleInviteSent(true);
+    } catch (cause) {
+      setInviteError(circleErrorMessage(cause));
+    }
+  };
   const share = () => {
     if (!room || !inviteToken) {
       return;
@@ -156,6 +182,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
         <Text style={styles.eyebrow}>
           {creating
             ? 'CREATING PRIVATE ROOM'
+            : creationError && !room
+            ? 'ROOM CREATION FAILED'
             : ready
             ? 'PARTNER JOINED'
             : circleInviteSent
@@ -165,6 +193,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
         <Text style={styles.title}>
           {creating
             ? 'One moment…'
+            : creationError && !room
+            ? 'We couldn’t create this room.'
             : ready
             ? 'Ready when you are.'
             : circleInviteSent && connectionName
@@ -183,10 +213,13 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             <Text style={styles.expires}>Expires in 24 hours</Text>
           </View>
         ) : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {creationError ? (
+          <Text style={styles.error}>{creationError}</Text>
+        ) : null}
+        {inviteError ? <Text style={styles.error}>{inviteError}</Text> : null}
       </View>
       <View style={styles.actions}>
-        {error && !room ? (
+        {creationError && !room ? (
           <Button
             label="Retry room creation"
             loading={creating}
@@ -194,6 +227,15 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
           />
         ) : creating || !room ? (
           <Button label="Creating room…" loading disabled />
+        ) : inviteError && connectionId ? (
+          <>
+            <Button label="Retry invitation" onPress={retryCircleInvite} />
+            <Button
+              label="Share another way"
+              variant="secondary"
+              onPress={share}
+            />
+          </>
         ) : ready ? (
           <Button
             label="Start swiping"

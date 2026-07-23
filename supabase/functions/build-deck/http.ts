@@ -6,7 +6,7 @@ export const jsonResponse = (body: unknown, status = 200) =>
 
 export const fetchWithTimeout = (
   input: string | URL,
-  init: RequestInit,
+  init: RequestInit = {},
   timeoutMilliseconds = 8000,
 ) =>
   fetch(input, {

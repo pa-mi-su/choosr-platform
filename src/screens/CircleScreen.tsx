@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from 'react';
 import {
+  Alert,
   ActivityIndicator,
   Pressable,
   Share,
@@ -25,6 +26,7 @@ import {
   loadPendingRoomInvitations,
   normalizeHandle,
   requestConnection,
+  removeCircleConnection,
   redeemCircleInvite,
   saveOwnProfile,
   type ChoosrProfile,
@@ -33,6 +35,7 @@ import {
 } from '../services/circleService';
 import { buildCircleInvite } from '../services/roomInvite';
 import { chooseAndUploadProfilePhoto } from '../services/profilePhotoService';
+import { logPhotoFailure } from '../services/photoUploadService';
 import {
   enablePushNotifications,
   isPushEnabled,
@@ -145,7 +148,13 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
   const changeProfilePhoto = () =>
     run(async () => {
       if (!profile) return;
-      const avatarPath = await chooseAndUploadProfilePhoto(profile.avatarPath);
+      let avatarPath: string | null;
+      try {
+        avatarPath = await chooseAndUploadProfilePhoto(profile.avatarPath);
+      } catch (cause) {
+        logPhotoFailure('profile-upload', cause);
+        throw cause;
+      }
       if (avatarPath) {
         // refresh() resolves the new public URL and updates the Circle list.
         setProfile({ ...profile, avatarPath });
@@ -168,6 +177,21 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
       setError(circleErrorMessage(cause));
       setWorking(false);
     }
+  };
+
+  const confirmRemove = (person: CirclePerson) => {
+    Alert.alert(
+      `Remove ${person.displayName}?`,
+      'They will leave your Circle. Their account and previous room history will not be deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => run(() => removeCircleConnection(person.connectionId)),
+        },
+      ],
+    );
   };
 
   const close = () => {
@@ -356,18 +380,28 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
                       <Text style={styles.handle}>@{person.handle}</Text>
                     </View>
                     {person.status === 'accepted' ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() =>
-                          navigation.navigate('ModeSelect', {
-                            connectionId: person.connectionId,
-                            connectionName: person.displayName,
-                          })
-                        }
-                        style={styles.chooseButton}
-                      >
-                        <Text style={styles.chooseText}>Choose</Text>
-                      </Pressable>
+                      <View style={styles.personActions}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${person.displayName} from your Circle`}
+                          onPress={() => confirmRemove(person)}
+                          style={styles.removePersonButton}
+                        >
+                          <Text style={styles.removePersonText}>Remove</Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() =>
+                            navigation.navigate('ModeSelect', {
+                              connectionId: person.connectionId,
+                              connectionName: person.displayName,
+                            })
+                          }
+                          style={styles.chooseButton}
+                        >
+                          <Text style={styles.chooseText}>Choose</Text>
+                        </Pressable>
+                      </View>
                     ) : person.direction === 'incoming' ? (
                       <Pressable
                         accessibilityRole="button"
@@ -500,6 +534,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
     paddingVertical: 10,
   },
+  personActions: { alignItems: 'flex-end', gap: 7 },
+  removePersonButton: { paddingHorizontal: 5, paddingVertical: 2 },
+  removePersonText: { color: colors.danger, fontSize: 10, fontWeight: '800' },
   acceptButton: {
     backgroundColor: colors.success,
     borderRadius: 13,

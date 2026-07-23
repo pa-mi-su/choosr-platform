@@ -34,14 +34,21 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
     <Screen testID="home-screen" style={styles.screen}>
       <View style={styles.orangeGlow} />
       <View style={styles.top}>
-        <Brand compact />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="About Choosr"
+          onPress={() => navigation.navigate('About')}
+          style={({ pressed }) => pressed && styles.pressed}
+        >
+          <Brand compact />
+        </Pressable>
         <View style={styles.topActions}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${unreadCount} unread notifications`}
             onPress={() => navigation.navigate('Notifications')}
             style={({ pressed }) => [
-              styles.bellButton,
+              styles.iconButton,
               pressed && styles.pressed,
             ]}
           >
@@ -89,6 +96,11 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
         </View>
       </View>
       <View style={styles.actions}>
+        <Button
+          label="Continue active rooms"
+          variant="secondary"
+          onPress={() => navigation.navigate('ActiveRooms')}
+        />
         <Button
           label="Choose from My Circle"
           onPress={() => navigation.navigate('Circle')}
@@ -144,7 +156,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  bellButton: {
+  iconButton: {
     width: 38,
     height: 38,
     borderRadius: 19,

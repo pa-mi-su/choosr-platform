@@ -104,6 +104,8 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         env:
           APP_ENV: ${{ needs.resolve.outputs.environment }}
+          CHOOSR_VERSION_CODE: ${{ github.run_number }}
+          CHOOSR_VERSION_NAME: ${{ vars.APP_VERSION }}
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
           FIREBASE_ANDROID_CONFIG_BASE64: ${{ secrets.FIREBASE_ANDROID_CONFIG_BASE64 }}
@@ -251,6 +253,8 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         env:
           APP_ENV: ${{ needs.resolve.outputs.environment }}
+          CHOOSR_VERSION_CODE: ${{ github.run_number }}
+          CHOOSR_VERSION_NAME: ${{ vars.APP_VERSION }}
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
           FIREBASE_IOS_CONFIG_BASE64: ${{ secrets.FIREBASE_IOS_CONFIG_BASE64 }}
