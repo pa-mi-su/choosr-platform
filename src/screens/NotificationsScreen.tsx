@@ -20,6 +20,7 @@ import {
   markAllNotificationsRead,
   type ChoosrNotification,
 } from '../services/notificationService';
+import { loadPendingRoomInvitations } from '../services/circleService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -106,6 +107,37 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
         },
       ],
     );
+
+  const openNotification = async (item: ChoosrNotification) => {
+    if (item.kind === 'room_invitation') {
+      const invitationId =
+        typeof item.payload.invitation_id === 'string'
+          ? item.payload.invitation_id
+          : null;
+      try {
+        const pendingInvitations = await loadPendingRoomInvitations();
+        const invitationIsPending =
+          invitationId !== null &&
+          pendingInvitations.some(
+            invitation => invitation.invitationId === invitationId,
+          );
+        if (!invitationIsPending) {
+          await remove(item.id);
+          Alert.alert(
+            'Room no longer active',
+            'This invitation expired or the room was cancelled.',
+          );
+          return;
+        }
+      } catch {
+        setError('That room could not be checked. Pull down and try again.');
+        return;
+      }
+    }
+
+    await markRead(item);
+    navigation.navigate('Circle');
+  };
 
   useEffect(() => {
     load().catch(() => undefined);
@@ -195,8 +227,9 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
                 accessibilityRole="button"
                 accessibilityLabel={`${item.title}. ${item.body}`}
                 onPress={() => {
-                  markRead(item).catch(() => undefined);
-                  navigation.navigate('Circle');
+                  openNotification(item).catch(() =>
+                    setError('That notification could not be opened.'),
+                  );
                 }}
                 style={({ pressed }) => [
                   styles.card,
