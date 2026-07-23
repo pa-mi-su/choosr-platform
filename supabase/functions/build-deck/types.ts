@@ -22,6 +22,7 @@ export type ProviderItem = {
   tags: string[];
   imageUrl?: string;
   action?: { label: string; url: string };
+  attribution?: { label: string; url: string };
 };
 
 export class DeckRequestError extends Error {}

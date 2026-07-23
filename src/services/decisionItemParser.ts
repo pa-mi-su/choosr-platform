@@ -41,6 +41,7 @@ export function parseDecisionItem(value: unknown): DecisionItem {
   }
 
   let action: DecisionItem['action'];
+  let attribution: DecisionItem['attribution'];
   let imageUrl: string | undefined;
   if (value.imageUrl !== undefined) {
     imageUrl = requiredString(value.imageUrl, 'imageUrl', 4096);
@@ -61,6 +62,19 @@ export function parseDecisionItem(value: unknown): DecisionItem {
       url,
     };
   }
+  if (value.attribution !== undefined) {
+    if (!isRecord(value.attribution)) {
+      throw new Error('Invalid decision item field: attribution.');
+    }
+    const url = requiredString(value.attribution.url, 'attribution.url', 2048);
+    if (!url.startsWith('https://')) {
+      throw new Error('Decision item attribution must use HTTPS.');
+    }
+    attribution = {
+      label: requiredString(value.attribution.label, 'attribution.label', 160),
+      url,
+    };
+  }
 
   return {
     id: requiredString(value.id, 'id', 200),
@@ -74,5 +88,6 @@ export function parseDecisionItem(value: unknown): DecisionItem {
     tags: value.tags,
     ...(imageUrl ? { imageUrl } : {}),
     ...(action ? { action } : {}),
+    ...(attribution ? { attribution } : {}),
   };
 }

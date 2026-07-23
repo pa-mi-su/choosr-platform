@@ -61,7 +61,8 @@ The real two-device client flow is implemented:
 - Native Firebase Messaging permissions, iOS/Android FCM token lifecycle, startup token
   reconciliation, live unread state, and notification routing
 - Transactional push outbox with leased, retryable FCM/APNs Edge delivery
-- Live nearby Activity and Food decks with venue media and cached location-image fallbacks
+- Live nearby Activity and Food decks with five-card Google restaurant discovery, ratings,
+  cuisine details, venue photos, and provider attribution
 - Labeled custom photo rooms with library and camera capture
 - Private, owner-scoped decision-photo storage with signed cross-device URLs
 - Active-room history and resume behavior
@@ -117,8 +118,8 @@ Firebase App Distribution is not the primary installation channel.
 | Scheduled retention    | Supabase Cron / `pg_cron`             | Hourly room cleanup and daily inactive anonymous-user cleanup                 |
 | Push client            | React Native Firebase + Kotlin bridge | Native permission, real FCM tokens, token rotation, and badge synchronization |
 | Push delivery          | FCM HTTP v1 + APNs                    | Cross-platform delivery through a leased transactional outbox worker          |
-| Provider boundary      | Supabase Edge Functions               | Keeps Geoapify credentials out of mobile binaries                             |
-| Nearby provider        | Geoapify                              | Normalized Activity/Food results from postal-code searches                    |
+| Provider boundary      | Supabase Edge Functions               | Keeps Geoapify and Google credentials out of mobile binaries                  |
+| Nearby providers       | Geoapify + Google Places API (New)    | Activity/location lookup plus photo-rich five-card Food results               |
 | Zero-key local handoff | Google Maps HTTPS search URLs         | Opens nearby results after a cuisine or activity match                        |
 | App tests              | Jest, React Test Renderer             | Domain, parser, room-state, navigation-root, and deck behavior                |
 | Database tests         | pgTAP, Supabase CLI                   | Schema, RLS, grants, validation, two-person flow, and atomic matching         |
@@ -138,7 +139,8 @@ flowchart LR
     Host -->|"Active-only recovery reads every 15 seconds"| DB
     Partner -->|"Active-only recovery reads every 15 seconds"| DB
     Host -.->|"Optional live deck"| Edge["build-deck Edge Function"]
-    Edge --> Places["Geoapify"]
+    Edge --> Geoapify["Geoapify activities + geocoding"]
+    Edge --> Places["Google Places food + photos"]
     Host -->|"Profile photo"| Storage[("Supabase Storage")]
     Partner -->|"Profile photo"| Storage
     RPC --> Outbox[("Notification outbox")]
@@ -421,13 +423,16 @@ alerts, and complete a formal privacy review.
 `supabase/functions/build-deck` is the protected live-provider boundary for Activity and Food:
 
 - The host supplies a valid U.S. ZIP code or Canadian postal code.
-- Geoapify geocodes it and finds nearby activities or restaurants within a bounded radius.
-- The adapter returns up to ten normalized choices by default and never more than twenty.
+- Geoapify validates/geocodes the location and finds nearby activities within a bounded radius.
+- Google Places API (New) finds five nearby restaurants for Food rooms.
+- Food cards include cuisine/type, rating and review count, distance, address, Google venue
+  imagery when available, visible attribution, and a Google Maps action.
+- Activity decks remain configurable up to twenty choices; Food decks are hard-capped at five.
 - Provider credentials remain server-side and are never mobile environment values.
 - A match carries a Google Maps HTTPS action for the final real-world handoff.
-- Choosr uses available venue media first and caches a server-generated location image in the
-  public `discovery-images` bucket when venue media is unavailable. Provider keys never appear
-  in those returned image URLs.
+- Google photo media is resolved server-side without copying Google content into Supabase
+  Storage. Activity results may retain a cached server-generated location image fallback.
+  Provider keys never appear in returned image URLs.
 
 Custom rooms use a room title and two to ten individually labeled photos. Photos may come from
 the device library or camera. They are normalized on-device, written to the private
@@ -510,6 +515,7 @@ mode-`0600` `src/config/generatedEnv.ts`.
 | Firebase Admin service-account JSON | GitHub environment secret only                       | Never           |
 | `FIREBASE_SERVICE_ACCOUNT_BASE64`   | GitHub secret synced to Supabase by CI               | Never           |
 | Geoapify credentials                | GitHub secrets synced to Supabase by CI              | Never           |
+| Google Places server key            | GitHub secrets synced to Supabase by CI              | Never           |
 | Supabase service-role key           | Supabase-hosted server environment only              | Never           |
 
 The deployed database migrations create all application tables, RPCs, Realtime publication
@@ -580,7 +586,8 @@ npm run supabase:stop
 
 Local Supabase runs database migrations and tests without app secrets. Provider-backed decks and
 push delivery are tested against the hosted Dev environment. GitHub Actions synchronizes the
-Firebase and Geoapify credentials into Supabase before deploying the Edge Functions.
+Firebase, Geoapify, and Google Places credentials into Supabase before deploying the Edge
+Functions.
 
 `.env.dev` should use `http://127.0.0.1:54321` for simulators. A physical phone must use the
 Mac's private Wi-Fi address instead (for example, `http://192.168.x.x:54321`) and both devices
@@ -654,8 +661,9 @@ npx supabase db push
 
 Provider secrets and Edge Functions are deployed by the environment-gated GitHub Actions
 workflow. Do not run `supabase secrets set` with literal values from a workstation. Geoapify is
-required for hosted Activity/Food discovery but does not block database migrations, push
-delivery, or mobile distribution.
+required for hosted location validation and Activity discovery; Google Places API (New) is
+required for Food discovery. Neither provider blocks database migrations, push delivery, or
+mobile distribution.
 
 ```sh
 gh secret set FIREBASE_SERVICE_ACCOUNT_BASE64 --env dev
@@ -754,7 +762,8 @@ restrictions or replacing the supported FCM registration path.
 - A complete iPhone/iPhone, Android/Android, and cross-platform acceptance matrix remains,
   including labeled photo rooms, image fallbacks, offline recovery, token rotation, Circle
   removal, room resumption, notification management, and expiration.
-- Geoapify quotas, terms, attribution, licensing, cost alerts, and production fallback behavior
+- Geoapify and Google Places quotas, terms, attribution, licensing, cost alerts, and
+  production fallback behavior
   require final review.
 - Final store metadata, declarations, screenshots, privacy/terms pages, crash reporting,
   production observability, support procedures, accessibility review, and store review remain.

@@ -34,6 +34,43 @@ type GeoFeature = {
 type GeoCollection = { features?: GeoFeature[] };
 type GeocodeResult = { lat?: number; lon?: number };
 
+type GooglePhoto = {
+  name?: string;
+  authorAttributions?: {
+    displayName?: string;
+    uri?: string;
+  }[];
+};
+
+type GooglePlace = {
+  id?: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  location?: { latitude?: number; longitude?: number };
+  primaryTypeDisplayName?: { text?: string };
+  photos?: GooglePhoto[];
+  googleMapsUri?: string;
+  rating?: number;
+  userRatingCount?: number;
+};
+
+type GooglePlacesResponse = { places?: GooglePlace[] };
+type GooglePhotoResponse = { photoUri?: string };
+
+const FOOD_RESULT_LIMIT = 5;
+const FOOD_SEARCH_CANDIDATE_LIMIT = 10;
+const GOOGLE_PLACES_FIELDS = [
+  'places.id',
+  'places.displayName',
+  'places.formattedAddress',
+  'places.location',
+  'places.primaryTypeDisplayName',
+  'places.photos',
+  'places.googleMapsUri',
+  'places.rating',
+  'places.userRatingCount',
+].join(',');
+
 const categoryLabel = (categories: string[] | undefined, isFood: boolean) => {
   const leaf = categories?.find(value =>
     isFood ? value.startsWith('catering.') : value.startsWith('entertainment.'),
@@ -341,6 +378,172 @@ async function mapImageFor(
   }
 }
 
+const radians = (degrees: number) => (degrees * Math.PI) / 180;
+
+function distanceMiles(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+) {
+  const latitudeDelta = radians(to.latitude - from.latitude);
+  const longitudeDelta = radians(to.longitude - from.longitude);
+  const a =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(radians(from.latitude)) *
+      Math.cos(radians(to.latitude)) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function validGooglePlace(
+  place: GooglePlace,
+): place is GooglePlace & {
+  id: string;
+  displayName: { text: string };
+  location: { latitude: number; longitude: number };
+  googleMapsUri: string;
+} {
+  return (
+    typeof place.id === 'string' &&
+    typeof place.displayName?.text === 'string' &&
+    Number.isFinite(place.location?.latitude) &&
+    Number.isFinite(place.location?.longitude) &&
+    typeof place.googleMapsUri === 'string' &&
+    place.googleMapsUri.startsWith('https://')
+  );
+}
+
+async function googlePhotoUri(photo: GooglePhoto | undefined, key: string) {
+  if (typeof photo?.name !== 'string') return undefined;
+  const query = new URLSearchParams({
+    key,
+    maxWidthPx: '1200',
+    maxHeightPx: '900',
+    skipHttpRedirect: 'true',
+  });
+  try {
+    const response = await fetchWithTimeout(
+      `https://places.googleapis.com/v1/${photo.name}/media?${query}`,
+      {},
+      7000,
+    );
+    if (!response.ok) return undefined;
+    const payload = (await response.json()) as GooglePhotoResponse;
+    return isPublicWebUrl(payload.photoUri, { httpsOnly: true })
+      ? payload.photoUri
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function buildGoogleFoodDeck(
+  request: DeckRequest,
+  location: { latitude: number; longitude: number },
+): Promise<ProviderItem[]> {
+  const key = Deno.env.get('GOOGLE_PLACES_API_KEY');
+  if (!key) throw new Error('GOOGLE_PLACES_API_KEY is not configured.');
+  const radius = Math.min(
+    Math.max(request.radiusMeters ?? 15000, 500),
+    25000,
+  );
+  const response = await fetchWithTimeout(
+    'https://places.googleapis.com/v1/places:searchNearby',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask': GOOGLE_PLACES_FIELDS,
+      },
+      body: JSON.stringify({
+        includedTypes: ['restaurant'],
+        // Ask Google for a small candidate pool, then return only five cards.
+        // This lets Choosr prefer restaurants with real venue photos without
+        // increasing the deck size or resolving more than five photo URLs.
+        maxResultCount: FOOD_SEARCH_CANDIDATE_LIMIT,
+        rankPreference: 'POPULARITY',
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude: location.latitude,
+              longitude: location.longitude,
+            },
+            radius,
+          },
+        },
+      }),
+    },
+    8000,
+  );
+  if (!response.ok) {
+    throw new Error(`Google nearby search failed with ${response.status}.`);
+  }
+  const payload = (await response.json()) as GooglePlacesResponse;
+  const places = (payload.places ?? [])
+    .filter(validGooglePlace)
+    .sort((left, right) => {
+      const photoDifference =
+        Number(Boolean(right.photos?.length)) -
+        Number(Boolean(left.photos?.length));
+      return photoDifference || (right.rating ?? 0) - (left.rating ?? 0);
+    })
+    .slice(0, FOOD_RESULT_LIMIT);
+  const images = await Promise.all(
+    places.map(place => googlePhotoUri(place.photos?.[0], key)),
+  );
+
+  return places.map((place, index) => {
+    const [background, accent] = colorsFor(index);
+    const miles = distanceMiles(location, {
+      latitude: place.location.latitude,
+      longitude: place.location.longitude,
+    });
+    const type = place.primaryTypeDisplayName?.text ?? 'Restaurant';
+    const rating =
+      typeof place.rating === 'number'
+        ? `★ ${place.rating.toFixed(1)}${
+            typeof place.userRatingCount === 'number'
+              ? ` (${place.userRatingCount.toLocaleString('en-US')})`
+              : ''
+          }`
+        : undefined;
+    const author = place.photos?.[0]?.authorAttributions?.[0];
+    const attributionLabel = [
+      'Google Maps',
+      author?.displayName ? `Photo by ${author.displayName}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    return {
+      id: `google:${place.id}`,
+      mode: 'eat',
+      title: place.displayName.text,
+      kicker: 'PICK FOOD',
+      meta: [type, `${miles.toFixed(1)} mi away`, rating]
+        .filter(Boolean)
+        .join(' · '),
+      description: place.formattedAddress ?? `${miles.toFixed(1)} mi away`,
+      background,
+      accent,
+      tags: ['Food', type, 'Nearby'],
+      ...(images[index] ? { imageUrl: images[index] } : {}),
+      action: {
+        label: `Open ${place.displayName.text} in Google Maps`,
+        url: place.googleMapsUri,
+      },
+      attribution: {
+        label: attributionLabel,
+        url:
+          typeof author?.uri === 'string' &&
+          author.uri.startsWith('https://')
+            ? author.uri
+            : place.googleMapsUri,
+      },
+    };
+  });
+}
+
 export async function buildPlacesDeck(
   request: DeckRequest,
 ): Promise<ProviderItem[]> {
@@ -348,14 +551,15 @@ export async function buildPlacesDeck(
   if (!key) throw new Error('GEOAPIFY_API_KEY is not configured.');
   const { latitude, longitude } = await coordinatesFor(request, key);
   const isFood = request.mode === 'eat';
+  if (isFood) {
+    return buildGoogleFoodDeck(request, { latitude, longitude });
+  }
   const configuredLimit = Number(Deno.env.get('DISCOVERY_RESULT_LIMIT') ?? 10);
   const limit = Math.min(
     Math.max(request.maxResults ?? configuredLimit, 1),
     20,
   );
-  const categories = isFood
-    ? 'catering.restaurant'
-    : 'entertainment,leisure.park';
+  const categories = 'entertainment,leisure.park';
   const query = new URLSearchParams({
     categories,
     filter: `circle:${longitude},${latitude},${Math.min(
@@ -385,17 +589,17 @@ export async function buildPlacesDeck(
     })
     .slice(0, limit);
   const images = await Promise.all(
-    places.map(place => imageFor(place.properties!, key, isFood)),
+    places.map(place => imageFor(place.properties!, key, false)),
   );
 
   return places.map((feature, index) => {
     const place = feature.properties!;
     const [background, accent] = colorsFor(index);
-    const distanceMiles =
+    const formattedDistance =
       typeof place.distance === 'number'
         ? `${(place.distance / 1609.344).toFixed(1)} mi away`
         : 'Nearby';
-    const label = categoryLabel(place.categories, isFood);
+    const label = categoryLabel(place.categories, false);
     const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
       `${place.name} ${place.formatted ?? ''}`,
     )}`;
@@ -403,12 +607,12 @@ export async function buildPlacesDeck(
       id: `geoapify:${place.place_id}`,
       mode: request.mode,
       title: place.name!,
-      kicker: isFood ? 'PICK FOOD' : 'PICK AN ACTIVITY',
-      meta: `${label} · ${distanceMiles}`,
-      description: place.formatted ?? place.address_line1 ?? distanceMiles,
+      kicker: 'PICK AN ACTIVITY',
+      meta: `${label} · ${formattedDistance}`,
+      description: place.formatted ?? place.address_line1 ?? formattedDistance,
       background,
       accent,
-      tags: [isFood ? 'Food' : 'Activity', 'Nearby'],
+      tags: ['Activity', 'Nearby'],
       ...(images[index] ? { imageUrl: images[index] } : {}),
       action: { label: `Open ${place.name} in Maps`, url: mapsUrl },
     };

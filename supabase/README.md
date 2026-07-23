@@ -40,7 +40,8 @@ schema changes only through the dashboard; create and test a migration here firs
   permanent-user safety, and live-room protection.
 - `tests/database/0005_circle.test.sql`: Circle identity, connection, contact-link,
   room-invitation, and notification-outbox behavior.
-- `functions/build-deck`: authenticated Geoapify provider adapter for ZIP-based Eat and Do decks.
+- `functions/build-deck`: authenticated Google Places food and Geoapify activity adapter for
+  ZIP/postal-code discovery.
 - `seed.sql`: intentionally empty because decks are session-specific.
 
 ## Local verification
