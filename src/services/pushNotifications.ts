@@ -22,6 +22,15 @@ import { registerAndroidPushInstallation } from './androidPushRegistration';
 const PUSH_ENABLED_KEY = 'choosr.push.enabled';
 const ANDROID_NOTIFICATION_PERMISSION =
   'android.permission.POST_NOTIFICATIONS' as Permission;
+const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
+
+export type NotificationDispatchSummary = {
+  processed: number;
+  delivered: number;
+  failed: number;
+  recipientsWithoutDevices: number;
+  invalidTokensRemoved: number;
+};
 
 async function registerToken(token: string): Promise<void> {
   await ensureAnonymousSession();
@@ -150,14 +159,26 @@ export function registerPushListeners(input: {
   };
 }
 
-export async function dispatchPendingNotifications(): Promise<void> {
-  try {
-    const { error } = await supabase.functions.invoke(
-      'dispatch-notifications',
-      { body: {} },
-    );
-    if (error) throw error;
-  } catch (error) {
-    logPushFailure('dispatch', error);
+export async function dispatchPendingNotifications(): Promise<
+  NotificationDispatchSummary | undefined
+> {
+  let lastError: unknown;
+  for (const delayMs of DISPATCH_RETRY_DELAYS_MS) {
+    if (delayMs) {
+      await new Promise<void>(resolve => setTimeout(resolve, delayMs));
+    }
+    try {
+      const { data, error } =
+        await supabase.functions.invoke<NotificationDispatchSummary>(
+          'dispatch-notifications',
+          { body: {} },
+        );
+      if (error) throw error;
+      return data ?? undefined;
+    } catch (error) {
+      lastError = error;
+    }
   }
+  logPushFailure('dispatch', lastError);
+  return undefined;
 }
