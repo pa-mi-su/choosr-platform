@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   BackHandler,
   Pressable,
   StyleSheet,
@@ -28,6 +29,7 @@ import {
   submitDecisionReliably,
 } from '../services/sessionService';
 import { colors } from '../theme';
+import { cappedCardDwellMs } from '../services/cardDwell';
 import type { DecisionItem, SwipeDirection } from '../types/domain';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -94,6 +96,9 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const transitioning = useRef(false);
   const deckRef = useRef<DecisionItem[]>([]);
+  const dwellStartedAt = useRef<number | null>(null);
+  const accumulatedDwellMs = useRef(0);
+  const timedItemId = useRef<string | null>(null);
 
   const navigateForOutcome = useCallback(
     (
@@ -237,6 +242,33 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
   }, [cancelling, navigation, sessionId]);
 
   const item = deck[index];
+  const itemId = item?.id ?? null;
+
+  useEffect(() => {
+    timedItemId.current = itemId;
+    accumulatedDwellMs.current = 0;
+    dwellStartedAt.current =
+      itemId && !finished && AppState.currentState === 'active'
+        ? Date.now()
+        : null;
+  }, [finished, itemId]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        if (timedItemId.current && dwellStartedAt.current === null) {
+          dwellStartedAt.current = Date.now();
+        }
+        return;
+      }
+      if (dwellStartedAt.current !== null) {
+        accumulatedDwellMs.current += Date.now() - dwellStartedAt.current;
+        dwellStartedAt.current = null;
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
   const swipe = useCallback(
     async (direction: SwipeDirection) => {
       if (!item || submitting) {
@@ -244,12 +276,20 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
       }
       setSubmitting(true);
       setError(null);
+      const dwellMs = cappedCardDwellMs(
+        accumulatedDwellMs.current +
+          (dwellStartedAt.current === null
+            ? 0
+            : Date.now() - dwellStartedAt.current),
+      );
+      dwellStartedAt.current = null;
       try {
         const outcome = await submitDecisionReliably({
           sessionId,
           round: roundNumber,
           itemId: item.id,
           direction,
+          dwellMs,
         });
         if (!outcome) {
           throw new Error('Supabase did not return a swipe outcome.');
@@ -265,6 +305,9 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
         }
       } catch (cause) {
         setError(roomErrorMessage(cause));
+        if (AppState.currentState === 'active') {
+          dwellStartedAt.current = Date.now();
+        }
       } finally {
         setSubmitting(false);
       }
@@ -328,8 +371,9 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
           <Text style={styles.eyebrow}>YOUR CHOICES ARE IN</Text>
           <Text style={styles.finishedTitle}>Waiting for your partner.</Text>
           <Text style={styles.finishedCopy}>
-            We’ll reveal the first option you both accepted. Their choices
-            remain private.
+            After both decks are complete, we’ll reveal the mutual Yes you
+            considered most thoughtfully. Your individual choices remain
+            private.
           </Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>

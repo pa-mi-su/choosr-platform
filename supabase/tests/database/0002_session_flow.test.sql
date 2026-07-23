@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(20);
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
 values
@@ -95,11 +95,40 @@ select is(
       (select session_id from test_room),
       1,
       'past-lives',
-      'right'
+      'right',
+      30000
     )
   ),
   'next',
   'one right swipe does not create a match'
+);
+
+do $$
+begin
+  perform *
+  from public.submit_swipe(
+    (select session_id from test_room),
+    1,
+    'arrival',
+    'right',
+    12000
+  );
+end;
+$$;
+
+select is(
+  (
+    select outcome
+    from public.submit_swipe(
+      (select session_id from test_room),
+      1,
+      'spiderverse',
+      'left',
+      1000
+    )
+  ),
+  'waiting',
+  'finishing first waits for the other participant'
 );
 
 set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000001';
@@ -111,16 +140,50 @@ select is(
       (select session_id from test_room),
       1,
       'past-lives',
-      'right'
+      'right',
+      9000
+    )
+  ),
+  'next',
+  'an early mutual Yes does not end the room'
+);
+
+do $$
+begin
+  perform *
+  from public.submit_swipe(
+    (select session_id from test_room),
+    1,
+    'arrival',
+    'right',
+    6000
+  );
+end;
+$$;
+
+select is(
+  (
+    select outcome
+    from public.submit_swipe(
+      (select session_id from test_room),
+      1,
+      'spiderverse',
+      'left',
+      1000
     )
   ),
   'match',
-  'mutual right swipes create a match'
+  'the final swipe resolves the completed decks'
 );
 select is(
   (select count(*) from public.matches),
   1::bigint,
   'exactly one match record exists'
+);
+select is(
+  (select item_id from public.matches),
+  'arrival',
+  'a mutual Yes decided within the limit outranks one that reaches the cap'
 );
 select is(
   (select status from public.sessions limit 1),
@@ -132,8 +195,8 @@ set local role authenticated;
 
 select is(
   (select count(*) from public.swipes),
-  1::bigint,
-  'host can select only their own swipe'
+  3::bigint,
+  'host can select only their own completed deck'
 );
 select is(
   (select count(*) from public.session_items),

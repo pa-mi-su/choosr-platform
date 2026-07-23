@@ -58,6 +58,7 @@ type SwipeRow = {
   round: number;
   item_id: string;
   direction: SwipeDirection;
+  dwell_ms: number;
   created_at: string;
 };
 
@@ -271,6 +272,7 @@ export type Database = {
           p_round: number;
           p_item_id: string;
           p_direction: SwipeDirection;
+          p_dwell_ms?: number;
         };
         Returns: {
           outcome: 'next' | 'waiting' | 'match' | 'no-match';

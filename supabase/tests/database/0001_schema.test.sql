@@ -1,5 +1,5 @@
 begin;
-select plan(23);
+select plan(24);
 
 select has_table('public', 'sessions', 'sessions table exists');
 select has_table('public', 'participants', 'participants table exists');
@@ -32,7 +32,11 @@ select has_function('public', 'validate_decision_deck', array['text', 'jsonb']);
 select has_function('public', 'create_decision_session', array['text', 'jsonb', 'text']);
 select has_function('public', 'join_session', array['text', 'text']);
 select has_function('public', 'touch_presence', array['uuid']);
-select has_function('public', 'submit_swipe', array['uuid', 'integer', 'text', 'text']);
+select has_function(
+  'public',
+  'submit_swipe',
+  array['uuid', 'integer', 'text', 'text', 'integer']
+);
 select hasnt_function('public', 'create_session', array['text[]', 'text']);
 select has_function('public', 'start_decision_round', array['uuid', 'jsonb']);
 select has_function('public', 'cancel_session', array['uuid']);
@@ -44,6 +48,7 @@ select has_column(
   'item_payload',
   'session items freeze display payloads'
 );
+select has_column('public', 'swipes', 'dwell_ms', 'swipes store capped consideration time');
 
 select policies_are(
   'public',

@@ -250,12 +250,14 @@ export async function submitDecision(input: {
   round: number;
   itemId: string;
   direction: SwipeDirection;
+  dwellMs: number;
 }): Promise<DecisionSubmissionOutcome | undefined> {
   const { data, error } = await supabase.rpc('submit_swipe', {
     p_session_id: input.sessionId,
     p_round: input.round,
     p_item_id: input.itemId,
     p_direction: input.direction,
+    p_dwell_ms: input.dwellMs,
   });
   if (error) {
     throw error;
@@ -286,6 +288,7 @@ export async function submitDecisionReliably(input: {
   round: number;
   itemId: string;
   direction: SwipeDirection;
+  dwellMs: number;
 }): Promise<DecisionSubmissionOutcome | undefined> {
   try {
     return await submitDecision(input);
