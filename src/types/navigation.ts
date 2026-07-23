@@ -34,6 +34,12 @@ export type RootStackParamList = {
     mode: DecisionMode;
     searchArea?: string;
   };
+  RankChoices: {
+    sessionId: string;
+    roundNumber: number;
+    mode: DecisionMode;
+    searchArea?: string;
+  };
   Match: { sessionId: string; item: DecisionItem; searchArea?: string };
   NoMatch: { sessionId: string; mode: DecisionMode; searchArea?: string };
 };

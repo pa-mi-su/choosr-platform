@@ -27,6 +27,16 @@ export function DecisionArtwork({
   const content = (
     <>
       <View style={[styles.orb, { backgroundColor: item.accent }]} />
+      {item.mode === 'eat' && (!item.imageUrl || imageFailed) ? (
+        <View style={styles.foodFallback}>
+          <Text
+            accessibilityLabel="Generic food illustration"
+            style={styles.foodGlyph}
+          >
+            🍽️
+          </Text>
+        </View>
+      ) : null}
       <View style={styles.copy}>
         <Text style={styles.kicker}>{item.kicker}</Text>
         <Text numberOfLines={3} style={styles.title}>
@@ -88,6 +98,14 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: 'rgba(0,0,0,0.14)',
   },
+  foodFallback: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 36,
+    alignItems: 'center',
+  },
+  foodGlyph: { fontSize: 92, opacity: 0.92 },
   kicker: {
     color: colors.white,
     opacity: 0.75,

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  AppState,
   BackHandler,
   Pressable,
   StyleSheet,
@@ -29,7 +28,6 @@ import {
   submitDecisionReliably,
 } from '../services/sessionService';
 import { colors } from '../theme';
-import { cappedCardDwellMs } from '../services/cardDwell';
 import type { DecisionItem, SwipeDirection } from '../types/domain';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -92,13 +90,9 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const transitioning = useRef(false);
   const deckRef = useRef<DecisionItem[]>([]);
-  const dwellStartedAt = useRef<number | null>(null);
-  const accumulatedDwellMs = useRef(0);
-  const timedItemId = useRef<string | null>(null);
 
   const navigateForOutcome = useCallback(
     (
@@ -164,9 +158,14 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
         swipedItemIds,
       );
       if (nextIndex === -1) {
-        setFinished(true);
+        transitioning.current = true;
+        navigation.replace('RankChoices', {
+          sessionId,
+          roundNumber,
+          mode,
+          searchArea,
+        });
       } else {
-        setFinished(false);
         setIndex(nextIndex);
       }
     } catch (cause) {
@@ -174,7 +173,14 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [navigateForOutcome, roundNumber, sessionId]);
+  }, [
+    mode,
+    navigateForOutcome,
+    navigation,
+    roundNumber,
+    searchArea,
+    sessionId,
+  ]);
 
   useEffect(() => {
     load().catch(() => undefined);
@@ -242,33 +248,6 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
   }, [cancelling, navigation, sessionId]);
 
   const item = deck[index];
-  const itemId = item?.id ?? null;
-
-  useEffect(() => {
-    timedItemId.current = itemId;
-    accumulatedDwellMs.current = 0;
-    dwellStartedAt.current =
-      itemId && !finished && AppState.currentState === 'active'
-        ? Date.now()
-        : null;
-  }, [finished, itemId]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextState => {
-      if (nextState === 'active') {
-        if (timedItemId.current && dwellStartedAt.current === null) {
-          dwellStartedAt.current = Date.now();
-        }
-        return;
-      }
-      if (dwellStartedAt.current !== null) {
-        accumulatedDwellMs.current += Date.now() - dwellStartedAt.current;
-        dwellStartedAt.current = null;
-      }
-    });
-    return () => subscription.remove();
-  }, []);
-
   const swipe = useCallback(
     async (direction: SwipeDirection) => {
       if (!item || submitting) {
@@ -276,38 +255,41 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
       }
       setSubmitting(true);
       setError(null);
-      const dwellMs = cappedCardDwellMs(
-        accumulatedDwellMs.current +
-          (dwellStartedAt.current === null
-            ? 0
-            : Date.now() - dwellStartedAt.current),
-      );
-      dwellStartedAt.current = null;
       try {
         const outcome = await submitDecisionReliably({
           sessionId,
           round: roundNumber,
           itemId: item.id,
           direction,
-          dwellMs,
         });
         if (!outcome) {
           throw new Error('Supabase did not return a swipe outcome.');
         }
-        if (outcome.outcome === 'match' && outcome.matched_item_id) {
+        if (outcome.outcome === 'rank') {
+          transitioning.current = true;
+          navigation.replace('RankChoices', {
+            sessionId,
+            roundNumber,
+            mode,
+            searchArea,
+          });
+        } else if (outcome.outcome === 'match' && outcome.matched_item_id) {
           navigateForOutcome('matched', outcome.matched_item_id);
         } else if (outcome.outcome === 'no-match') {
           navigateForOutcome('completed', null);
-        } else if (outcome.outcome === 'waiting' || index === deck.length - 1) {
-          setFinished(true);
+        } else if (index >= deck.length - 1) {
+          transitioning.current = true;
+          navigation.replace('RankChoices', {
+            sessionId,
+            roundNumber,
+            mode,
+            searchArea,
+          });
         } else {
           setIndex(current => current + 1);
         }
       } catch (cause) {
         setError(roomErrorMessage(cause));
-        if (AppState.currentState === 'active') {
-          dwellStartedAt.current = Date.now();
-        }
       } finally {
         setSubmitting(false);
       }
@@ -316,8 +298,11 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
       deck.length,
       index,
       item,
+      mode,
       navigateForOutcome,
+      navigation,
       roundNumber,
+      searchArea,
       sessionId,
       submitting,
     ],
@@ -352,32 +337,6 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
           <Text style={styles.error}>{error}</Text>
           <Button label="Retry" onPress={load} />
         </View>
-      </Screen>
-    );
-  }
-
-  if (finished || !item) {
-    return (
-      <Screen testID="swipe-finished-screen" style={styles.waitingScreen}>
-        <SwipeHeader
-          busy={cancelling}
-          onCancel={confirmCancelRoom}
-          onLeave={leaveRoom}
-        />
-        <View style={styles.finishedContent}>
-          <View style={styles.waitingIcon}>
-            <Text style={styles.waitingIconText}>✓</Text>
-          </View>
-          <Text style={styles.eyebrow}>YOUR CHOICES ARE IN</Text>
-          <Text style={styles.finishedTitle}>Waiting for your partner.</Text>
-          <Text style={styles.finishedCopy}>
-            After both decks are complete, we’ll reveal the mutual Yes you
-            considered most thoughtfully. Your individual choices remain
-            private.
-          </Text>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-        </View>
-        <Text style={styles.private}>This screen updates automatically</Text>
       </Screen>
     );
   }

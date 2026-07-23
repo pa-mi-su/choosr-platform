@@ -90,7 +90,11 @@ async function imageFor(
       const details = (await response.json()) as GeoCollection;
       const detail = details.features?.[0]?.properties;
       const mediaImage = detail?.wiki_and_media?.image;
-      if (isPublicWebUrl(mediaImage, { httpsOnly: true })) return mediaImage;
+      if (isPublicWebUrl(mediaImage, { httpsOnly: true })) {
+        return (
+          (await cacheVenueImage(place.place_id!, mediaImage)) ?? mediaImage
+        );
+      }
       if (isFood) {
         const website =
           detail?.website ??
@@ -101,7 +105,11 @@ async function imageFor(
           place.contact?.website ??
           place.datasource?.raw?.website ??
           place.datasource?.raw?.['contact:website'];
-        return websiteImageFor(website);
+        const websiteImage = await websiteImageFor(website);
+        return websiteImage
+          ? (await cacheVenueImage(place.place_id!, websiteImage)) ??
+              websiteImage
+          : undefined;
       }
     }
   } catch {
@@ -112,6 +120,7 @@ async function imageFor(
 
 const MAX_WEBSITE_HTML_BYTES = 512 * 1024;
 const MAX_WEBSITE_REDIRECTS = 3;
+const MAX_CACHED_IMAGE_BYTES = 3 * 1024 * 1024;
 
 async function limitedHtml(response: Response) {
   if (!response.body) return undefined;
@@ -193,14 +202,83 @@ async function websiteImageFor(value: unknown) {
   return undefined;
 }
 
-async function imageObjectName(placeId: string) {
+async function hashedObjectName(seed: string, extension = 'jpg') {
   const digest = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(placeId),
+    new TextEncoder().encode(seed),
   );
   return `${Array.from(new Uint8Array(digest))
     .map(value => value.toString(16).padStart(2, '0'))
-    .join('')}.jpg`;
+    .join('')}.${extension}`;
+}
+
+function contentTypeDetails(contentType: string | null) {
+  const normalized = contentType?.split(';')[0]?.trim().toLowerCase();
+  if (normalized === 'image/jpeg')
+    return { contentType: normalized, ext: 'jpg' };
+  if (normalized === 'image/png')
+    return { contentType: normalized, ext: 'png' };
+  if (normalized === 'image/webp')
+    return { contentType: normalized, ext: 'webp' };
+  return undefined;
+}
+
+async function cacheVenueImage(placeId: string, imageUrl: string) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceKey) return imageUrl;
+  if (!isPublicWebUrl(imageUrl, { httpsOnly: true })) return undefined;
+
+  try {
+    const response = await fetchWithTimeout(
+      imageUrl,
+      {
+        redirect: 'follow',
+        headers: {
+          Accept: 'image/avif,image/webp,image/png,image/jpeg',
+          'User-Agent': 'ChoosrVenueImageCache/1.0',
+        },
+      },
+      7000,
+    );
+    if (!response.ok || !isPublicWebUrl(response.url, { httpsOnly: true }))
+      return undefined;
+    const type = contentTypeDetails(response.headers.get('content-type'));
+    if (!type) return undefined;
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_CACHED_IMAGE_BYTES
+    )
+      return undefined;
+    const bytes = await response.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength > MAX_CACHED_IMAGE_BYTES)
+      return undefined;
+
+    const objectName = `venues/${await hashedObjectName(
+      `${placeId}:${imageUrl}`,
+      type.ext,
+    )}`;
+    const supabase = createClient(supabaseUrl, serviceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const bucket = supabase.storage.from(IMAGE_BUCKET);
+    const publicUrl = bucket.getPublicUrl(objectName).data.publicUrl;
+    const { data: existing } = await bucket.list('venues', {
+      limit: 1,
+      search: objectName.split('/').at(-1),
+    });
+    if (existing?.some(object => `venues/${object.name}` === objectName))
+      return publicUrl;
+    const { error } = await bucket.upload(objectName, bytes, {
+      contentType: type.contentType,
+      cacheControl: '2592000',
+      upsert: true,
+    });
+    return error ? undefined : publicUrl;
+  } catch {
+    return undefined;
+  }
 }
 
 async function mapImageFor(
@@ -219,7 +297,7 @@ async function mapImageFor(
     return undefined;
 
   try {
-    const objectName = await imageObjectName(place.place_id);
+    const objectName = await hashedObjectName(place.place_id);
     const supabase = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });

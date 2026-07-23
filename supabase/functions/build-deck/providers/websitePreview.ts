@@ -73,7 +73,10 @@ const resolvedPublicImage = (value: string | undefined, pageUrl: string) => {
   if (!value || value.startsWith('data:')) return undefined;
   try {
     const resolved = new URL(decodeHtml(value), pageUrl).toString();
-    return isPublicWebUrl(resolved, { httpsOnly: true }) ? resolved : undefined;
+    const url = resolved.startsWith('http://')
+      ? `https://${resolved.slice('http://'.length)}`
+      : resolved;
+    return isPublicWebUrl(url, { httpsOnly: true }) ? url : undefined;
   } catch {
     return undefined;
   }
@@ -159,6 +162,47 @@ export function extractWebsiteImageFromHtml(html: string, pageUrl: string) {
 
   for (const candidate of candidates) {
     const image = resolvedPublicImage(candidate, pageUrl);
+    if (image) return image;
+  }
+
+  const pageImages = (html.match(/<img\b[^>]*>/gi) ?? [])
+    .map(tag => {
+      const attributes = attributesFor(tag);
+      const srcset = attributes.srcset
+        ?.split(',')
+        .map(value => value.trim().split(/\s+/)[0])
+        .filter(Boolean)
+        .at(-1);
+      const source =
+        attributes['data-src'] ??
+        attributes['data-lazy-src'] ??
+        attributes['data-original'] ??
+        srcset ??
+        attributes.src;
+      const context = [attributes.alt, attributes.class, attributes.id, source]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      const width = Number(attributes.width ?? 0);
+      const height = Number(attributes.height ?? 0);
+      let score = 0;
+      if (
+        /food|dish|menu|meal|cuisine|restaurant|dining|hero|banner|gallery/.test(
+          context,
+        )
+      )
+        score += 5;
+      if (/logo|icon|avatar|sprite|pixel|tracking|badge/.test(context))
+        score -= 10;
+      if (width >= 500 || height >= 350) score += 3;
+      if ((width > 0 && width < 240) || (height > 0 && height < 180))
+        score -= 5;
+      return { source, score };
+    })
+    .filter(candidate => candidate.source && candidate.score >= 0)
+    .sort((a, b) => b.score - a.score);
+  for (const candidate of pageImages) {
+    const image = resolvedPublicImage(candidate.source, pageUrl);
     if (image) return image;
   }
 

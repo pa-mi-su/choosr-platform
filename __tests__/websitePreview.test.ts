@@ -34,6 +34,25 @@ describe('restaurant website preview metadata', () => {
     ).toBe('https://restaurant.example/brand.png');
   });
 
+  it('upgrades public HTTP metadata images to HTTPS', () => {
+    const html =
+      '<meta property="og:image" content="http://cdn.example.com/dinner.jpg">';
+    expect(
+      extractWebsiteImageFromHtml(html, 'https://restaurant.example/'),
+    ).toBe('https://cdn.example.com/dinner.jpg');
+  });
+
+  it('uses a restaurant hero image when metadata is missing', () => {
+    const html = `
+      <img class="logo" src="/logo.png" width="120" height="80">
+      <img class="homepage-hero food gallery" data-src="/signature-pasta.webp"
+           width="1200" height="800" alt="Signature pasta dish">
+    `;
+    expect(
+      extractWebsiteImageFromHtml(html, 'https://restaurant.example/'),
+    ).toBe('https://restaurant.example/signature-pasta.webp');
+  });
+
   it('rejects unsafe pages and image URLs', () => {
     expect(isPublicWebUrl('https://127.0.0.1/admin')).toBe(false);
     expect(isPublicWebUrl('https://100.64.0.1/metadata')).toBe(false);
