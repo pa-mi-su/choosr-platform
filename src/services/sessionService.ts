@@ -59,6 +59,7 @@ const toItemPayload = (item: DecisionItem): Json => ({
   tags: item.tags,
   ...(item.imageUrl ? { imageUrl: item.imageUrl } : {}),
   ...(item.action ? { action: item.action } : {}),
+  ...(item.attribution ? { attribution: item.attribution } : {}),
 });
 
 export async function createDecisionRoom(input: {

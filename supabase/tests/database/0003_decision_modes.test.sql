@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(14);
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
 values
@@ -112,6 +112,26 @@ select throws_ok(
   '22023',
   'invalid_deck_item',
   'unsafe action URLs are rejected before persistence'
+);
+select lives_ok(
+  $$
+    select public.validate_decision_deck(
+      'eat',
+      '[{"id":"google-place","mode":"eat","title":"Restaurant","kicker":"PICK FOOD","meta":"Italian restaurant","description":"123 Main St","background":"#173F42","accent":"#78D6C6","tags":["Food"],"attribution":{"label":"Google Maps · Photo by Example","url":"https://maps.google.com/"}}]'::jsonb
+    )
+  $$,
+  'HTTPS provider attribution is accepted'
+);
+select throws_ok(
+  $$
+    select public.validate_decision_deck(
+      'eat',
+      '[{"id":"unsafe-attribution","mode":"eat","title":"Restaurant","kicker":"PICK FOOD","meta":"Restaurant","description":"123 Main St","background":"#173F42","accent":"#78D6C6","tags":["Food"],"attribution":{"label":"Google Maps","url":"http://insecure.example"}}]'::jsonb
+    )
+  $$,
+  '22023',
+  'invalid_deck_item',
+  'unsafe attribution URLs are rejected before persistence'
 );
 select throws_ok(
   $$
