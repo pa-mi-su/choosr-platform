@@ -41,7 +41,8 @@ revoke all on public.choice_rankings from anon, authenticated;
 grant select on public.ranking_submissions to authenticated;
 grant select on public.choice_rankings to authenticated;
 
-drop function public.submit_swipe(uuid, integer, text, text);
+drop function public.submit_swipe(uuid, integer, text, text, integer);
+alter table public.swipes drop column dwell_ms;
 
 create function public.submit_swipe(
   p_session_id uuid,

@@ -1,5 +1,5 @@
 begin;
-select plan(29);
+select plan(30);
 
 select has_table('public', 'sessions', 'sessions table exists');
 select has_table('public', 'participants', 'participants table exists');
@@ -60,6 +60,12 @@ select has_column(
   'session items freeze display payloads'
 );
 select has_column('public', 'choice_rankings', 'rank', 'private choices store explicit rank');
+select hasnt_column(
+  'public',
+  'swipes',
+  'dwell_ms',
+  'implicit timing is no longer stored'
+);
 
 select policies_are(
   'public',
