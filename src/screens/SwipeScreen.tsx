@@ -25,7 +25,7 @@ import {
   loadDecisionDeck,
   loadOwnSwipeItemIds,
   loadRoomOutcome,
-  submitDecision,
+  submitDecisionReliably,
 } from '../services/sessionService';
 import { colors } from '../theme';
 import type { DecisionItem, SwipeDirection } from '../types/domain';
@@ -245,7 +245,7 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
       setSubmitting(true);
       setError(null);
       try {
-        const outcome = await submitDecision({
+        const outcome = await submitDecisionReliably({
           sessionId,
           round: roundNumber,
           itemId: item.id,
@@ -325,7 +325,7 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
           <View style={styles.waitingIcon}>
             <Text style={styles.waitingIconText}>✓</Text>
           </View>
-          <Text style={styles.eyebrow}>YOUR PICKS ARE IN</Text>
+          <Text style={styles.eyebrow}>YOUR CHOICES ARE IN</Text>
           <Text style={styles.finishedTitle}>Waiting for your partner.</Text>
           <Text style={styles.finishedCopy}>
             We’ll reveal the first option you both accepted. Their choices
