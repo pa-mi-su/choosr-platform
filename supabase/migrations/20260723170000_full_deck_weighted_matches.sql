@@ -130,6 +130,7 @@ begin
       select
         s.item_id,
         sum(s.dwell_ms) as combined_dwell_ms,
+        bool_or(s.dwell_ms = 30000) as reached_time_limit,
         si.position
       from public.swipes s
       join public.session_items si
@@ -141,7 +142,11 @@ begin
         and s.direction = 'right'
       group by s.item_id, si.position
       having count(distinct s.participant_id) = 2
-      order by combined_dwell_ms desc, si.position asc, s.item_id asc
+      order by
+        reached_time_limit asc,
+        combined_dwell_ms desc,
+        si.position asc,
+        s.item_id asc
       limit 1
     ) candidate;
 
@@ -179,4 +184,4 @@ grant execute on function public.submit_swipe(uuid, integer, text, text, integer
 comment on column public.swipes.dwell_ms is
   'Foreground time spent considering the card, capped at 30 seconds by both client and database.';
 comment on function public.submit_swipe(uuid, integer, text, text, integer) is
-  'Stores an immutable timed swipe and resolves the highest-scoring mutual Yes only after both participants finish the deck.';
+  'Stores an immutable timed swipe and resolves the highest-scoring mutual Yes only after both participants finish the deck; cards that reach the time limit rank last.';

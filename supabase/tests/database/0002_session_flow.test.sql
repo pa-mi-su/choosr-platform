@@ -96,7 +96,7 @@ select is(
       1,
       'past-lives',
       'right',
-      4000
+      30000
     )
   ),
   'next',
@@ -183,7 +183,7 @@ select is(
 select is(
   (select item_id from public.matches),
   'arrival',
-  'the mutual Yes with the highest combined dwell time wins'
+  'a mutual Yes decided within the limit outranks one that reaches the cap'
 );
 select is(
   (select status from public.sessions limit 1),
