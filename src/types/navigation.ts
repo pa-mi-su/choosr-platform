@@ -20,6 +20,8 @@ export type RootStackParamList = {
   Waiting: {
     mode: DecisionMode;
     searchArea?: string;
+    searchLatitude?: number;
+    searchLongitude?: number;
     connectionId?: string;
     connectionName?: string;
     customPrompt?: string;

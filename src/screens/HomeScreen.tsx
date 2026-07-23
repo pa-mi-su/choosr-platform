@@ -34,19 +34,15 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
     <Screen testID="home-screen" style={styles.screen}>
       <View style={styles.orangeGlow} />
       <View style={styles.top}>
-        <Brand compact />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="About Choosr"
+          onPress={() => navigation.navigate('About')}
+          style={({ pressed }) => pressed && styles.pressed}
+        >
+          <Brand compact />
+        </Pressable>
         <View style={styles.topActions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="About Choosr"
-            onPress={() => navigation.navigate('About')}
-            style={({ pressed }) => [
-              styles.iconButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.infoIcon}>i</Text>
-          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${unreadCount} unread notifications`}
@@ -170,7 +166,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  infoIcon: { color: colors.text, fontSize: 18, fontWeight: '900' },
   bellIcon: { color: colors.text, fontSize: 22, fontWeight: '900' },
   unreadBadge: {
     position: 'absolute',

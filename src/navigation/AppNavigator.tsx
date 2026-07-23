@@ -36,7 +36,11 @@ export function AppNavigator(): React.JSX.Element {
       <Stack.Screen name="CustomSetup" component={CustomSetupScreen} />
       <Stack.Screen name="Waiting" component={WaitingScreen} />
       <Stack.Screen name="Join" component={JoinScreen} />
-      <Stack.Screen name="Swipe" component={SwipeScreen} />
+      <Stack.Screen
+        name="Swipe"
+        component={SwipeScreen}
+        options={{ gestureEnabled: false }}
+      />
       <Stack.Screen name="Match" component={MatchScreen} />
       <Stack.Screen name="NoMatch" component={NoMatchScreen} />
     </Stack.Navigator>

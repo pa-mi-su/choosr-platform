@@ -146,7 +146,11 @@ async function sendMessage(input: {
 Deno.serve(async request => {
   if (request.method !== 'POST')
     return jsonResponse({ error: 'Method not allowed.' }, 405);
-  if (!request.headers.get('Authorization')?.startsWith('Bearer ')) {
+  const hasBearerAuthorization = request.headers
+    .get('Authorization')
+    ?.startsWith('Bearer ');
+  const hasProjectApiKey = Boolean(request.headers.get('apikey'));
+  if (!hasBearerAuthorization && !hasProjectApiKey) {
     return jsonResponse({ error: 'Authentication required.' }, 401);
   }
 

@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  BackHandler,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
@@ -18,6 +21,7 @@ import {
   roomErrorMessage,
 } from '../services/roomFlow';
 import {
+  cancelDecisionRoom,
   loadDecisionDeck,
   loadOwnSwipeItemIds,
   loadRoomOutcome,
@@ -29,6 +33,55 @@ import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Swipe'>;
 
+type SwipeHeaderProps = {
+  busy: boolean;
+  onCancel: () => void;
+  onLeave: () => void;
+};
+
+function SwipeHeader({
+  busy,
+  onCancel,
+  onLeave,
+}: SwipeHeaderProps): React.JSX.Element {
+  return (
+    <View style={styles.header}>
+      <Brand compact />
+      <View style={styles.headerActions}>
+        <Pressable
+          testID="save-and-leave-button"
+          accessibilityRole="button"
+          accessibilityLabel="Save progress and leave room"
+          disabled={busy}
+          onPress={onLeave}
+          style={({ pressed }) => [
+            styles.headerButton,
+            pressed && styles.headerButtonPressed,
+            busy && styles.disabled,
+          ]}
+        >
+          <Text style={styles.leaveText}>Save & leave</Text>
+        </Pressable>
+        <Pressable
+          testID="cancel-room-button"
+          accessibilityRole="button"
+          accessibilityLabel="Cancel room for both participants"
+          disabled={busy}
+          onPress={onCancel}
+          style={({ pressed }) => [
+            styles.headerButton,
+            styles.cancelButton,
+            pressed && styles.headerButtonPressed,
+            busy && styles.disabled,
+          ]}
+        >
+          <Text style={styles.cancelText}>Cancel</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
   const { sessionId, roundNumber, mode, searchArea } = route.params;
   const modeDefinition = modeById[mode];
@@ -36,6 +89,7 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const transitioning = useRef(false);
@@ -128,6 +182,60 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
     maintainPresence: true,
   });
 
+  const leaveRoom = useCallback(() => {
+    if (cancelling) {
+      return;
+    }
+    transitioning.current = true;
+    navigation.popToTop();
+  }, [cancelling, navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        () => {
+          leaveRoom();
+          return true;
+        },
+      );
+      return () => subscription.remove();
+    }, [leaveRoom]),
+  );
+
+  const confirmCancelRoom = useCallback(() => {
+    if (cancelling) {
+      return;
+    }
+    Alert.alert(
+      'Cancel this room?',
+      'This ends the room for both people. Your partner will no longer be able to continue.',
+      [
+        { text: 'Keep room', style: 'cancel' },
+        {
+          text: 'Cancel room',
+          style: 'destructive',
+          onPress: () => {
+            setCancelling(true);
+            setError(null);
+            cancelDecisionRoom(sessionId)
+              .then(() => {
+                transitioning.current = true;
+                navigation.popToTop();
+              })
+              .catch(cause => {
+                Alert.alert(
+                  'Couldn’t cancel this room',
+                  roomErrorMessage(cause),
+                );
+              })
+              .finally(() => setCancelling(false));
+          },
+        },
+      ],
+    );
+  }, [cancelling, navigation, sessionId]);
+
   const item = deck[index];
   const swipe = useCallback(
     async (direction: SwipeDirection) => {
@@ -174,20 +282,33 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
 
   if (loading) {
     return (
-      <Screen testID="swipe-loading-screen" style={styles.centered}>
-        <ActivityIndicator color={colors.primary} size="large" />
-        <Text style={styles.loadingText}>Loading your private deck…</Text>
+      <Screen testID="swipe-loading-screen" style={styles.screen}>
+        <SwipeHeader
+          busy={cancelling}
+          onCancel={confirmCancelRoom}
+          onLeave={leaveRoom}
+        />
+        <View style={styles.centeredContent}>
+          <ActivityIndicator color={colors.primary} size="large" />
+          <Text style={styles.loadingText}>Loading your private deck…</Text>
+        </View>
       </Screen>
     );
   }
 
   if (error && !item) {
     return (
-      <Screen testID="swipe-error-screen" style={styles.centered}>
-        <Brand compact />
-        <Text style={styles.errorTitle}>We couldn’t load this room.</Text>
-        <Text style={styles.error}>{error}</Text>
-        <Button label="Retry" onPress={load} />
+      <Screen testID="swipe-error-screen" style={styles.screen}>
+        <SwipeHeader
+          busy={cancelling}
+          onCancel={confirmCancelRoom}
+          onLeave={leaveRoom}
+        />
+        <View style={styles.centeredContent}>
+          <Text style={styles.errorTitle}>We couldn’t load this room.</Text>
+          <Text style={styles.error}>{error}</Text>
+          <Button label="Retry" onPress={load} />
+        </View>
       </Screen>
     );
   }
@@ -195,7 +316,11 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
   if (finished || !item) {
     return (
       <Screen testID="swipe-finished-screen" style={styles.waitingScreen}>
-        <Brand compact />
+        <SwipeHeader
+          busy={cancelling}
+          onCancel={confirmCancelRoom}
+          onLeave={leaveRoom}
+        />
         <View style={styles.finishedContent}>
           <View style={styles.waitingIcon}>
             <Text style={styles.waitingIconText}>✓</Text>
@@ -215,12 +340,14 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
 
   return (
     <Screen testID="swipe-screen" style={styles.screen}>
-      <View style={styles.top}>
-        <Brand compact />
-        <View style={styles.online}>
-          <View style={styles.dot} />
-          <Text style={styles.onlineText}>PARTNER JOINED</Text>
-        </View>
+      <SwipeHeader
+        busy={cancelling || submitting}
+        onCancel={confirmCancelRoom}
+        onLeave={leaveRoom}
+      />
+      <View style={styles.online}>
+        <View style={styles.dot} />
+        <Text style={styles.onlineText}>PARTNER JOINED</Text>
       </View>
       <View style={styles.progress}>
         <Text style={styles.prompt} numberOfLines={2}>
@@ -280,7 +407,11 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   screen: { paddingHorizontal: 18 },
-  centered: { justifyContent: 'center', gap: 18 },
+  centeredContent: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 18,
+  },
   loadingText: { color: colors.muted, fontSize: 15, textAlign: 'center' },
   errorTitle: {
     color: colors.text,
@@ -300,18 +431,45 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 4,
   },
-  top: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 6,
+    flexShrink: 1,
+  },
+  headerButton: {
+    minHeight: 34,
+    justifyContent: 'center',
+    paddingHorizontal: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  cancelButton: {
+    backgroundColor: 'transparent',
+    borderColor: colors.danger,
+  },
+  headerButtonPressed: { opacity: 0.7 },
+  leaveText: { color: colors.text, fontSize: 10, fontWeight: '800' },
+  cancelText: { color: colors.danger, fontSize: 10, fontWeight: '900' },
   online: {
+    alignSelf: 'flex-end',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: colors.surface,
     borderRadius: 99,
-    padding: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 8,
+    marginTop: 6,
   },
   dot: {
     width: 6,
@@ -319,7 +477,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.success,
   },
-  onlineText: { color: colors.muted, fontSize: 9, fontWeight: '900' },
+  onlineText: { color: colors.muted, fontSize: 8, fontWeight: '900' },
   progress: {
     flexDirection: 'row',
     justifyContent: 'space-between',

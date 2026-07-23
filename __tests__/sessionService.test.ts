@@ -1,9 +1,11 @@
 const mockFrom = jest.fn();
+const mockRpc = jest.fn();
 const mockEnsureAnonymousSession = jest.fn();
 
 jest.mock('../src/lib/supabase', () => ({
   supabase: {
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -11,7 +13,10 @@ jest.mock('../src/services/anonymousAuth', () => ({
   ensureAnonymousSession: () => mockEnsureAnonymousSession(),
 }));
 
-import { loadRoomHistory } from '../src/services/sessionService';
+import {
+  cancelDecisionRoom,
+  loadRoomHistory,
+} from '../src/services/sessionService';
 
 const queryResult = (value: unknown) => {
   const builder: Record<string, jest.Mock> & {
@@ -81,5 +86,28 @@ describe('loadRoomHistory', () => {
     mockFrom.mockReturnValue(queryResult({ data: [], error: null }));
 
     await expect(loadRoomHistory()).resolves.toEqual([]);
+  });
+});
+
+describe('cancelDecisionRoom', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('cancels the room through the participant-authorized RPC', async () => {
+    mockRpc.mockResolvedValue({ error: null });
+
+    await expect(cancelDecisionRoom('session-1')).resolves.toBeUndefined();
+
+    expect(mockRpc).toHaveBeenCalledWith('cancel_session', {
+      p_session_id: 'session-1',
+    });
+  });
+
+  it('surfaces cancellation failures', async () => {
+    const error = new Error('not_a_session_participant');
+    mockRpc.mockResolvedValue({ error });
+
+    await expect(cancelDecisionRoom('session-1')).rejects.toBe(error);
   });
 });
