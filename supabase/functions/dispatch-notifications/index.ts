@@ -1,5 +1,9 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
 import { importPKCS8, SignJWT } from 'npm:jose@6.1.3';
+import {
+  buildServiceAccountClaims,
+  readBearerAccessToken,
+} from './googleAuth.ts';
 
 type ServiceAccount = {
   project_id: string;
@@ -48,15 +52,8 @@ function loadServiceAccount(): ServiceAccount {
 async function getGoogleAccessToken(account: ServiceAccount): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const key = await importPKCS8(account.private_key, 'RS256');
-  const assertion = await new SignJWT({
-    scope: 'https://www.googleapis.com/auth/firebase.messaging',
-  })
+  const assertion = await new SignJWT(buildServiceAccountClaims(account, now))
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
-    .setIssuer(account.client_email)
-    .setSubject(account.client_email)
-    .setAudience('https://oauth2.googleapis.com/token')
-    .setIssuedAt(now)
-    .setExpirationTime(now + 3600)
     .sign(key);
 
   const response = await fetch('https://oauth2.googleapis.com/token', {
@@ -68,10 +65,10 @@ async function getGoogleAccessToken(account: ServiceAccount): Promise<string> {
     }),
   });
   const result = await response.json();
-  if (!response.ok || typeof result.access_token !== 'string') {
+  if (!response.ok) {
     throw new Error(`Google OAuth failed (${response.status}).`);
   }
-  return result.access_token;
+  return readBearerAccessToken(result);
 }
 
 function pushCopy(job: PushJob): PushCopy {
