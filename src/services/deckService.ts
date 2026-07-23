@@ -13,6 +13,21 @@ export type DiscoveryInput = {
   region?: string;
 };
 
+export function shuffleDecisionDeck(
+  items: DecisionItem[],
+  random: () => number = Math.random,
+): DecisionItem[] {
+  const shuffled = [...items];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [
+      shuffled[swapIndex],
+      shuffled[index],
+    ];
+  }
+  return shuffled;
+}
+
 export async function fetchLiveDecisionDeck(
   input: DiscoveryInput,
 ): Promise<DecisionItem[]> {
@@ -27,7 +42,7 @@ export async function fetchLiveDecisionDeck(
   if (!data?.items.length) {
     throw new Error('The content provider returned an empty deck.');
   }
-  return data.items;
+  return shuffleDecisionDeck(data.items);
 }
 
 export function getPreviewDecisionDeck(mode: DecisionMode): DecisionItem[] {
