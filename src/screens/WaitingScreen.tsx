@@ -26,6 +26,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Waiting'>;
 export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const mode = modeById[route.params.mode];
   const searchArea = route.params.searchArea;
+  const searchLatitude = route.params.searchLatitude;
+  const searchLongitude = route.params.searchLongitude;
   const connectionId = route.params.connectionId;
   const connectionName = route.params.connectionName;
   const customItems = route.params.customItems;
@@ -54,7 +56,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
               () =>
                 fetchLiveDecisionDeck({
                   mode: mode.id,
-                  postalCode: searchArea,
+                  latitude: searchLatitude,
+                  longitude: searchLongitude,
                   maxResults: 10,
                 }),
               buildPreviewDeck(mode.id, searchArea),
@@ -85,7 +88,14 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     } finally {
       setCreating(false);
     }
-  }, [connectionId, customItems, mode.id, searchArea]);
+  }, [
+    connectionId,
+    customItems,
+    mode.id,
+    searchArea,
+    searchLatitude,
+    searchLongitude,
+  ]);
 
   useEffect(() => {
     createRoom().catch(() => undefined);

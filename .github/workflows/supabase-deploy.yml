@@ -130,6 +130,7 @@ jobs:
               --project-ref "$SUPABASE_PROJECT_REF" \
               GEOAPIFY_API_KEY="$GEOAPIFY_API_KEY"
             npx supabase functions deploy build-deck --project-ref "$SUPABASE_PROJECT_REF"
+            npx supabase functions deploy search-locations --project-ref "$SUPABASE_PROJECT_REF"
           else
             echo "::error::GEOAPIFY_API_KEY is required for Activity and Food decks."
             exit 1

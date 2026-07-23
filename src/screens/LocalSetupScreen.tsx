@@ -1,9 +1,21 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
+import {
+  searchLocations,
+  type LocationSuggestion,
+} from '../services/locationService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -15,15 +27,63 @@ export function LocalSetupScreen({
 }: Props): React.JSX.Element {
   const [searchArea, setSearchArea] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
+  const [selectedLocation, setSelectedLocation] =
+    useState<LocationSuggestion | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const mode = modeById[route.params.mode];
+
+  useEffect(() => {
+    const query = searchArea.trim();
+    if (selectedLocation?.label === query) {
+      setSuggestions([]);
+      setLookupMessage(null);
+      setSearching(false);
+      return;
+    }
+    if (query.length < 3) {
+      setSuggestions([]);
+      setLookupMessage(query.length ? 'Enter at least 3 characters.' : null);
+      setSearching(false);
+      return;
+    }
+
+    let active = true;
+    setSearching(true);
+    setLookupMessage(null);
+    const timer = setTimeout(() => {
+      searchLocations(query)
+        .then(locations => {
+          if (!active) return;
+          setSuggestions(locations);
+          setLookupMessage(
+            locations.length
+              ? null
+              : 'No matching city or ZIP was found. Check your entry.',
+          );
+        })
+        .catch(() => {
+          if (!active) return;
+          setSuggestions([]);
+          setLookupMessage(
+            'Location validation is temporarily unavailable. Please retry.',
+          );
+        })
+        .finally(() => {
+          if (active) setSearching(false);
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [searchArea, selectedLocation]);
+
   const continueToRoom = () => {
-    const postalCode = searchArea.trim();
-    if (
-      !/^([0-9]{5}(?:-[0-9]{4})?|[A-Za-z][0-9][A-Za-z][ -]?[0-9][A-Za-z][0-9])$/.test(
-        postalCode,
-      )
-    ) {
-      setError('Enter a valid U.S. ZIP or Canadian postal code.');
+    if (!selectedLocation || selectedLocation.label !== searchArea.trim()) {
+      setError('Select a validated city or ZIP from the suggestions.');
       return;
     }
     setError(null);
@@ -35,7 +95,9 @@ export function LocalSetupScreen({
             connectionName: route.params.connectionName,
           }
         : {}),
-      searchArea: postalCode,
+      searchArea: selectedLocation.label,
+      searchLatitude: selectedLocation.latitude,
+      searchLongitude: selectedLocation.longitude,
     });
   };
 
@@ -45,15 +107,20 @@ export function LocalSetupScreen({
         <Brand compact />
         <Button label="Back" variant="quiet" onPress={navigation.goBack} />
       </View>
-      <View style={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        style={styles.contentScroll}
+      >
         <View style={styles.pin}>
           <Text style={styles.pinText}>⌖</Text>
         </View>
         <Text style={styles.eyebrow}>{mode.eyebrow}</Text>
         <Text style={styles.title}>Where should we look?</Text>
         <Text style={styles.subtitle}>
-          Enter the ZIP or postal code where you want to look. Choosr will build
-          a private deck of up to 10 nearby choices.
+          Enter a city or ZIP/postal code, then select the validated location.
+          Choosr will build a private deck of up to 10 nearby choices.
         </Text>
         <TextInput
           testID="search-area-input"
@@ -61,17 +128,56 @@ export function LocalSetupScreen({
           autoCapitalize="words"
           autoCorrect={false}
           maxLength={80}
-          placeholder="10001 or M5V 2T6"
+          placeholder="Orlando or 32801"
           placeholderTextColor={colors.faint}
           selectionColor={colors.primary}
           value={searchArea}
           onChangeText={value => {
             setSearchArea(value);
+            setSelectedLocation(null);
             if (error) setError(null);
           }}
           onSubmitEditing={continueToRoom}
           style={styles.input}
         />
+        {searching ? (
+          <View style={styles.lookupStatus}>
+            <ActivityIndicator color={colors.primary} size="small" />
+            <Text style={styles.lookupText}>Validating location…</Text>
+          </View>
+        ) : null}
+        {suggestions.length ? (
+          <View style={styles.suggestions}>
+            {suggestions.map(location => (
+              <Pressable
+                key={location.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Use ${location.label}`}
+                onPress={() => {
+                  setSelectedLocation(location);
+                  setSearchArea(location.label);
+                  setSuggestions([]);
+                  setLookupMessage(null);
+                  setError(null);
+                }}
+                style={({ pressed }) => [
+                  styles.suggestion,
+                  pressed && styles.suggestionPressed,
+                ]}
+              >
+                <Text style={styles.suggestionTitle}>{location.label}</Text>
+                <Text style={styles.suggestionCountry}>
+                  {location.countryCode === 'US' ? 'United States' : 'Canada'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {selectedLocation ? (
+          <Text style={styles.valid}>✓ {selectedLocation.label}</Text>
+        ) : lookupMessage ? (
+          <Text style={styles.lookupMessage}>{lookupMessage}</Text>
+        ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.privacyBox}>
           <Text style={styles.privacyTitle}>NO LOCATION TRACKING</Text>
@@ -80,8 +186,12 @@ export function LocalSetupScreen({
             permanent location profile.
           </Text>
         </View>
-      </View>
-      <Button label="Continue" onPress={continueToRoom} />
+      </ScrollView>
+      <Button
+        label="Continue"
+        disabled={!selectedLocation || searching}
+        onPress={continueToRoom}
+      />
     </Screen>
   );
 }
@@ -93,7 +203,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  content: { alignItems: 'center' },
+  contentScroll: { flex: 1, marginVertical: 12 },
+  content: { alignItems: 'center', paddingBottom: 12 },
   pin: {
     width: 82,
     height: 82,
@@ -133,9 +244,50 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 18,
-    marginTop: 28,
+    marginTop: 20,
     paddingHorizontal: 18,
     fontSize: 16,
+  },
+  lookupStatus: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 7,
+  },
+  lookupText: { color: colors.muted, fontSize: 12 },
+  lookupMessage: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+    marginTop: 7,
+  },
+  suggestions: {
+    width: '100%',
+    overflow: 'hidden',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 16,
+    marginTop: 7,
+  },
+  suggestion: {
+    minHeight: 48,
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  suggestionPressed: { backgroundColor: colors.raised },
+  suggestionTitle: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  suggestionCountry: { color: colors.faint, fontSize: 10, marginTop: 2 },
+  valid: {
+    color: colors.success,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 7,
   },
   privacyBox: {
     width: '100%',
