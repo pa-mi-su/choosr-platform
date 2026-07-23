@@ -150,6 +150,8 @@ export async function loadRoomHistory(): Promise<RoomHistoryItem[]> {
     .select(
       'id, access_code, mode, status, round_number, expires_at, created_at',
     )
+    .in('status', ['waiting', 'active'])
+    .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
     .limit(30);
   if (error) throw error;
