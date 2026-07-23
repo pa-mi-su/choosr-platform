@@ -16,6 +16,7 @@ jest.mock('../src/services/anonymousAuth', () => ({
 import {
   cancelDecisionRoom,
   loadRoomHistory,
+  submitDecisionReliably,
 } from '../src/services/sessionService';
 
 const queryResult = (value: unknown) => {
@@ -29,6 +30,7 @@ const queryResult = (value: unknown) => {
     order: jest.fn(),
     limit: jest.fn(),
     maybeSingle: jest.fn(),
+    single: jest.fn(),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
@@ -37,6 +39,7 @@ const queryResult = (value: unknown) => {
   builder.order.mockReturnValue(builder);
   builder.limit.mockResolvedValue(value);
   builder.maybeSingle.mockResolvedValue(value);
+  builder.single.mockResolvedValue(value);
   builder.then = resolve => resolve(value);
   return builder;
 };
@@ -115,5 +118,101 @@ describe('cancelDecisionRoom', () => {
     mockRpc.mockResolvedValue({ error });
 
     await expect(cancelDecisionRoom('session-1')).rejects.toBe(error);
+  });
+});
+
+describe('submitDecisionReliably', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('recovers a committed swipe when the RPC response is lost', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: new Error('Network request failed'),
+    });
+    const swipes = queryResult({
+      data: [{ item_id: 'choice-2' }],
+      error: null,
+    });
+    const session = queryResult({
+      data: { status: 'active', round_number: 1 },
+      error: null,
+    });
+    const match = queryResult({ data: null, error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'swipes') return swipes;
+      if (table === 'sessions') return session;
+      if (table === 'matches') return match;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await expect(
+      submitDecisionReliably({
+        sessionId: 'session-1',
+        round: 1,
+        itemId: 'choice-2',
+        direction: 'right',
+      }),
+    ).resolves.toEqual({
+      outcome: 'next',
+      match_id: null,
+      matched_item_id: null,
+    });
+  });
+
+  it('recovers the authoritative terminal outcome after a lost response', async () => {
+    mockRpc.mockResolvedValue({
+      data: null,
+      error: new Error('Failed to fetch'),
+    });
+    const swipes = queryResult({
+      data: [{ item_id: 'choice-2' }],
+      error: null,
+    });
+    const session = queryResult({
+      data: { status: 'completed', round_number: 1 },
+      error: null,
+    });
+    const match = queryResult({ data: null, error: null });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'swipes') return swipes;
+      if (table === 'sessions') return session;
+      if (table === 'matches') return match;
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await expect(
+      submitDecisionReliably({
+        sessionId: 'session-1',
+        round: 1,
+        itemId: 'choice-2',
+        direction: 'left',
+      }),
+    ).resolves.toEqual({
+      outcome: 'no-match',
+      match_id: null,
+      matched_item_id: null,
+    });
+  });
+
+  it('keeps a real submission failure visible when no swipe was committed', async () => {
+    const networkError = new Error('Network request failed');
+    mockRpc.mockResolvedValue({ data: null, error: networkError });
+    mockFrom.mockReturnValue(
+      queryResult({
+        data: [],
+        error: null,
+      }),
+    );
+
+    await expect(
+      submitDecisionReliably({
+        sessionId: 'session-1',
+        round: 1,
+        itemId: 'choice-2',
+        direction: 'right',
+      }),
+    ).rejects.toBe(networkError);
   });
 });
