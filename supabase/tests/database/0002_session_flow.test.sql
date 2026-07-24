@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(23);
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
 values
@@ -126,6 +126,16 @@ select is(
   ),
   'rank',
   'finishing the full deck moves the participant to private ranking'
+);
+
+select throws_ok(
+  format(
+    'select * from public.submit_rankings(%L, 1, array[''arrival''])',
+    (select session_id from test_room)
+  ),
+  '22023',
+  'invalid_ranked_item_count',
+  'a participant must rank every accepted choice when accepting fewer than three'
 );
 
 select is(

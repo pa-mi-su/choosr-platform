@@ -2,6 +2,9 @@ import { supabase } from '../lib/supabase';
 import { decisionDecks } from '../data/decisions';
 import type { DecisionItem, DecisionMode } from '../types/domain';
 import { ensureAnonymousSession } from './anonymousAuth';
+import { withRequestTimeout } from './requestTimeout';
+
+const DECK_REQUEST_TIMEOUT_MS = 30_000;
 
 export type DiscoveryInput = {
   mode: DecisionMode;
@@ -12,6 +15,8 @@ export type DiscoveryInput = {
   maxResults?: number;
   region?: string;
 };
+
+export type SharedLocationDeckStatus = 'waiting-for-location' | 'ready';
 
 export function shuffleDecisionDeck(
   items: DecisionItem[],
@@ -32,10 +37,14 @@ export async function fetchLiveDecisionDeck(
   input: DiscoveryInput,
 ): Promise<DecisionItem[]> {
   await ensureAnonymousSession();
-  const { data, error } = await supabase.functions.invoke<{
-    mode: DecisionMode;
-    items: DecisionItem[];
-  }>('build-deck', { body: input });
+  const { data, error } = await withRequestTimeout(
+    supabase.functions.invoke<{
+      mode: DecisionMode;
+      items: DecisionItem[];
+    }>('build-deck', { body: input }),
+    DECK_REQUEST_TIMEOUT_MS,
+    'Nearby choices search',
+  );
   if (error) {
     throw error;
   }
@@ -43,6 +52,30 @@ export async function fetchLiveDecisionDeck(
     throw new Error('The content provider returned an empty deck.');
   }
   return shuffleDecisionDeck(data.items);
+}
+
+export async function prepareSharedLocationDeck(input: {
+  sessionId: string;
+  mode: 'eat' | 'do';
+  latitude: number;
+  longitude: number;
+  locationLabel: string;
+}): Promise<SharedLocationDeckStatus> {
+  await ensureAnonymousSession();
+  const { data, error } = await withRequestTimeout(
+    supabase.functions.invoke<{
+      mode: 'eat' | 'do';
+      status: SharedLocationDeckStatus;
+      items: DecisionItem[];
+    }>('build-deck', { body: input }),
+    DECK_REQUEST_TIMEOUT_MS,
+    'Shared nearby choices search',
+  );
+  if (error) throw error;
+  if (data?.status !== 'waiting-for-location' && data?.status !== 'ready') {
+    throw new Error('Choosr returned an invalid room preparation status.');
+  }
+  return data.status;
 }
 
 export function getPreviewDecisionDeck(mode: DecisionMode): DecisionItem[] {

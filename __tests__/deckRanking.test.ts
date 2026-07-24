@@ -1,5 +1,7 @@
 import {
+  hasCompleteChoiceRanking,
   rankForChoice,
+  requiredRankedChoiceCount,
   toggleRankedChoice,
 } from '../src/services/choiceRanking';
 import { shuffleDecisionDeck } from '../src/services/deckService';
@@ -41,4 +43,31 @@ describe('discovery deck ranking inputs', () => {
     expect(ranked).toEqual(['one', 'three']);
     expect(rankForChoice(ranked, 'three')).toBe(2);
   });
+
+  it.each([
+    [0, 0],
+    [1, 1],
+    [2, 2],
+    [3, 3],
+    [4, 3],
+    [5, 3],
+  ])(
+    'when the user accepted %i choices, requires %i ranked choices',
+    (acceptedChoiceCount, requiredChoiceCount) => {
+      expect(requiredRankedChoiceCount(acceptedChoiceCount)).toBe(
+        requiredChoiceCount,
+      );
+      expect(
+        hasCompleteChoiceRanking(requiredChoiceCount, acceptedChoiceCount),
+      ).toBe(true);
+      if (requiredChoiceCount > 0) {
+        expect(
+          hasCompleteChoiceRanking(
+            requiredChoiceCount - 1,
+            acceptedChoiceCount,
+          ),
+        ).toBe(false);
+      }
+    },
+  );
 });

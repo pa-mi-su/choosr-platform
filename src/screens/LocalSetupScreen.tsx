@@ -12,10 +12,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
+import { prepareSharedLocationDeck } from '../services/deckService';
 import {
+  locationQueryHint,
   searchLocations,
   type LocationSuggestion,
 } from '../services/locationService';
+import { roomErrorMessage } from '../services/roomFlow';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -31,6 +34,7 @@ export function LocalSetupScreen({
   const [selectedLocation, setSelectedLocation] =
     useState<LocationSuggestion | null>(null);
   const [searching, setSearching] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const mode = modeById[route.params.mode];
 
@@ -42,9 +46,16 @@ export function LocalSetupScreen({
       setSearching(false);
       return;
     }
-    if (query.length < 3) {
+    const queryHint = locationQueryHint(query);
+    if (queryHint) {
       setSuggestions([]);
-      setLookupMessage(query.length ? 'Enter at least 3 characters.' : null);
+      setLookupMessage(queryHint);
+      setSearching(false);
+      return;
+    }
+    if (!query) {
+      setSuggestions([]);
+      setLookupMessage(null);
       setSearching(false);
       return;
     }
@@ -73,7 +84,7 @@ export function LocalSetupScreen({
         .finally(() => {
           if (active) setSearching(false);
         });
-    }, 350);
+    }, 500);
 
     return () => {
       active = false;
@@ -81,12 +92,39 @@ export function LocalSetupScreen({
     };
   }, [searchArea, selectedLocation]);
 
-  const continueToRoom = () => {
+  const continueToRoom = async () => {
     if (!selectedLocation || selectedLocation.label !== searchArea.trim()) {
       setError('Select a validated city or ZIP from the suggestions.');
       return;
     }
     setError(null);
+    if (route.params.sessionId) {
+      setSubmitting(true);
+      try {
+        const status = await prepareSharedLocationDeck({
+          sessionId: route.params.sessionId,
+          mode: mode.id as 'eat' | 'do',
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
+          locationLabel: selectedLocation.label,
+        });
+        if (status !== 'ready') {
+          throw new Error(
+            'Your partner’s location has not arrived yet. Please retry.',
+          );
+        }
+        navigation.replace('Swipe', {
+          sessionId: route.params.sessionId,
+          roundNumber: route.params.roundNumber ?? 1,
+          mode: mode.id,
+        });
+      } catch (cause) {
+        setError(roomErrorMessage(cause));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     navigation.navigate('Waiting', {
       mode: mode.id,
       ...(route.params.connectionId
@@ -120,7 +158,8 @@ export function LocalSetupScreen({
         <Text style={styles.title}>Where should we look?</Text>
         <Text style={styles.subtitle}>
           Enter a city or ZIP/postal code, then select the validated location.
-          Choosr will build a private deck of up to 10 nearby choices.
+          Choosr will build five strong choices fairly located between both
+          people.
         </Text>
         <TextInput
           testID="search-area-input"
@@ -137,7 +176,9 @@ export function LocalSetupScreen({
             setSelectedLocation(null);
             if (error) setError(null);
           }}
-          onSubmitEditing={continueToRoom}
+          onSubmitEditing={() => {
+            continueToRoom().catch(() => undefined);
+          }}
           style={styles.input}
         />
         {searching ? (
@@ -189,8 +230,11 @@ export function LocalSetupScreen({
       </ScrollView>
       <Button
         label="Continue"
-        disabled={!selectedLocation || searching}
-        onPress={continueToRoom}
+        disabled={!selectedLocation || searching || submitting}
+        loading={submitting}
+        onPress={() => {
+          continueToRoom().catch(() => undefined);
+        }}
       />
     </Screen>
   );

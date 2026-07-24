@@ -4,9 +4,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { buildPreviewDeck, modeById } from '../data/decisions';
-import { fetchLiveDecisionDeck } from '../services/deckService';
 import { useRoomSync } from '../hooks/useRoomSync';
-import { loadItemsWithFallback, roomErrorMessage } from '../services/roomFlow';
+import { roomErrorMessage } from '../services/roomFlow';
 import { buildRoomInvite } from '../services/roomInvite';
 import {
   circleErrorMessage,
@@ -15,6 +14,7 @@ import {
 import {
   cancelDecisionRoom,
   createDecisionRoom,
+  createLocationDecisionRoom,
   loadDecisionRoom,
   type DecisionRoom,
 } from '../services/sessionService';
@@ -49,23 +49,28 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     setCreationError(null);
     setInviteError(null);
     try {
-      const items =
+      if (
+        mode.id !== 'custom' &&
+        (!searchArea ||
+          !Number.isFinite(searchLatitude) ||
+          !Number.isFinite(searchLongitude))
+      ) {
+        throw new Error('A validated starting location is required.');
+      }
+      const credentials =
         mode.id === 'custom'
-          ? customItems ?? []
-          : await loadItemsWithFallback(
-              () =>
-                fetchLiveDecisionDeck({
-                  mode: mode.id,
-                  latitude: searchLatitude,
-                  longitude: searchLongitude,
-                  maxResults: 10,
-                }),
-              buildPreviewDeck(mode.id, searchArea),
-            );
-      const credentials = await createDecisionRoom({
-        mode: mode.id,
-        items: items.length ? items : buildPreviewDeck(mode.id, searchArea),
-      });
+          ? await createDecisionRoom({
+              mode: mode.id,
+              items: customItems?.length
+                ? customItems
+                : buildPreviewDeck(mode.id, searchArea),
+            })
+          : await createLocationDecisionRoom({
+              mode: mode.id,
+              latitude: searchLatitude!,
+              longitude: searchLongitude!,
+              locationLabel: searchArea!,
+            });
       setInviteToken(credentials.inviteToken);
       setRoom({
         ...credentials,
@@ -129,6 +134,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   });
 
   const ready = room?.status === 'active' && room.participantCount === 2;
+  const partnerJoined =
+    room?.status === 'waiting' && room.participantCount === 2;
   const retryCircleInvite = async () => {
     if (!room || !connectionId) return;
     setInviteError(null);
@@ -186,6 +193,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             ? 'ROOM CREATION FAILED'
             : ready
             ? 'PARTNER JOINED'
+            : partnerJoined
+            ? 'PARTNER CHOOSING LOCATION'
             : circleInviteSent
             ? 'INVITATION SENT'
             : 'ROOM CREATED'}
@@ -197,6 +206,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             ? 'We couldn’t create this room.'
             : ready
             ? 'Ready when you are.'
+            : partnerJoined
+            ? 'Building your shared deck next.'
             : circleInviteSent && connectionName
             ? `${connectionName} is invited.`
             : 'Invite your person.'}

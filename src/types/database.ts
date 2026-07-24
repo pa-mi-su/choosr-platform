@@ -51,6 +51,15 @@ type SessionItemRow = {
   created_at: string;
 };
 
+type SessionLocationRow = {
+  session_id: string;
+  participant_id: string;
+  latitude: number;
+  longitude: number;
+  location_label: string;
+  submitted_at: string;
+};
+
 type SwipeRow = {
   id: number;
   session_id: string;
@@ -142,6 +151,7 @@ export type Database = {
       sessions: Table<SessionRow, never, never>;
       participants: Table<ParticipantRow, never, never>;
       session_items: Table<SessionItemRow, never, never>;
+      session_locations: Table<SessionLocationRow, never, never>;
       swipes: Table<SwipeRow, never, never>;
       matches: Table<MatchRow, never, never>;
       ranking_submissions: Table<RankingSubmissionRow, never, never>;
@@ -161,6 +171,21 @@ export type Database = {
         Args: {
           p_mode: DecisionMode;
           p_items: Json;
+          p_region?: string;
+        };
+        Returns: {
+          session_id: string;
+          access_code: string;
+          invite_token: string;
+          expires_at: string;
+        }[];
+      };
+      create_location_decision_session: {
+        Args: {
+          p_mode: 'eat' | 'do';
+          p_latitude: number;
+          p_longitude: number;
+          p_location_label: string;
           p_region?: string;
         };
         Returns: {

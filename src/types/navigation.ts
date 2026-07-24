@@ -11,6 +11,8 @@ export type RootStackParamList = {
     mode: DecisionMode;
     connectionId?: string;
     connectionName?: string;
+    sessionId?: string;
+    roundNumber?: number;
   };
   CustomSetup: {
     mode: 'custom';
