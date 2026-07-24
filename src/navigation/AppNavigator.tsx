@@ -3,6 +3,11 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 import { HomeScreen } from '../screens/HomeScreen';
+import { ChoosrHomeScreen } from '../screens/ChoosrHomeScreen';
+import { ChatHomeScreen } from '../screens/ChatHomeScreen';
+import { ChatInviteScreen } from '../screens/ChatInviteScreen';
+import { ChatScanScreen } from '../screens/ChatScanScreen';
+import { ChatRoomScreen } from '../screens/ChatRoomScreen';
 import { ModeSelectScreen } from '../screens/ModeSelectScreen';
 import { LocalSetupScreen } from '../screens/LocalSetupScreen';
 import { WaitingScreen } from '../screens/WaitingScreen';
@@ -27,7 +32,20 @@ export function AppNavigator(): React.JSX.Element {
         animation: 'fade_from_bottom',
       }}
     >
-      <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="Home" component={ChoosrHomeScreen} />
+      <Stack.Screen name="ChooseHome" component={HomeScreen} />
+      <Stack.Screen name="ChatHome" component={ChatHomeScreen} />
+      <Stack.Screen
+        name="ChatInvite"
+        component={ChatInviteScreen}
+        options={{ gestureEnabled: false }}
+      />
+      <Stack.Screen name="ChatScan" component={ChatScanScreen} />
+      <Stack.Screen
+        name="ChatRoom"
+        component={ChatRoomScreen}
+        options={{ gestureEnabled: false }}
+      />
       <Stack.Screen name="About" component={AboutScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="ActiveRooms" component={ActiveRoomsScreen} />

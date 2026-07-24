@@ -128,7 +128,7 @@ type RoomInvitationRow = {
 type UserNotificationRow = {
   id: number;
   recipient_user_id: string;
-  kind: 'connection_request' | 'room_invitation';
+  kind: 'connection_request' | 'room_invitation' | 'chat_message';
   title: string;
   body: string;
   payload: Json;
@@ -136,6 +136,34 @@ type UserNotificationRow = {
   created_at: string;
   read_at: string | null;
   deleted_at: string | null;
+};
+
+type ChatRoomRow = {
+  id: string;
+  status: 'inviting' | 'active' | 'destroyed' | 'expired';
+  created_at: string;
+  activated_at: string | null;
+  expires_at: string;
+  destroyed_at: string | null;
+  destruction_reason: 'participant' | 'expired' | null;
+};
+
+type ChatParticipantRow = {
+  room_id: string;
+  user_id: string;
+  role: 'creator' | 'joiner';
+  public_key: string;
+  joined_at: string;
+};
+
+type ChatMessageRow = {
+  id: number;
+  room_id: string;
+  sender_user_id: string;
+  client_message_id: string;
+  nonce: string;
+  ciphertext: string;
+  created_at: string;
 };
 
 type Table<Row, Insert, Update> = {
@@ -160,6 +188,9 @@ export type Database = {
       connections: Table<ConnectionRow, never, never>;
       room_invitations: Table<RoomInvitationRow, never, never>;
       user_notifications: Table<UserNotificationRow, never, never>;
+      chat_rooms: Table<ChatRoomRow, never, never>;
+      chat_participants: Table<ChatParticipantRow, never, never>;
+      chat_messages: Table<ChatMessageRow, never, never>;
     };
     Views: Record<never, never>;
     Functions: {
@@ -332,6 +363,47 @@ export type Database = {
           match_id: string | null;
           matched_item_id: string | null;
         }[];
+      };
+      create_chat_invitation: {
+        Args: { p_public_key: string };
+        Returns: {
+          room_id: string;
+          invitation_token: string;
+          invitation_expires_at: string;
+          room_expires_at: string;
+        }[];
+      };
+      join_chat_invitation: {
+        Args: { p_invitation_token: string; p_public_key: string };
+        Returns: {
+          room_id: string;
+          peer_public_key: string;
+          room_expires_at: string;
+        }[];
+      };
+      get_active_chat: {
+        Args: Record<never, never>;
+        Returns: {
+          room_id: string;
+          status: 'inviting' | 'active';
+          role: 'creator' | 'joiner';
+          own_public_key: string;
+          peer_public_key: string | null;
+          room_expires_at: string;
+        }[];
+      };
+      send_chat_ciphertext: {
+        Args: {
+          p_room_id: string;
+          p_client_message_id: string;
+          p_nonce: string;
+          p_ciphertext: string;
+        };
+        Returns: { message_id: number; created_at: string }[];
+      };
+      destroy_chat_room: {
+        Args: { p_room_id: string };
+        Returns: string;
       };
     };
     Enums: Record<never, never>;

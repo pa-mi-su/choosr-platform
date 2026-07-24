@@ -51,7 +51,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Choosr uses your location only to suggest nearby restaurants and activities while you create a room.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Choosr lets you take photos to add as choices in a private room.</string>
+	<string>Choosr uses the camera to scan private chat QR invitations and lets you take photos for private choices.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choosr lets you choose profile photos and photos for private room choices.</string>
 	<key>RCTNewArchEnabled</key>

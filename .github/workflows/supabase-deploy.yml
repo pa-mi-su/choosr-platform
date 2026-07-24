@@ -147,4 +147,6 @@ jobs:
 
           npx supabase functions deploy build-deck --project-ref "$SUPABASE_PROJECT_REF"
 
+          npx supabase functions deploy chat-session --project-ref "$SUPABASE_PROJECT_REF"
+
           npx supabase functions deploy dispatch-notifications --project-ref "$SUPABASE_PROJECT_REF"

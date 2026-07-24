@@ -14,7 +14,7 @@ type ServiceAccount = {
 type PushJob = {
   id: number;
   recipient_user_id: string;
-  kind: 'connection_request' | 'room_invitation';
+  kind: 'connection_request' | 'room_invitation' | 'chat_message';
   payload: Record<string, unknown>;
   attempts: number;
 };
@@ -72,6 +72,12 @@ async function getGoogleAccessToken(account: ServiceAccount): Promise<string> {
 }
 
 function pushCopy(job: PushJob): PushCopy {
+  if (job.kind === 'chat_message') {
+    return {
+      title: 'New private Choosr message',
+      body: 'Open Choosr to view it privately.',
+    };
+  }
   if (job.kind === 'connection_request') {
     return {
       title: 'New Choosr connection',
@@ -88,6 +94,9 @@ function pushCopy(job: PushJob): PushCopy {
 }
 
 function stringData(job: PushJob): Record<string, string> {
+  if (job.kind === 'chat_message') {
+    return { kind: 'chat_message', route: 'Chat' };
+  }
   const data: Record<string, string> = { kind: job.kind, route: 'Circle' };
   for (const key of ['connection_id', 'invitation_id', 'session_id', 'mode']) {
     const value = job.payload[key];

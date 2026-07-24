@@ -2,6 +2,11 @@ import type { DecisionItem, DecisionMode } from './domain';
 
 export type RootStackParamList = {
   Home: undefined;
+  ChooseHome: undefined;
+  ChatHome: undefined;
+  ChatInvite: undefined;
+  ChatScan: undefined;
+  ChatRoom: undefined;
   About: undefined;
   Notifications: undefined;
   ActiveRooms: undefined;
