@@ -11,8 +11,6 @@ import {
   buildPrivateChatShareMessage,
   encodeChatInvitation,
   encodePrivateChatLink,
-  formatChatInvitationCodeInput,
-  normalizeChatInvitationCode,
   parseChatInvitation,
 } from '../src/chat/domain/invitation';
 import { ChatError, type ChatInvitation } from '../src/chat/domain/types';
@@ -79,7 +77,6 @@ describe('Choosr Chat invitation contract', () => {
   const invitation: ChatInvitation = {
     roomId: 'not-encoded',
     token: 'a'.repeat(64),
-    manualCode: 'ABCD-1234-EF56-7890',
     creatorPublicKey: `${'A'.repeat(43)}=`,
     invitationExpiresAt: '2026-07-24T12:01:30.000Z',
     roomExpiresAt: '2026-07-25T12:00:00.000Z',
@@ -99,18 +96,7 @@ describe('Choosr Chat invitation contract', () => {
     const link = encodePrivateChatLink(invitation);
     expect(parseChatInvitation(link)).toEqual(parseChatInvitation(qr));
     expect(link).not.toContain(invitation.roomId);
-    expect(link).not.toContain(invitation.manualCode);
     expect(buildPrivateChatShareMessage(invitation).message).toContain(link);
-  });
-
-  test('manual fallback codes are normalized without reducing their length', () => {
-    expect(formatChatInvitationCodeInput('abcd 1234 ef56 7890')).toBe(
-      'ABCD-1234-EF56-7890',
-    );
-    expect(normalizeChatInvitationCode('abcd1234ef567890')).toBe(
-      'ABCD-1234-EF56-7890',
-    );
-    expect(() => normalizeChatInvitationCode('ABCD-1234')).toThrow(ChatError);
   });
 
   test.each([

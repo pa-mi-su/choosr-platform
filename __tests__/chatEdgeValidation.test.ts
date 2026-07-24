@@ -3,7 +3,7 @@ import { validateChatRequest } from '../supabase/functions/chat-session/validati
 const publicKey = `${'A'.repeat(43)}=`;
 
 describe('Chat Edge Function request boundary', () => {
-  test('accepts legacy token joins and explicit token joins', () => {
+  test('accepts complete token joins', () => {
     const invitationToken = 'a'.repeat(64);
     expect(
       validateChatRequest({
@@ -12,67 +12,28 @@ describe('Chat Edge Function request boundary', () => {
         publicKey,
       }),
     ).toBeUndefined();
-    expect(
-      validateChatRequest({
-        action: 'join',
-        invitationMethod: 'token',
-        invitationToken,
-        publicKey,
-      }),
-    ).toBeUndefined();
   });
 
-  test('accepts only complete uppercase manual invitation codes', () => {
+  test('rejects missing and malformed invitation tokens', () => {
     expect(
       validateChatRequest({
         action: 'join',
-        invitationMethod: 'code',
-        invitationCode: 'ABCD-1234-EF56-7890',
         publicKey,
       }),
-    ).toBeUndefined();
+    ).toBe('Invalid or expired private-chat invitation.');
     expect(
       validateChatRequest({
         action: 'join',
-        invitationMethod: 'code',
-        invitationCode: 'ABCD-1234',
-        publicKey,
-      }),
-    ).toBe('Invalid or expired private-chat code.');
-  });
-
-  test('does not allow one invitation representation to bypass another validator', () => {
-    expect(
-      validateChatRequest({
-        action: 'join',
-        invitationMethod: 'code',
-        invitationToken: 'a'.repeat(64),
-        publicKey,
-      }),
-    ).toBe('Invalid or expired private-chat code.');
-    expect(
-      validateChatRequest({
-        action: 'join',
-        invitationMethod: 'token',
-        invitationCode: 'ABCD-1234-EF56-7890',
+        invitationToken: 'too-short',
         publicKey,
       }),
     ).toBe('Invalid or expired private-chat invitation.');
   });
 
-  test('rejects malformed keys and unsupported methods before database access', () => {
+  test('rejects malformed keys before database access', () => {
     expect(
       validateChatRequest({
         action: 'join',
-        invitationMethod: 'circle',
-        invitationToken: 'a'.repeat(64),
-        publicKey,
-      }),
-    ).toBe('Invalid invitation method.');
-    expect(
-      validateChatRequest({
-        action: 'join',
-        invitationMethod: 'token',
         invitationToken: 'a'.repeat(64),
         publicKey: 'readable key',
       }),

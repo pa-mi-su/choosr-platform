@@ -6,7 +6,6 @@ export type RootStackParamList = {
   ChatHome: undefined;
   ChatInvite: { focus?: 'share' | 'qr' } | undefined;
   ChatScan: undefined;
-  ChatCode: undefined;
   ChatLinkJoin: { v?: string; t?: string; k?: string } | undefined;
   ChatRoom: undefined;
   About: undefined;

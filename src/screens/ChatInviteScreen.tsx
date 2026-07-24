@@ -177,13 +177,7 @@ export function ChatInviteScreen({
           )}
         </View>
         {invitation ? (
-          <>
-            <Text style={styles.timer}>Expires in {remaining} seconds</Text>
-            <Text style={styles.codeLabel}>MANUAL FALLBACK CODE</Text>
-            <Text selectable style={styles.code}>
-              {invitation.manualCode}
-            </Text>
-          </>
+          <Text style={styles.timer}>Expires in {remaining} seconds</Text>
         ) : null}
       </View>
       <Text style={styles.privacy}>
@@ -238,18 +232,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 15,
     fontWeight: '800',
-  },
-  codeLabel: {
-    color: colors.faint,
-    fontSize: 8,
-    fontWeight: '900',
-    letterSpacing: 1.4,
-  },
-  code: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: 1,
   },
   privacy: { color: colors.faint, fontSize: 11, textAlign: 'center' },
 });

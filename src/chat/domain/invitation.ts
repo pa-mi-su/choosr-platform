@@ -5,7 +5,6 @@ const CHAT_SCHEME = 'choosr:';
 const CHAT_HOST = 'chat';
 const TOKEN_PATTERN = /^[0-9a-f]{64}$/;
 const PUBLIC_KEY_PATTERN = /^[A-Za-z0-9+/]{43}=$/;
-const MANUAL_CODE_PATTERN = /^[0-9A-F]{4}(?:-[0-9A-F]{4}){3}$/;
 
 export type ScannedChatInvitation = Pick<
   ChatInvitation,
@@ -54,29 +53,6 @@ export function parseChatInvitation(value: string): ScannedChatInvitation {
       'That is not a valid Choosr private-chat invitation.',
     );
   }
-}
-
-export function normalizeChatInvitationCode(value: string): string {
-  const normalized = formatChatInvitationCodeInput(value);
-  if (!normalized || !MANUAL_CODE_PATTERN.test(normalized)) {
-    throw new ChatError(
-      'invalid_invitation_code',
-      'Enter the complete 16-character private-chat code.',
-    );
-  }
-  return normalized;
-}
-
-export function formatChatInvitationCodeInput(value: string): string {
-  return (
-    value
-      .trim()
-      .toUpperCase()
-      .replace(/[^0-9A-F]/g, '')
-      .slice(0, 16)
-      .match(/.{1,4}/g)
-      ?.join('-') ?? ''
-  );
 }
 
 export function buildPrivateChatShareMessage(

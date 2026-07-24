@@ -14,13 +14,11 @@ the key returned by the transactional join before deriving the shared key.
 Messages use authenticated XSalsa20-Poly1305 secret-box envelopes with a new
 192-bit nonce.
 
-A secondary 64-bit manual code is available for accessibility and verbal
-handoff. It is rate-limited, expires with the invitation, and is stored only as
-a SHA-256 hash. Because a human-sized code cannot carry the full creator public
-key, messaging remains locally disabled until each participant explicitly
-confirms the same safety number through the channel they used to coordinate.
-The safety number is derived on-device from the shared key and is never sent to
-Choosr.
+Manual invitation codes are deliberately unsupported because a human-sized
+code cannot carry the creator public-key proof included in the link and QR.
+Each participant still explicitly confirms the same safety number through the
+channel they used to coordinate. The safety number is derived on-device from
+the shared key and is never sent to Choosr.
 
 Temporary secret and shared keys exist only in application memory. They are
 never written to AsyncStorage, platform key stores, Supabase, Realtime, Edge
@@ -37,11 +35,10 @@ keys, nonces, or ciphertext.
 
 ## Authorization and lifecycle
 
-- Invitations expire after 90 seconds. Link/QR tokens and manual codes persist
-  only as independent SHA-256 hashes.
+- Invitations expire after 90 seconds. Link/QR tokens persist only as SHA-256
+  hashes.
 - Redemption locks the invitation and room in one transaction, consumes the
-  invitation once across every representation, and admits only the unique
-  `joiner` role.
+  invitation once and admits only the unique `joiner` role.
 - A private membership table enforces one active chat per user.
 - RLS exposes active room, participant public-key, and ciphertext rows only to
   current members. Closed rooms expose no rows.

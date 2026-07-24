@@ -118,12 +118,6 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
               disabled={loading}
               onPress={() => navigation.navigate('ChatScan')}
             />
-            <Button
-              label="Enter a code"
-              variant="quiet"
-              disabled={loading}
-              onPress={() => navigation.navigate('ChatCode')}
-            />
           </>
         )}
         <Text style={styles.limit}>Initially limited to one active chat.</Text>

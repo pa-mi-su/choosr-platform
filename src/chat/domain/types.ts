@@ -4,7 +4,6 @@ export type ChatRoomStatus = 'inviting' | 'active';
 export type ChatInvitation = {
   roomId: string;
   token: string;
-  manualCode: string;
   creatorPublicKey: string;
   invitationExpiresAt: string;
   roomExpiresAt: string;
@@ -45,7 +44,6 @@ export class ChatError extends Error {
   constructor(
     public readonly code:
       | 'invalid_invitation'
-      | 'invalid_invitation_code'
       | 'invitation_unavailable'
       | 'active_chat_exists'
       | 'encryption_failed'

@@ -16,7 +16,6 @@ type FunctionResponse<T> = { data: T };
 type CreateRow = {
   room_id: string;
   invitation_token: string;
-  invitation_code: string;
   invitation_expires_at: string;
   room_expires_at: string;
 };
@@ -71,7 +70,6 @@ export class SupabaseChatGateway implements ChatGateway {
     return {
       roomId: row.room_id,
       token: row.invitation_token,
-      manualCode: row.invitation_code,
       creatorPublicKey: publicKey,
       invitationExpiresAt: row.invitation_expires_at,
       roomExpiresAt: row.room_expires_at,
@@ -85,7 +83,6 @@ export class SupabaseChatGateway implements ChatGateway {
     const row = first(
       await this.invoke<JoinRow[]>('join', {
         invitationToken,
-        invitationMethod: 'token',
         publicKey,
       }),
     );
@@ -93,33 +90,6 @@ export class SupabaseChatGateway implements ChatGateway {
       throw new ChatError(
         'invitation_unavailable',
         'That private-chat invitation is unavailable.',
-      );
-    }
-    return {
-      roomId: row.room_id,
-      role: 'joiner',
-      status: 'active',
-      publicKey,
-      peerPublicKey: row.peer_public_key,
-      expiresAt: row.room_expires_at,
-    };
-  }
-
-  async joinInvitationCode(
-    invitationCode: string,
-    publicKey: string,
-  ): Promise<ActiveChatState> {
-    const row = first(
-      await this.invoke<JoinRow[]>('join', {
-        invitationCode,
-        invitationMethod: 'code',
-        publicKey,
-      }),
-    );
-    if (!row) {
-      throw new ChatError(
-        'invitation_unavailable',
-        'That private-chat code is unavailable.',
       );
     }
     return {

@@ -59,18 +59,13 @@ Deno.serve(async request => {
     let result;
     switch (body.action as ChatAction) {
       case 'create':
-        result = await client.rpc('create_chat_invitation_v2', {
+        result = await client.rpc('create_chat_invitation', {
           p_public_key: body.publicKey as string,
         });
         break;
       case 'join':
-        result = await client.rpc('join_chat_invitation_v2', {
-          p_invitation_secret:
-            body.invitationMethod === 'code'
-              ? (body.invitationCode as string)
-              : (body.invitationToken as string),
-          p_invitation_method:
-            body.invitationMethod === 'code' ? 'code' : 'token',
+        result = await client.rpc('join_chat_invitation', {
+          p_invitation_token: body.invitationToken as string,
           p_public_key: body.publicKey as string,
         });
         break;

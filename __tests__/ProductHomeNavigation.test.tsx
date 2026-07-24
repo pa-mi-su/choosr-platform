@@ -64,7 +64,7 @@ test('Chat home has an explicit route back to the Choosr gateway', async () => {
   );
 });
 
-test('Chat home exposes quick link, QR, and secondary code entry', async () => {
+test('Chat home exposes only authenticated quick-link and QR entry', async () => {
   const navigate = jest.fn();
   let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
   await ReactTestRenderer.act(() => {
@@ -88,10 +88,9 @@ test('Chat home exposes quick link, QR, and secondary code entry', async () => {
     .props.onPress();
   expect(navigate).toHaveBeenCalledWith('ChatScan');
 
-  renderer?.root
-    .findByProps({ accessibilityLabel: 'Enter a code' })
-    .props.onPress();
-  expect(navigate).toHaveBeenCalledWith('ChatCode');
+  expect(() =>
+    renderer?.root.findByProps({ accessibilityLabel: 'Enter a code' }),
+  ).toThrow();
 
   await ReactTestRenderer.act(() => renderer?.unmount());
 });

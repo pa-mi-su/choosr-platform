@@ -26,7 +26,6 @@ class FakeGateway implements ChatGateway {
     return {
       roomId: this.active.roomId,
       token: 'a'.repeat(64),
-      manualCode: 'ABCD-1234-EF56-7890',
       creatorPublicKey: publicKey,
       invitationExpiresAt: '2026-07-24T12:01:30.000Z',
       roomExpiresAt: this.active.expiresAt,
@@ -43,10 +42,6 @@ class FakeGateway implements ChatGateway {
       publicKey,
       peerPublicKey: this.active.publicKey,
     };
-  }
-
-  async joinInvitationCode(_code: string, publicKey: string) {
-    return this.joinInvitation('', publicKey);
   }
 
   async getActiveChat() {
@@ -151,13 +146,13 @@ describe('ChatSession lifecycle', () => {
     expect(session.active).toBeUndefined();
   });
 
-  test('manual code join derives the same safety number as the creator', async () => {
+  test('link or QR join derives the same safety number as the creator', async () => {
     const gateway = new FakeGateway();
     const creator = new ChatSession(gateway);
     const joiner = new ChatSession(gateway);
     const invitation = await creator.create('creator');
 
-    await joiner.joinCode('joiner', invitation.manualCode);
+    await joiner.join('joiner', encodeChatInvitation(invitation));
     gateway.active = {
       ...(gateway.active as ActiveChatState),
       status: 'active',

@@ -7,7 +7,6 @@ import { ChoosrHomeScreen } from '../screens/ChoosrHomeScreen';
 import { ChatHomeScreen } from '../screens/ChatHomeScreen';
 import { ChatInviteScreen } from '../screens/ChatInviteScreen';
 import { ChatScanScreen } from '../screens/ChatScanScreen';
-import { ChatCodeScreen } from '../screens/ChatCodeScreen';
 import { ChatLinkJoinScreen } from '../screens/ChatLinkJoinScreen';
 import { ChatRoomScreen } from '../screens/ChatRoomScreen';
 import { ModeSelectScreen } from '../screens/ModeSelectScreen';
@@ -43,7 +42,6 @@ export function AppNavigator(): React.JSX.Element {
         options={{ gestureEnabled: false }}
       />
       <Stack.Screen name="ChatScan" component={ChatScanScreen} />
-      <Stack.Screen name="ChatCode" component={ChatCodeScreen} />
       <Stack.Screen
         name="ChatLinkJoin"
         component={ChatLinkJoinScreen}

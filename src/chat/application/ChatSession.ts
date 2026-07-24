@@ -10,10 +10,7 @@ import {
   encodePublicKey,
   encryptMessage,
 } from '../domain/crypto';
-import {
-  normalizeChatInvitationCode,
-  parseChatInvitation,
-} from '../domain/invitation';
+import { parseChatInvitation } from '../domain/invitation';
 import {
   ChatError,
   type ActiveChatState,
@@ -117,50 +114,6 @@ export class ChatSession {
         messages: [],
         active,
         sharedKey: deriveSharedKey(scanned.creatorPublicKey, keyPair.secretKey),
-      };
-      await this.refreshMessages();
-    } catch (error) {
-      if (this.runtime?.active.roomId === joinedRoomId) this.destroyLocal();
-      if (joinedRoomId) {
-        try {
-          await this.gateway.destroy(joinedRoomId);
-        } catch {
-          await this.addPendingDestruction(joinedRoomId);
-        }
-      }
-      destroyKey(keyPair.secretKey);
-      throw error;
-    }
-  }
-
-  async joinCode(ownUserId: string, invitationCode: string): Promise<void> {
-    if (this.runtime) {
-      throw new ChatError(
-        'active_chat_exists',
-        'End your current private chat before joining another.',
-      );
-    }
-    const code = normalizeChatInvitationCode(invitationCode);
-    const keyPair = createTemporaryKeyPair();
-    let joinedRoomId: string | undefined;
-    try {
-      const active = await this.gateway.joinInvitationCode(
-        code,
-        encodePublicKey(keyPair.publicKey),
-      );
-      joinedRoomId = active.roomId;
-      if (!active.peerPublicKey) {
-        throw new ChatError(
-          'encryption_failed',
-          'The creator key was not available.',
-        );
-      }
-      this.runtime = {
-        ownUserId,
-        keyPair,
-        messages: [],
-        active,
-        sharedKey: deriveSharedKey(active.peerPublicKey, keyPair.secretKey),
       };
       await this.refreshMessages();
     } catch (error) {

@@ -4,8 +4,6 @@ export type ChatRequestBody = {
   action?: unknown;
   roomId?: unknown;
   invitationToken?: unknown;
-  invitationCode?: unknown;
-  invitationMethod?: unknown;
   publicKey?: unknown;
   clientMessageId?: unknown;
   nonce?: unknown;
@@ -16,7 +14,6 @@ const base64Key = /^[A-Za-z0-9+/]{43}=$/;
 const base64Nonce = /^[A-Za-z0-9+/]{32}$/;
 const base64Ciphertext = /^[A-Za-z0-9+/]+={0,2}$/;
 const hexToken = /^[0-9a-f]{64}$/;
-const manualCode = /^[0-9A-F]{4}(?:-[0-9A-F]{4}){3}$/;
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -40,28 +37,10 @@ export function validateChatRequest(body: ChatRequestBody): string | undefined {
   }
   if (
     body.action === 'join' &&
-    body.invitationMethod !== undefined &&
-    body.invitationMethod !== 'token' &&
-    body.invitationMethod !== 'code'
-  ) {
-    return 'Invalid invitation method.';
-  }
-  if (
-    body.action === 'join' &&
-    (body.invitationMethod === undefined ||
-      body.invitationMethod === 'token') &&
     (typeof body.invitationToken !== 'string' ||
       !hexToken.test(body.invitationToken))
   ) {
     return 'Invalid or expired private-chat invitation.';
-  }
-  if (
-    body.action === 'join' &&
-    body.invitationMethod === 'code' &&
-    (typeof body.invitationCode !== 'string' ||
-      !manualCode.test(body.invitationCode))
-  ) {
-    return 'Invalid or expired private-chat code.';
   }
   if (
     (body.action === 'send' || body.action === 'destroy') &&

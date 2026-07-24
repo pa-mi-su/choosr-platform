@@ -10,10 +10,6 @@ export interface ChatGateway {
     invitationToken: string,
     publicKey: string,
   ): Promise<ActiveChatState>;
-  joinInvitationCode(
-    invitationCode: string,
-    publicKey: string,
-  ): Promise<ActiveChatState>;
   getActiveChat(): Promise<ActiveChatState | undefined>;
   listMessages(roomId: string): Promise<ChatEnvelope[]>;
   sendCiphertext(
