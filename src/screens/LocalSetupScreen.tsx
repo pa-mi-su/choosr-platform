@@ -13,6 +13,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
 import {
+  locationQueryHint,
   searchLocations,
   type LocationSuggestion,
 } from '../services/locationService';
@@ -42,9 +43,16 @@ export function LocalSetupScreen({
       setSearching(false);
       return;
     }
-    if (query.length < 3) {
+    const queryHint = locationQueryHint(query);
+    if (queryHint) {
       setSuggestions([]);
-      setLookupMessage(query.length ? 'Enter at least 3 characters.' : null);
+      setLookupMessage(queryHint);
+      setSearching(false);
+      return;
+    }
+    if (!query) {
+      setSuggestions([]);
+      setLookupMessage(null);
       setSearching(false);
       return;
     }
@@ -73,7 +81,7 @@ export function LocalSetupScreen({
         .finally(() => {
           if (active) setSearching(false);
         });
-    }, 350);
+    }, 500);
 
     return () => {
       active = false;

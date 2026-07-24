@@ -1,18 +1,43 @@
 import type { Session } from '@supabase/supabase-js';
 
 import { supabase } from '../lib/supabase';
+import { withRequestTimeout } from './requestTimeout';
 
-export async function ensureAnonymousSession(): Promise<Session> {
-  const { data: existing, error: sessionError } =
-    await supabase.auth.getSession();
+const AUTH_TIMEOUT_MS = 8_000;
+const SESSION_VERIFICATION_TTL_MS = 5 * 60 * 1_000;
+
+let pendingSession: Promise<Session> | undefined;
+let lastVerifiedUserId: string | undefined;
+let lastVerifiedAt = 0;
+
+async function resolveAnonymousSession(): Promise<Session> {
+  const { data: existing, error: sessionError } = await withRequestTimeout(
+    supabase.auth.getSession(),
+    AUTH_TIMEOUT_MS,
+    'Supabase session lookup',
+  );
 
   if (sessionError) {
     throw sessionError;
   }
 
   if (existing.session) {
-    const { data: verified, error: userError } = await supabase.auth.getUser();
+    const userId = existing.session.user.id;
+    const recentlyVerified =
+      lastVerifiedUserId === userId &&
+      Date.now() - lastVerifiedAt < SESSION_VERIFICATION_TTL_MS;
+    if (recentlyVerified) {
+      return existing.session;
+    }
+
+    const { data: verified, error: userError } = await withRequestTimeout(
+      supabase.auth.getUser(),
+      AUTH_TIMEOUT_MS,
+      'Supabase user verification',
+    );
     if (!userError && verified.user) {
+      lastVerifiedUserId = verified.user.id;
+      lastVerifiedAt = Date.now();
       return existing.session;
     }
 
@@ -24,9 +49,15 @@ export async function ensureAnonymousSession(): Promise<Session> {
     // device still has its expired local token. Clear it before recreating the
     // zero-account identity.
     await supabase.auth.signOut({ scope: 'local' });
+    lastVerifiedUserId = undefined;
+    lastVerifiedAt = 0;
   }
 
-  const { data, error } = await supabase.auth.signInAnonymously();
+  const { data, error } = await withRequestTimeout(
+    supabase.auth.signInAnonymously(),
+    AUTH_TIMEOUT_MS,
+    'Supabase anonymous sign-in',
+  );
   if (error) {
     throw error;
   }
@@ -34,5 +65,16 @@ export async function ensureAnonymousSession(): Promise<Session> {
     throw new Error('Supabase did not return an anonymous session.');
   }
 
+  lastVerifiedUserId = data.session.user.id;
+  lastVerifiedAt = Date.now();
   return data.session;
+}
+
+export async function ensureAnonymousSession(): Promise<Session> {
+  if (!pendingSession) {
+    pendingSession = resolveAnonymousSession().finally(() => {
+      pendingSession = undefined;
+    });
+  }
+  return pendingSession;
 }

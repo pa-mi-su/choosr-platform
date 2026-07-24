@@ -122,6 +122,8 @@ async function imageFor(
     });
     const response = await fetchWithTimeout(
       `https://api.geoapify.com/v2/place-details?${query}`,
+      {},
+      4000,
     );
     if (response.ok) {
       const details = (await response.json()) as GeoCollection;
@@ -359,7 +361,7 @@ async function mapImageFor(
     const response = await fetchWithTimeout(
       `https://maps.geoapify.com/v1/staticmap?${query}`,
       {},
-      6000,
+      4000,
     );
     if (!response.ok) return undefined;
     const bytes = await response.arrayBuffer();
@@ -394,9 +396,7 @@ function distanceMiles(
   return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function validGooglePlace(
-  place: GooglePlace,
-): place is GooglePlace & {
+function validGooglePlace(place: GooglePlace): place is GooglePlace & {
   id: string;
   displayName: { text: string };
   location: { latitude: number; longitude: number };
@@ -442,10 +442,7 @@ async function buildGoogleFoodDeck(
 ): Promise<ProviderItem[]> {
   const key = Deno.env.get('GOOGLE_PLACES_API_KEY');
   if (!key) throw new Error('GOOGLE_PLACES_API_KEY is not configured.');
-  const radius = Math.min(
-    Math.max(request.radiusMeters ?? 15000, 500),
-    25000,
-  );
+  const radius = Math.min(Math.max(request.radiusMeters ?? 15000, 500), 25000);
   const response = await fetchWithTimeout(
     'https://places.googleapis.com/v1/places:searchNearby',
     {
@@ -535,8 +532,7 @@ async function buildGoogleFoodDeck(
       attribution: {
         label: attributionLabel,
         url:
-          typeof author?.uri === 'string' &&
-          author.uri.startsWith('https://')
+          typeof author?.uri === 'string' && author.uri.startsWith('https://')
             ? author.uri
             : place.googleMapsUri,
       },

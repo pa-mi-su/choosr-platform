@@ -73,11 +73,14 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
         }
         setDisplayName(ownProfile.displayName);
         setHandle(ownProfile.handle);
-        const notificationsEnabled = await isPushEnabled();
-        setPushEnabled(notificationsEnabled);
-        if (notificationsEnabled) {
-          refreshPushRegistration().catch(() => undefined);
-        }
+        isPushEnabled()
+          .then(notificationsEnabled => {
+            setPushEnabled(notificationsEnabled);
+            if (notificationsEnabled) {
+              refreshPushRegistration().catch(() => undefined);
+            }
+          })
+          .catch(() => undefined);
         const [circle, pending] = await Promise.all([
           loadCircle(),
           loadPendingRoomInvitations(),

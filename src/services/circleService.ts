@@ -4,7 +4,10 @@ import { ensureAnonymousSession } from './anonymousAuth';
 import { dispatchPendingNotifications } from './pushNotifications';
 import { profilePhotoUrl } from './profilePhotoService';
 import { photoFailureMessage } from './photoUploadService';
+import { withRequestTimeout } from './requestTimeout';
 import { serviceFailureMessage } from './serviceError';
+
+const CIRCLE_REQUEST_TIMEOUT_MS = 10_000;
 
 export type ChoosrProfile = {
   userId: string;
@@ -36,7 +39,11 @@ export type PendingRoomInvitation = {
 
 export async function loadOwnProfile(): Promise<ChoosrProfile | null> {
   await ensureAnonymousSession();
-  const { data, error } = await supabase.rpc('get_choosr_profile');
+  const { data, error } = await withRequestTimeout(
+    supabase.rpc('get_choosr_profile'),
+    CIRCLE_REQUEST_TIMEOUT_MS,
+    'Circle profile lookup',
+  );
   if (error) {
     throw error;
   }
@@ -79,7 +86,11 @@ export async function saveOwnProfile(input: {
 
 export async function loadCircle(): Promise<CirclePerson[]> {
   await ensureAnonymousSession();
-  const { data, error } = await supabase.rpc('list_circle');
+  const { data, error } = await withRequestTimeout(
+    supabase.rpc('list_circle'),
+    CIRCLE_REQUEST_TIMEOUT_MS,
+    'Circle lookup',
+  );
   if (error) {
     throw error;
   }
@@ -176,7 +187,11 @@ export async function loadPendingRoomInvitations(): Promise<
   PendingRoomInvitation[]
 > {
   await ensureAnonymousSession();
-  const { data, error } = await supabase.rpc('list_pending_room_invitations');
+  const { data, error } = await withRequestTimeout(
+    supabase.rpc('list_pending_room_invitations'),
+    CIRCLE_REQUEST_TIMEOUT_MS,
+    'Room invitation lookup',
+  );
   if (error) {
     throw error;
   }
