@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(14);
 
 select has_table(
   'public',
@@ -108,6 +108,52 @@ select is(
   ),
   0::bigint,
   'ephemeral coordinates are erased as soon as the deck is finalized'
+);
+
+set local request.jwt.claim.sub = 'd0000000-0000-0000-0000-000000000001';
+
+create temporary table distant_room as
+select *
+from public.create_location_decision_session(
+  'do',
+  28.5383,
+  -81.3792,
+  'Orlando, Florida',
+  'US'
+);
+
+set local request.jwt.claim.sub = 'd0000000-0000-0000-0000-000000000002';
+
+select *
+from public.join_session((select access_code from distant_room), null);
+
+select throws_ok(
+  format(
+    $query$
+      select *
+      from public.record_session_location(
+        %L,
+        'd0000000-0000-0000-0000-000000000002',
+        27.9506,
+        -82.4572,
+        'Tampa, Florida'
+      )
+    $query$,
+    (select session_id from distant_room)
+  ),
+  '22023',
+  'participant_locations_too_far',
+  'a second location over 60 miles away is rejected'
+);
+
+select is(
+  (
+    select count(*)
+    from public.session_locations
+    where session_id = (select session_id from distant_room)
+  ),
+  1::bigint,
+  'the rejected distant participant location is not stored'
 );
 
 select * from finish();

@@ -18,6 +18,25 @@ export type DiscoveryInput = {
 
 export type SharedLocationDeckStatus = 'waiting-for-location' | 'ready';
 
+async function throwDeckFunctionError(error: unknown): Promise<never> {
+  const context =
+    typeof error === 'object' && error && 'context' in error
+      ? error.context
+      : undefined;
+  if (context instanceof Response) {
+    let payload: { error?: unknown } | undefined;
+    try {
+      payload = (await context.clone().json()) as { error?: unknown };
+    } catch {
+      // Fall through to the original invocation error when no JSON body exists.
+    }
+    if (typeof payload?.error === 'string' && payload.error.trim()) {
+      throw new Error(payload.error);
+    }
+  }
+  throw error;
+}
+
 export function shuffleDecisionDeck(
   items: DecisionItem[],
   random: () => number = Math.random,
@@ -46,7 +65,7 @@ export async function fetchLiveDecisionDeck(
     'Nearby choices search',
   );
   if (error) {
-    throw error;
+    await throwDeckFunctionError(error);
   }
   if (!data?.items.length) {
     throw new Error('The content provider returned an empty deck.');
@@ -71,7 +90,7 @@ export async function prepareSharedLocationDeck(input: {
     DECK_REQUEST_TIMEOUT_MS,
     'Shared nearby choices search',
   );
-  if (error) throw error;
+  if (error) await throwDeckFunctionError(error);
   if (data?.status !== 'waiting-for-location' && data?.status !== 'ready') {
     throw new Error('Choosr returned an invalid room preparation status.');
   }

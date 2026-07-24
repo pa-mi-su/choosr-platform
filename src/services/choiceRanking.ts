@@ -14,6 +14,19 @@ export function hasCompleteChoiceRanking(
   return rankedChoiceCount === requiredRankedChoiceCount(acceptedChoiceCount);
 }
 
+export function rankingPointsDescription(acceptedChoiceCount: number): string {
+  const rankedCount = requiredRankedChoiceCount(acceptedChoiceCount);
+  const descriptions = Array.from(
+    { length: rankedCount },
+    (_, index) =>
+      `#${index + 1} is worth ${3 - index} ${index === 2 ? 'point' : 'points'}`,
+  );
+  if (descriptions.length < 2) return descriptions[0] ?? '';
+  if (descriptions.length === 2)
+    return `${descriptions[0]} and ${descriptions[1]}.`;
+  return `${descriptions.slice(0, -1).join(', ')}, and ${descriptions.at(-1)}.`;
+}
+
 /**
  * Adds a choice at the next available rank, or removes it and compacts the
  * remaining ranks. The returned array is always a new value.

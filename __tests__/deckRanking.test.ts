@@ -1,6 +1,7 @@
 import {
   hasCompleteChoiceRanking,
   rankForChoice,
+  rankingPointsDescription,
   requiredRankedChoiceCount,
   toggleRankedChoice,
 } from '../src/services/choiceRanking';
@@ -70,4 +71,16 @@ describe('discovery deck ranking inputs', () => {
       }
     },
   );
+
+  it('describes only the ranks the user must provide', () => {
+    expect(rankingPointsDescription(2)).toBe(
+      '#1 is worth 3 points and #2 is worth 2 points.',
+    );
+    expect(rankingPointsDescription(3)).toBe(
+      '#1 is worth 3 points, #2 is worth 2 points, and #3 is worth 1 point.',
+    );
+    expect(rankingPointsDescription(5)).toBe(
+      '#1 is worth 3 points, #2 is worth 2 points, and #3 is worth 1 point.',
+    );
+  });
 });
