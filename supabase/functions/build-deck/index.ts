@@ -1,6 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
 
 import { authenticatedUserId } from './auth.ts';
+import {
+  MAX_PARTICIPANT_DISTANCE_MILES,
+  participantLocationsAreCloseEnough,
+} from './geo.ts';
 import { jsonResponse } from './http.ts';
 import { buildPlacesDeck } from './providers/placesProvider.ts';
 import {
@@ -81,7 +85,17 @@ Deno.serve(async request => {
           p_location_label: body.locationLabel,
         },
       );
-      if (locationError) throw locationError;
+      if (locationError) {
+        if (locationError.message.includes('participant_locations_too_far')) {
+          return jsonResponse(
+            {
+              error: `Choosr is designed for people close enough to meet. Choose locations within ${MAX_PARTICIPANT_DISTANCE_MILES} miles of each other.`,
+            },
+            422,
+          );
+        }
+        throw locationError;
+      }
       if (!Array.isArray(locations) || locations.length < 2) {
         return jsonResponse({
           mode: body.mode,
@@ -94,6 +108,14 @@ Deno.serve(async request => {
         latitude: Number(location.latitude),
         longitude: Number(location.longitude),
       }));
+      if (!participantLocationsAreCloseEnough(participantLocations)) {
+        return jsonResponse(
+          {
+            error: `Choosr is designed for people close enough to meet. Choose locations within ${MAX_PARTICIPANT_DISTANCE_MILES} miles of each other.`,
+          },
+          422,
+        );
+      }
       const items = shuffleOnce(
         await buildPlacesDeck({
           ...body,

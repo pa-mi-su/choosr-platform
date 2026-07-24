@@ -18,6 +18,7 @@ import { useRoomSync } from '../hooks/useRoomSync';
 import {
   hasCompleteChoiceRanking,
   rankForChoice,
+  rankingPointsDescription,
   requiredRankedChoiceCount,
   toggleRankedChoice,
 } from '../services/choiceRanking';
@@ -270,7 +271,7 @@ export function RankChoicesScreen({
         {accepted.length <= 3
           ? 'Rank every card you said Yes to.'
           : 'Choose and rank your top three from the cards you said Yes to.'}{' '}
-        #1 is worth 3 points, #2 is worth 2, and #3 is worth 1.
+        {rankingPointsDescription(accepted.length)}
       </Text>
       <ScrollView
         contentContainerStyle={styles.list}

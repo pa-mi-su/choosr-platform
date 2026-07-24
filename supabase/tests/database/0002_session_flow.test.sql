@@ -144,7 +144,7 @@ select is(
     from public.submit_rankings(
       (select session_id from test_room),
       1,
-      array['arrival', 'past-lives']
+      array['past-lives', 'arrival']
     )
   ),
   'waiting',
@@ -211,8 +211,15 @@ select is(
 );
 select is(
   (select item_id from public.matches),
-  'arrival',
-  'the mutual number-one choice wins'
+  (
+    select candidate.item_id
+    from unnest(array['arrival', 'past-lives']) candidate(item_id)
+    order by md5(
+      (select session_id from test_room)::text || ':' || candidate.item_id
+    )
+    limit 1
+  ),
+  'an exact opposite-ranking tie uses the deterministic room-specific tiebreak'
 );
 select is(
   (select status from public.sessions limit 1),

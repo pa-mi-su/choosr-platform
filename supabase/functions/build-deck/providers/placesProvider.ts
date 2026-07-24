@@ -1,8 +1,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
 
+import { distanceMiles, midpoint } from '../geo.ts';
 import { colorsFor } from '../presentation.ts';
 import { fetchWithTimeout } from '../http.ts';
 import type { DeckRequest, ProviderItem } from '../types.ts';
+import {
+  ACTIVITY_PRIMARY_TYPES,
+  EXCLUDED_ACTIVITY_TYPES,
+  isEligibleActivityPlace,
+} from './activityTypes.ts';
 import { isPublicWebUrl } from './websitePreview.ts';
 
 const IMAGE_BUCKET = 'discovery-images';
@@ -23,6 +29,7 @@ type GooglePlace = {
   formattedAddress?: string;
   location?: { latitude?: number; longitude?: number };
   primaryType?: string;
+  types?: string[];
   primaryTypeDisplayName?: { text?: string };
   photos?: GooglePhoto[];
   googleMapsUri?: string;
@@ -35,45 +42,13 @@ type GooglePlacesResponse = { places?: GooglePlace[] };
 const GOOGLE_RESULT_LIMIT = 5;
 const GOOGLE_SEARCH_CANDIDATE_LIMIT = 20;
 const SEARCH_RADII_METERS = [8047, 16093, 32187] as const;
-const ACTIVITY_TYPES = [
-  'adventure_sports_center',
-  'amusement_center',
-  'amusement_park',
-  'aquarium',
-  'art_gallery',
-  'botanical_garden',
-  'bowling_alley',
-  'comedy_club',
-  'concert_hall',
-  'go_karting_venue',
-  'hiking_area',
-  'ice_skating_rink',
-  'indoor_playground',
-  'live_music_venue',
-  'miniature_golf_course',
-  'movie_theater',
-  'museum',
-  'observation_deck',
-  'paintball_center',
-  'performing_arts_theater',
-  'planetarium',
-  'sports_activity_location',
-  'video_arcade',
-  'water_park',
-  'wildlife_park',
-  'zoo',
-] as const;
-const EXCLUDED_ACTIVITY_TYPES = [
-  'association_or_organization',
-  'campground',
-  'rv_park',
-] as const;
 const GOOGLE_PLACES_FIELDS = [
   'places.id',
   'places.displayName',
   'places.formattedAddress',
   'places.location',
   'places.primaryType',
+  'places.types',
   'places.primaryTypeDisplayName',
   'places.photos',
   'places.googleMapsUri',
@@ -190,35 +165,24 @@ async function cacheVenueImage(placeId: string, imageUrl: string) {
   }
 }
 
-const radians = (degrees: number) => (degrees * Math.PI) / 180;
-
-function distanceMiles(
-  from: { latitude: number; longitude: number },
-  to: { latitude: number; longitude: number },
-) {
-  const latitudeDelta = radians(to.latitude - from.latitude);
-  const longitudeDelta = radians(to.longitude - from.longitude);
-  const a =
-    Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(radians(from.latitude)) *
-      Math.cos(radians(to.latitude)) *
-      Math.sin(longitudeDelta / 2) ** 2;
-  return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function validGooglePlace(place: GooglePlace): place is GooglePlace & {
+function validGooglePlace(
+  place: GooglePlace,
+  mode: 'eat' | 'do',
+): place is GooglePlace & {
   id: string;
   displayName: { text: string };
   location: { latitude: number; longitude: number };
   googleMapsUri: string;
 } {
-  return (
+  const structurallyValid =
     typeof place.id === 'string' &&
     typeof place.displayName?.text === 'string' &&
     Number.isFinite(place.location?.latitude) &&
     Number.isFinite(place.location?.longitude) &&
     typeof place.googleMapsUri === 'string' &&
-    place.googleMapsUri.startsWith('https://')
+    place.googleMapsUri.startsWith('https://');
+  return (
+    structurallyValid && (mode === 'eat' || isEligibleActivityPlace(place))
   );
 }
 
@@ -238,29 +202,6 @@ type ValidGooglePlace = GooglePlace & {
   location: { latitude: number; longitude: number };
   googleMapsUri: string;
 };
-
-function midpoint(locations: { latitude: number; longitude: number }[]): {
-  latitude: number;
-  longitude: number;
-} {
-  if (locations.length < 2) return locations[0]!;
-  const [left, right] = locations;
-  const leftLatitude = radians(left.latitude);
-  const leftLongitude = radians(left.longitude);
-  const rightLatitude = radians(right.latitude);
-  const longitudeDelta = radians(right.longitude - left.longitude);
-  const x = Math.cos(rightLatitude) * Math.cos(longitudeDelta);
-  const y = Math.cos(rightLatitude) * Math.sin(longitudeDelta);
-  const latitude = Math.atan2(
-    Math.sin(leftLatitude) + Math.sin(rightLatitude),
-    Math.sqrt((Math.cos(leftLatitude) + x) ** 2 + y ** 2),
-  );
-  const longitude = leftLongitude + Math.atan2(y, Math.cos(leftLatitude) + x);
-  return {
-    latitude: (latitude * 180) / Math.PI,
-    longitude: (((longitude * 180) / Math.PI + 540) % 360) - 180,
-  };
-}
 
 function placeScore(
   place: ValidGooglePlace,
@@ -318,7 +259,9 @@ async function searchGooglePlaces(
         'X-Goog-FieldMask': GOOGLE_PLACES_FIELDS,
       },
       body: JSON.stringify({
-        includedTypes: mode === 'eat' ? ['restaurant'] : ACTIVITY_TYPES,
+        ...(mode === 'eat'
+          ? { includedTypes: ['restaurant'] }
+          : { includedPrimaryTypes: ACTIVITY_PRIMARY_TYPES }),
         ...(mode === 'eat' ? {} : { excludedTypes: EXCLUDED_ACTIVITY_TYPES }),
         maxResultCount: GOOGLE_SEARCH_CANDIDATE_LIMIT,
         rankPreference: 'POPULARITY',
@@ -355,9 +298,11 @@ async function buildGoogleNearbyDeck(
       center,
       radius,
     );
-    candidates.filter(validGooglePlace).forEach(place => {
-      candidatesById.set(place.id, place);
-    });
+    candidates
+      .filter(place => validGooglePlace(place, request.mode))
+      .forEach(place => {
+        candidatesById.set(place.id, place);
+      });
     if (candidatesById.size >= GOOGLE_RESULT_LIMIT) break;
   }
 

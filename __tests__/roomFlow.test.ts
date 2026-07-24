@@ -60,5 +60,8 @@ describe('real room flow', () => {
     expect(roomErrorMessage(new Error('room_full'))).toContain(
       'no longer available',
     );
+    expect(
+      roomErrorMessage(new Error('participant_locations_too_far')),
+    ).toContain('within 60 miles');
   });
 });

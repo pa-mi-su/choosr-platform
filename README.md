@@ -30,12 +30,19 @@ private decision before the result is calculated:
    - four or five accepted cards: rank the top three.
 4. After both rankings are submitted, only mutually accepted cards remain.
 5. The database selects the strongest shared result by combined rank score,
-   then worst individual rank, then stable deck order.
+   then worst individual rank. An exact tie uses a deterministic,
+   room-specific tiebreak so neither person nor card order is favored.
 6. If there is no overlap, Choosr returns a private no-match result.
 
 No participant can inspect the other person's swipes or rankings before the
 result. The authoritative match is computed in PostgreSQL, not on either
 device.
+
+For Activity and Food rooms, Choosr accepts validated participant locations
+only when they are within 60 miles of each other, computes their midpoint, and
+stores one shared five-card deck. Activity discovery uses a strict Google
+Places primary-type allowlist and rejects lodging, campgrounds, associations,
+and other non-activity businesses.
 
 ## End-to-end architecture
 
