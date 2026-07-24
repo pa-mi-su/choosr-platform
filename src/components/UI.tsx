@@ -60,6 +60,27 @@ export function Brand({
   );
 }
 
+export function BackToChoosrButton({
+  onPress,
+}: {
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      testID="back-to-choosr"
+      accessibilityRole="button"
+      accessibilityLabel="Back to all Choosr experiences"
+      onPress={onPress}
+      style={({ pressed }) => [styles.backToChoosr, pressed && styles.pressed]}
+    >
+      <View style={styles.backCircle}>
+        <Text style={styles.backArrow}>←</Text>
+      </View>
+      <Text style={styles.backLabel}>ALL CHOOSR</Text>
+    </Pressable>
+  );
+}
+
 type ButtonProps = PressableProps & {
   label: string;
   variant?: 'primary' | 'secondary' | 'quiet';
@@ -140,6 +161,38 @@ const styles = StyleSheet.create({
     letterSpacing: -1.4,
   },
   wordmarkSmall: { fontSize: 23 },
+  backToChoosr: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingRight: 12,
+    borderRadius: 21,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  backCircle: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    backgroundColor: colors.raised,
+  },
+  backArrow: {
+    color: colors.text,
+    fontSize: 20,
+    lineHeight: 23,
+    fontWeight: '800',
+  },
+  backLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '900',
+    letterSpacing: 1.1,
+  },
   button: {
     minHeight: 56,
     borderRadius: 18,
