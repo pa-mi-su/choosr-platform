@@ -15,7 +15,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { DecisionArtwork } from '../components/DecisionArtwork';
 import { Brand, Button, Screen } from '../components/UI';
 import { useRoomSync } from '../hooks/useRoomSync';
-import { rankForChoice, toggleRankedChoice } from '../services/choiceRanking';
+import {
+  hasCompleteChoiceRanking,
+  rankForChoice,
+  requiredRankedChoiceCount,
+  toggleRankedChoice,
+} from '../services/choiceRanking';
 import { getRoomDestination, roomErrorMessage } from '../services/roomFlow';
 import {
   cancelDecisionRoom,
@@ -46,6 +51,12 @@ export function RankChoicesScreen({
   const deckRef = useRef<DecisionItem[]>([]);
   const transitioning = useRef(false);
   const autoSubmitting = useRef(false);
+  const requiredRankCount = requiredRankedChoiceCount(accepted.length);
+  const rankingComplete = hasCompleteChoiceRanking(
+    rankedIds.length,
+    accepted.length,
+  );
+  const remainingRankCount = requiredRankCount - rankedIds.length;
 
   const navigateForOutcome = useCallback(
     (
@@ -256,8 +267,10 @@ export function RankChoicesScreen({
       <Text style={styles.eyebrow}>ONE LAST PRIVATE STEP</Text>
       <Text style={styles.title}>Rank your top choices.</Text>
       <Text style={styles.copy}>
-        Pick up to three from the cards you said Yes to. #1 is worth 3 points,
-        #2 is worth 2, and #3 is worth 1.
+        {accepted.length <= 3
+          ? 'Rank every card you said Yes to.'
+          : 'Choose and rank your top three from the cards you said Yes to.'}{' '}
+        #1 is worth 3 points, #2 is worth 2, and #3 is worth 1.
       </Text>
       <ScrollView
         contentContainerStyle={styles.list}
@@ -308,8 +321,14 @@ export function RankChoicesScreen({
       </ScrollView>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button
-        label={`Lock my top ${rankedIds.length}`}
-        disabled={rankedIds.length === 0}
+        label={
+          rankingComplete
+            ? `Lock my top ${rankedIds.length}`
+            : `Rank ${remainingRankCount} more ${
+                remainingRankCount === 1 ? 'choice' : 'choices'
+              }`
+        }
+        disabled={!rankingComplete}
         loading={submitting}
         onPress={() => submitRanks(rankedIds)}
       />

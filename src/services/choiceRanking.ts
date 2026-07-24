@@ -1,5 +1,19 @@
 export const MAX_RANKED_CHOICES = 3;
 
+export function requiredRankedChoiceCount(acceptedChoiceCount: number): number {
+  return Math.min(
+    Math.max(Math.trunc(acceptedChoiceCount), 0),
+    MAX_RANKED_CHOICES,
+  );
+}
+
+export function hasCompleteChoiceRanking(
+  rankedChoiceCount: number,
+  acceptedChoiceCount: number,
+): boolean {
+  return rankedChoiceCount === requiredRankedChoiceCount(acceptedChoiceCount);
+}
+
 /**
  * Adds a choice at the next available rank, or removes it and compacts the
  * remaining ranks. The returned array is always a new value.
