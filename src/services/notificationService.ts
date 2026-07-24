@@ -22,7 +22,7 @@ export function subscribeToNotificationState(
 
 export type ChoosrNotification = {
   id: number;
-  kind: 'connection_request' | 'room_invitation';
+  kind: 'connection_request' | 'room_invitation' | 'chat_message';
   title: string;
   body: string;
   payload: Record<string, unknown>;

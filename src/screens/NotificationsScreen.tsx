@@ -136,7 +136,7 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
     }
 
     await markRead(item);
-    navigation.navigate('Circle');
+    navigation.navigate(item.kind === 'chat_message' ? 'ChatHome' : 'Circle');
   };
 
   useEffect(() => {
@@ -192,7 +192,8 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
               <Text style={styles.bell}>🔔</Text>
               <Text style={styles.emptyTitle}>You’re all caught up.</Text>
               <Text style={styles.emptyCopy}>
-                Room invitations and Circle requests will appear here.
+                Private chat updates, room invitations, and Circle requests will
+                appear here.
               </Text>
             </View>
           }
@@ -239,7 +240,11 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
               >
                 <View style={styles.icon}>
                   <Text style={styles.iconText}>
-                    {item.kind === 'room_invitation' ? '✓' : '●●'}
+                    {item.kind === 'room_invitation'
+                      ? '✓'
+                      : item.kind === 'chat_message'
+                      ? '◈'
+                      : '●●'}
                   </Text>
                 </View>
                 <View style={styles.copy}>

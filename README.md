@@ -15,13 +15,18 @@ rooms, an in-app notification inbox, native push notifications, and
 cross-device media. Development, UAT, and production are isolated native apps
 with separate cloud configuration and release pipelines.
 
+The top-level Choosr Home also opens **Choosr Chat**, an isolated, QR-only
+two-person conversation with temporary device keys, end-to-end encrypted
+messages, participant-controlled destruction, and automatic 24-hour expiry.
+The existing decision experience remains available through **Choose Together**.
+
 > **Release status:** Choosr is available through App Store Connect/TestFlight
 > and Google Play testing tracks. It has not been released publicly.
 
 ## What makes the product different
 
-Choosr is not a public poll or a chat thread. Each participant makes a complete,
-private decision before the result is calculated:
+Choosr Choose is not a public poll or a chat thread. Each participant makes a
+complete, private decision before the result is calculated:
 
 1. Both people receive the same five-card deck in the same stored order.
 2. Each person swipes every card left or right.
@@ -181,13 +186,14 @@ recovery polling so the UI recovers from dropped socket events.
 
 Key tables:
 
-| Area            | Tables                                                            |
-| --------------- | ----------------------------------------------------------------- |
-| Rooms           | `sessions`, `participants`, `session_items`, `session_locations`  |
-| Decisions       | `swipes`, `ranking_submissions`, `choice_rankings`, `matches`     |
-| Identity/Circle | `profiles`, `connections`, `circle_invites`                       |
-| Invitations     | `room_invitations`                                                |
-| Notifications   | `device_push_tokens`, `notification_outbox`, `user_notifications` |
+| Area            | Tables                                                                 |
+| --------------- | ---------------------------------------------------------------------- |
+| Rooms           | `sessions`, `participants`, `session_items`, `session_locations`       |
+| Decisions       | `swipes`, `ranking_submissions`, `choice_rankings`, `matches`          |
+| Identity/Circle | `profiles`, `connections`, `circle_invites`                            |
+| Invitations     | `room_invitations`                                                     |
+| Notifications   | `device_push_tokens`, `notification_outbox`, `user_notifications`      |
+| Ephemeral Chat  | `chat_rooms`, `chat_participants`, `chat_invitations`, `chat_messages` |
 
 Security is enforced in layers:
 
@@ -202,6 +208,10 @@ Security is enforced in layers:
 - provider keys and service credentials remain server-side;
 - uploaded media uses explicit Storage policies and server-generated paths;
 - CI scans the repository for committed secret material.
+- Chat mutations use an isolated authenticated Edge Function plus transactional
+  RPCs; only temporary public keys, nonces, and ciphertext cross the network.
+- Chat invitation tokens are single-use, hash-only at rest, and expire after
+  90 seconds; closed rooms reject reads and writes.
 
 Supabase's `anon` key identifies the public client role; it is not a secret.
 Anonymous authentication still creates an authenticated user identity, allowing
@@ -226,6 +236,7 @@ indefinite spinners:
 
 ```text
 src/
+  chat/                   isolated Chat domain/application/infrastructure
   components/             shared presentation components
   hooks/                  room synchronization
   navigation/             typed application navigation
@@ -237,6 +248,7 @@ supabase/
     build-deck/           midpoint discovery, ranking, and photo caching
     search-locations/     city/ZIP autocomplete
     dispatch-notifications/
+    chat-session/         validated ciphertext-only Chat mutation gateway
   migrations/            append-only schema and RPC evolution
   tests/database/         pgTAP authorization and lifecycle tests
 scripts/                  configuration, verification, and store automation
@@ -363,4 +375,5 @@ automation.
 - [Account and Circle lifecycle](docs/ACCOUNT_AND_CIRCLE_LIFECYCLE.md)
 - [Engineering audit](docs/ENGINEERING_AUDIT.md)
 - [Visual direction](docs/VISUAL_DIRECTION.md)
+- [Chat security and operations](docs/CHAT_SECURITY_AND_OPERATIONS.md)
 - [Supabase development guide](supabase/README.md)

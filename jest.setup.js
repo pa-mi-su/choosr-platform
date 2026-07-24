@@ -31,6 +31,22 @@ jest.mock('react-native-image-picker', () => ({
   launchCamera: jest.fn(),
   launchImageLibrary: jest.fn(),
 }));
+jest.mock('react-native-vision-camera', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    Camera: Object.assign(props => React.createElement(View, props), {
+      requestCameraPermission: jest.fn(() => Promise.resolve('granted')),
+    }),
+    useCameraDevice: jest.fn(() => ({ id: 'test-camera' })),
+    useCodeScanner: jest.fn(options => options),
+  };
+});
+jest.mock('react-native-qrcode-svg', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return props => React.createElement(View, { ...props, testID: 'qr-code' });
+});
 jest.mock('@notifee/react-native', () => ({
   __esModule: true,
   default: { setBadgeCount: jest.fn(() => Promise.resolve()) },

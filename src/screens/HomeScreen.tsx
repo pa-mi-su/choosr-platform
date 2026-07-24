@@ -10,7 +10,7 @@ import {
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
+type Props = NativeStackScreenProps<RootStackParamList, 'ChooseHome'>;
 export function HomeScreen({ navigation }: Props): React.JSX.Element {
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -37,7 +37,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="About Choosr"
-          onPress={() => navigation.navigate('About')}
+          onPress={() => navigation.navigate('Home')}
           style={({ pressed }) => pressed && styles.pressed}
         >
           <Brand compact />

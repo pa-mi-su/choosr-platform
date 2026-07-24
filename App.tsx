@@ -15,7 +15,7 @@ import type { RootStackParamList } from './src/types/navigation';
 import {
   flushPendingNotificationNavigation,
   navigationRef,
-  openCircleFromNotification,
+  openFromNotification,
 } from './src/navigation/navigationRef';
 import { registerPushListeners } from './src/services/pushNotifications';
 import {
@@ -39,7 +39,7 @@ export default function App(): React.JSX.Element {
   useEffect(
     () =>
       registerPushListeners({
-        onOpen: openCircleFromNotification,
+        onOpen: openFromNotification,
         onForeground: () => {
           refreshNotificationState().catch(() => undefined);
         },
