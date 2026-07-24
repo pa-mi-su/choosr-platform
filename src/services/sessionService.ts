@@ -89,6 +89,37 @@ export async function createDecisionRoom(input: {
   };
 }
 
+export async function createLocationDecisionRoom(input: {
+  mode: 'eat' | 'do';
+  latitude: number;
+  longitude: number;
+  locationLabel: string;
+  region?: string;
+}): Promise<RoomCredentials> {
+  await ensureAnonymousSession();
+  const { data, error } = await supabase.rpc(
+    'create_location_decision_session',
+    {
+      p_mode: input.mode,
+      p_latitude: input.latitude,
+      p_longitude: input.longitude,
+      p_location_label: input.locationLabel,
+      p_region: input.region ?? 'US',
+    },
+  );
+  if (error) throw error;
+  const room = data[0];
+  if (!room) {
+    throw new Error('Supabase did not return the created location room.');
+  }
+  return {
+    sessionId: room.session_id,
+    accessCode: room.access_code,
+    inviteToken: room.invite_token,
+    expiresAt: room.expires_at,
+  };
+}
+
 export async function joinDecisionRoom(input: {
   accessCode?: string;
   inviteToken?: string;

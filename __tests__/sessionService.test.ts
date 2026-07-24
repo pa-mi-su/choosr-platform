@@ -15,6 +15,7 @@ jest.mock('../src/services/anonymousAuth', () => ({
 
 import {
   cancelDecisionRoom,
+  createLocationDecisionRoom,
   loadRoomHistory,
   submitDecisionReliably,
 } from '../src/services/sessionService';
@@ -118,6 +119,48 @@ describe('cancelDecisionRoom', () => {
     mockRpc.mockResolvedValue({ error });
 
     await expect(cancelDecisionRoom('session-1')).rejects.toBe(error);
+  });
+});
+
+describe('createLocationDecisionRoom', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEnsureAnonymousSession.mockResolvedValue({});
+  });
+
+  it('creates a waiting room without exposing the location through a deck', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        {
+          session_id: 'session-1',
+          access_code: 'ABCDEFGH',
+          invite_token: 'private-token',
+          expires_at: '2026-07-25T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    await expect(
+      createLocationDecisionRoom({
+        mode: 'do',
+        latitude: 28.5383,
+        longitude: -81.3792,
+        locationLabel: 'Orlando, Florida',
+      }),
+    ).resolves.toEqual({
+      sessionId: 'session-1',
+      accessCode: 'ABCDEFGH',
+      inviteToken: 'private-token',
+      expiresAt: '2026-07-25T00:00:00.000Z',
+    });
+    expect(mockRpc).toHaveBeenCalledWith('create_location_decision_session', {
+      p_mode: 'do',
+      p_latitude: 28.5383,
+      p_longitude: -81.3792,
+      p_location_label: 'Orlando, Florida',
+      p_region: 'US',
+    });
   });
 });
 

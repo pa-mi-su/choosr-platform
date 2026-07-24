@@ -34,10 +34,22 @@ export function JoinScreen({ navigation, route }: Props): React.JSX.Element {
           token ? { inviteToken: token } : { accessCode: code },
         );
         const room = await loadDecisionRoom(joined.sessionId);
-        if (room.status !== 'active' || room.participantCount !== 2) {
+        if (room.participantCount !== 2) {
           setError(
             'This device created that room. Open the invite on your partner’s device.',
           );
+          return;
+        }
+        if (room.mode === 'eat' || room.mode === 'do') {
+          navigation.replace('LocalSetup', {
+            mode: room.mode,
+            sessionId: room.sessionId,
+            roundNumber: room.roundNumber,
+          });
+          return;
+        }
+        if (room.status !== 'active') {
+          setError('This room is not ready yet. Please try again.');
           return;
         }
         await touchRoomPresence(room.sessionId);

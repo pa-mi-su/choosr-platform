@@ -1,13 +1,21 @@
 export type DecisionMode = 'eat' | 'do';
 
+export type DiscoveryLocation = {
+  latitude: number;
+  longitude: number;
+};
+
 export type DeckRequest = {
   mode: DecisionMode;
+  sessionId?: string;
+  locationLabel?: string;
   latitude?: number;
   longitude?: number;
   postalCode?: string;
   radiusMeters?: number;
   maxResults?: number;
   region?: string;
+  participantLocations?: DiscoveryLocation[];
 };
 
 export type ProviderItem = {
@@ -60,6 +68,24 @@ export function parseDeckRequest(value: unknown): DeckRequest {
   }
   const body = value as Record<string, unknown>;
   const mode = parseMode(body.mode);
+  const sessionId =
+    typeof body.sessionId === 'string' &&
+    /^[0-9a-f-]{36}$/i.test(body.sessionId)
+      ? body.sessionId
+      : undefined;
+  if (body.sessionId !== undefined && !sessionId) {
+    throw new DeckRequestError('Invalid sessionId.');
+  }
+  const locationLabel =
+    typeof body.locationLabel === 'string'
+      ? body.locationLabel.trim()
+      : undefined;
+  if (
+    locationLabel !== undefined &&
+    (locationLabel.length < 1 || locationLabel.length > 120)
+  ) {
+    throw new DeckRequestError('Invalid locationLabel.');
+  }
   const latitude = optionalNumber(body.latitude, 'latitude', -90, 90);
   const longitude = optionalNumber(body.longitude, 'longitude', -180, 180);
   const postalCode =
@@ -92,6 +118,8 @@ export function parseDeckRequest(value: unknown): DeckRequest {
   return {
     mode,
     region: region.toUpperCase(),
+    ...(sessionId === undefined ? {} : { sessionId }),
+    ...(locationLabel === undefined ? {} : { locationLabel }),
     ...(latitude === undefined ? {} : { latitude }),
     ...(longitude === undefined ? {} : { longitude }),
     ...(postalCode === undefined ? {} : { postalCode }),

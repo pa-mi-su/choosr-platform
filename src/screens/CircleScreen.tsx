@@ -171,6 +171,14 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
     try {
       const room = await answerRoomInvitation(invitation.invitationId, true);
       if (!room) throw new Error('invitation_unavailable');
+      if (invitation.mode === 'eat' || invitation.mode === 'do') {
+        navigation.replace('LocalSetup', {
+          mode: invitation.mode,
+          sessionId: room.sessionId,
+          roundNumber: room.roundNumber,
+        });
+        return;
+      }
       navigation.replace('Swipe', {
         sessionId: room.sessionId,
         roundNumber: room.roundNumber,
