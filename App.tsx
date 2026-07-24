@@ -29,6 +29,7 @@ const linking: LinkingOptions<RootStackParamList> = {
     screens: {
       Join: 'join/:inviteToken',
       Circle: 'connect/:connectionToken',
+      ChatLinkJoin: 'chat',
     },
   },
 };

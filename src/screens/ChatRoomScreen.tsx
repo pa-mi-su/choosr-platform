@@ -39,6 +39,8 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
     remainingLifetime(chatSession.active?.expiresAt),
   );
   const [sending, setSending] = useState(false);
+  const [safetyNumber, setSafetyNumber] = useState(chatSession.safetyNumber);
+  const [safetyConfirmed, setSafetyConfirmed] = useState(false);
 
   const returnHome = useCallback(
     (remote = false) => {
@@ -62,6 +64,7 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
       }
       setConnection(status === 'active' ? 'Encrypted · Connected' : 'Waiting');
       setMessages([...(await chatSession.refreshMessages())]);
+      setSafetyNumber(chatSession.safetyNumber);
       setLifetime(remainingLifetime(chatSession.active?.expiresAt));
     } catch {
       setConnection('Offline · will retry');
@@ -143,6 +146,43 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.connection}>{connection}</Text>
         <Text style={styles.lifetime}>{lifetime}</Text>
       </View>
+      {!safetyConfirmed ? (
+        <View style={styles.safetyCard}>
+          <View style={styles.safetyCopy}>
+            <Text style={styles.safetyTitle}>Compare safety numbers</Text>
+            <Text style={styles.safetyBody}>
+              Both devices must show the same number. Compare it in person or
+              through the channel used for the invitation.
+            </Text>
+          </View>
+          <Text
+            selectable
+            accessibilityLabel={`Chat safety number ${
+              safetyNumber ?? 'pending'
+            }`}
+            style={styles.safetyNumber}
+          >
+            {safetyNumber ?? 'Creating…'}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="The safety numbers match"
+            disabled={!safetyNumber}
+            onPress={() => setSafetyConfirmed(true)}
+            style={({ pressed }) => [
+              styles.confirmSafety,
+              pressed && styles.pressed,
+              !safetyNumber && styles.disabled,
+            ]}
+          >
+            <Text style={styles.confirmSafetyText}>Numbers match</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <Text style={styles.safetyConfirmed}>
+          ✓ Safety number confirmed on this device
+        </Text>
+      )}
       <KeyboardAvoidingView
         style={styles.chat}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -176,12 +216,13 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
             placeholderTextColor={colors.faint}
             maxLength={2000}
             multiline
+            editable={safetyConfirmed}
             style={styles.input}
           />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Send encrypted message"
-            disabled={!draft.trim() || sending}
+            disabled={!safetyConfirmed || !draft.trim() || sending}
             onPress={send}
             style={({ pressed }) => [
               styles.send,
@@ -215,6 +256,40 @@ const styles = StyleSheet.create({
   connection: { color: colors.success, fontSize: 11, fontWeight: '800' },
   lifetime: { color: colors.accent, fontSize: 11, fontWeight: '800' },
   chat: { flex: 1 },
+  safetyCard: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.blue,
+    backgroundColor: colors.surface,
+    gap: 10,
+  },
+  safetyCopy: { gap: 3 },
+  safetyTitle: { color: colors.text, fontSize: 13, fontWeight: '900' },
+  safetyBody: { color: colors.muted, fontSize: 10, lineHeight: 15 },
+  safetyNumber: {
+    color: colors.blue,
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 2,
+    textAlign: 'center',
+  },
+  confirmSafety: {
+    minHeight: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.raised,
+  },
+  confirmSafetyText: { color: colors.text, fontSize: 12, fontWeight: '900' },
+  safetyConfirmed: {
+    color: colors.success,
+    fontSize: 10,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 10,
+  },
   messages: { flexGrow: 1, justifyContent: 'flex-end', paddingVertical: 16 },
   empty: {
     color: colors.faint,
@@ -257,6 +332,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 17,
   },
   pressed: { opacity: 0.55 },
+  disabled: { opacity: 0.45 },
   sendText: { color: colors.white, fontWeight: '900' },
   warning: {
     color: colors.faint,

@@ -75,12 +75,14 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.eyebrow}>CHOOSR CHAT</Text>
         <Text style={styles.title}>Here for now.{`\n`}Gone when you say.</Text>
         <Text style={styles.body}>
-          Exactly two people connect in person with a single-use QR. Choosr
-          never receives readable message content.
+          Start instantly with a one-time private link, or connect in person
+          with a QR. No profile or membership required.
         </Text>
       </View>
       <View style={styles.rules}>
-        <Text style={styles.rule}>QR-only · expires in 90 seconds</Text>
+        <Text style={styles.rule}>
+          Invites work once · expire in 90 seconds
+        </Text>
         <Text style={styles.rule}>Temporary per-chat encryption keys</Text>
         <Text style={styles.ruleStrong}>
           Gone in 24 hours—or destroy it in one tap.
@@ -104,15 +106,23 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
         ) : (
           <>
             <Button
-              label="Create Chat QR"
+              label="Start a Quick Chat"
               loading={loading}
-              onPress={() => navigation.navigate('ChatInvite')}
+              onPress={() =>
+                navigation.navigate('ChatInvite', { focus: 'share' })
+              }
             />
             <Button
-              label="Scan Chat QR"
+              label="Scan a QR"
               variant="secondary"
               disabled={loading}
               onPress={() => navigation.navigate('ChatScan')}
+            />
+            <Button
+              label="Enter a code"
+              variant="quiet"
+              disabled={loading}
+              onPress={() => navigation.navigate('ChatCode')}
             />
           </>
         )}

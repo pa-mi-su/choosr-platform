@@ -19,8 +19,9 @@ schema changes only through the dashboard; create and test a migration here firs
 - Push endpoints are private, and notification events enter a service-role-only outbox.
 - Expiration and cleanup logic is database-owned.
 - Anonymous cleanup tracks actual room activity and preserves identities in live rooms.
-- Ephemeral Chat uses separate tables, one-use 90-second token hashes, strict
-  two-member RLS, ciphertext-only message envelopes, and atomic destruction.
+- Ephemeral Chat uses separate tables, one-use 90-second link/QR token and
+  manual-code hashes, strict two-member RLS, ciphertext-only message envelopes,
+  and atomic destruction.
 
 ## Files
 
@@ -46,6 +47,9 @@ schema changes only through the dashboard; create and test a migration here firs
   ZIP/postal-code discovery.
 - `functions/chat-session`: authenticated, request-size-bounded Chat gateway
   that never logs request bodies or message envelopes.
+- `migrations/20260724203000_add_private_chat_links_and_codes.sql`: one
+  invitation represented as a private app link, QR, or rate-limited manual
+  fallback code without duplicating admission rules.
 - `seed.sql`: intentionally empty because decks are session-specific.
 
 ## Local verification

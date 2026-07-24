@@ -3,13 +3,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createClientMessageId,
   createTemporaryKeyPair,
+  createSafetyNumber,
   decryptMessage,
   deriveSharedKey,
   destroyKey,
   encodePublicKey,
   encryptMessage,
 } from '../domain/crypto';
-import { parseChatInvitation } from '../domain/invitation';
+import {
+  normalizeChatInvitationCode,
+  parseChatInvitation,
+} from '../domain/invitation';
 import {
   ChatError,
   type ActiveChatState,
@@ -45,6 +49,12 @@ export class ChatSession {
 
   get invitation(): ChatInvitation | undefined {
     return this.runtime?.invitation;
+  }
+
+  get safetyNumber(): string | undefined {
+    return this.runtime?.sharedKey
+      ? createSafetyNumber(this.runtime.sharedKey)
+      : undefined;
   }
 
   async create(ownUserId: string): Promise<ChatInvitation> {
@@ -88,20 +98,17 @@ export class ChatSession {
     }
     const scanned = parseChatInvitation(encodedInvitation);
     const keyPair = createTemporaryKeyPair();
+    let joinedRoomId: string | undefined;
     try {
       const active = await this.gateway.joinInvitation(
         scanned.token,
         encodePublicKey(keyPair.publicKey),
       );
+      joinedRoomId = active.roomId;
       if (active.peerPublicKey !== scanned.creatorPublicKey) {
-        try {
-          await this.gateway.destroy(active.roomId);
-        } catch {
-          await this.addPendingDestruction(active.roomId);
-        }
         throw new ChatError(
           'encryption_failed',
-          'The QR key did not match the room key.',
+          'The invitation key did not match the room key.',
         );
       }
       this.runtime = {
@@ -113,6 +120,58 @@ export class ChatSession {
       };
       await this.refreshMessages();
     } catch (error) {
+      if (this.runtime?.active.roomId === joinedRoomId) this.destroyLocal();
+      if (joinedRoomId) {
+        try {
+          await this.gateway.destroy(joinedRoomId);
+        } catch {
+          await this.addPendingDestruction(joinedRoomId);
+        }
+      }
+      destroyKey(keyPair.secretKey);
+      throw error;
+    }
+  }
+
+  async joinCode(ownUserId: string, invitationCode: string): Promise<void> {
+    if (this.runtime) {
+      throw new ChatError(
+        'active_chat_exists',
+        'End your current private chat before joining another.',
+      );
+    }
+    const code = normalizeChatInvitationCode(invitationCode);
+    const keyPair = createTemporaryKeyPair();
+    let joinedRoomId: string | undefined;
+    try {
+      const active = await this.gateway.joinInvitationCode(
+        code,
+        encodePublicKey(keyPair.publicKey),
+      );
+      joinedRoomId = active.roomId;
+      if (!active.peerPublicKey) {
+        throw new ChatError(
+          'encryption_failed',
+          'The creator key was not available.',
+        );
+      }
+      this.runtime = {
+        ownUserId,
+        keyPair,
+        messages: [],
+        active,
+        sharedKey: deriveSharedKey(active.peerPublicKey, keyPair.secretKey),
+      };
+      await this.refreshMessages();
+    } catch (error) {
+      if (this.runtime?.active.roomId === joinedRoomId) this.destroyLocal();
+      if (joinedRoomId) {
+        try {
+          await this.gateway.destroy(joinedRoomId);
+        } catch {
+          await this.addPendingDestruction(joinedRoomId);
+        }
+      }
       destroyKey(keyPair.secretKey);
       throw error;
     }

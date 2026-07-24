@@ -175,7 +175,7 @@ export function ChoosrHomeScreen({ navigation }: Props): React.JSX.Element {
             </View>
             <Text style={styles.chatTitle}>Chat Privately</Text>
             <Text style={styles.chatCopy}>
-              QR-only. Encrypted. Exactly two people.
+              One-time invite. Encrypted. Exactly two people.
             </Text>
             <View style={styles.cardActionRow}>
               <Text style={styles.chatAction}>OPEN PRIVATE CHAT</Text>

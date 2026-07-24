@@ -94,6 +94,23 @@ export function createClientMessageId(): string {
   ].join('-');
 }
 
+export function createSafetyNumber(sharedKey: Uint8Array): string {
+  if (sharedKey.length !== nacl.secretbox.keyLength) {
+    throw new ChatError(
+      'encryption_failed',
+      'The private chat safety number could not be created.',
+    );
+  }
+  const digest = nacl.hash(sharedKey);
+  const groups = [0, 1, 2].map(index => {
+    const offset = index * 2;
+    const value = digest[offset] * 256 + digest[offset + 1];
+    return String(value % 10_000).padStart(4, '0');
+  });
+  digest.fill(0);
+  return groups.join(' ');
+}
+
 export function destroyKey(key: Uint8Array | undefined): void {
   key?.fill(0);
 }

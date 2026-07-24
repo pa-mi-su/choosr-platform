@@ -41,6 +41,7 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="choosr" android:host="join" />
             <data android:scheme="choosr" android:host="connect" />
+            <data android:scheme="choosr" android:host="chat" />
         </intent-filter>
       </activity>
     </application>

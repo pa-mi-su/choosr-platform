@@ -26,6 +26,7 @@ class FakeGateway implements ChatGateway {
     return {
       roomId: this.active.roomId,
       token: 'a'.repeat(64),
+      manualCode: 'ABCD-1234-EF56-7890',
       creatorPublicKey: publicKey,
       invitationExpiresAt: '2026-07-24T12:01:30.000Z',
       roomExpiresAt: this.active.expiresAt,
@@ -42,6 +43,10 @@ class FakeGateway implements ChatGateway {
       publicKey,
       peerPublicKey: this.active.publicKey,
     };
+  }
+
+  async joinInvitationCode(_code: string, publicKey: string) {
+    return this.joinInvitation('', publicKey);
   }
 
   async getActiveChat() {
@@ -144,5 +149,23 @@ describe('ChatSession lifecycle', () => {
     });
     expect(gateway.destroyed).toEqual(['30000000-0000-4000-8000-000000000001']);
     expect(session.active).toBeUndefined();
+  });
+
+  test('manual code join derives the same safety number as the creator', async () => {
+    const gateway = new FakeGateway();
+    const creator = new ChatSession(gateway);
+    const joiner = new ChatSession(gateway);
+    const invitation = await creator.create('creator');
+
+    await joiner.joinCode('joiner', invitation.manualCode);
+    gateway.active = {
+      ...(gateway.active as ActiveChatState),
+      status: 'active',
+      peerPublicKey: joiner.active?.publicKey,
+    };
+    await creator.refreshStatus();
+
+    expect(joiner.safetyNumber).toMatch(/^\d{4} \d{4} \d{4}$/);
+    expect(creator.safetyNumber).toBe(joiner.safetyNumber);
   });
 });
