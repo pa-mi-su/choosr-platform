@@ -145,4 +145,22 @@ describe('ChatSession lifecycle', () => {
     expect(gateway.destroyed).toEqual(['30000000-0000-4000-8000-000000000001']);
     expect(session.active).toBeUndefined();
   });
+
+  test('link or QR join derives the same safety number as the creator', async () => {
+    const gateway = new FakeGateway();
+    const creator = new ChatSession(gateway);
+    const joiner = new ChatSession(gateway);
+    const invitation = await creator.create('creator');
+
+    await joiner.join('joiner', encodeChatInvitation(invitation));
+    gateway.active = {
+      ...(gateway.active as ActiveChatState),
+      status: 'active',
+      peerPublicKey: joiner.active?.publicKey,
+    };
+    await creator.refreshStatus();
+
+    expect(joiner.safetyNumber).toMatch(/^\d{4} \d{4} \d{4}$/);
+    expect(creator.safetyNumber).toBe(joiner.safetyNumber);
+  });
 });

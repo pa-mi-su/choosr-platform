@@ -1,26 +1,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
-
-type ChatAction = 'create' | 'join' | 'status' | 'send' | 'destroy';
-type RequestBody = {
-  action?: unknown;
-  roomId?: unknown;
-  invitationToken?: unknown;
-  publicKey?: unknown;
-  clientMessageId?: unknown;
-  nonce?: unknown;
-  ciphertext?: unknown;
-};
+import {
+  type ChatAction,
+  type ChatRequestBody,
+  validateChatRequest,
+} from './validation.ts';
 
 const jsonHeaders = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-store',
 };
-const base64Key = /^[A-Za-z0-9+/]{43}=$/;
-const base64Nonce = /^[A-Za-z0-9+/]{32}$/;
-const base64Ciphertext = /^[A-Za-z0-9+/]+={0,2}$/;
-const hexToken = /^[0-9a-f]{64}$/;
-const uuid =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -33,53 +21,6 @@ function requiredEnvironment(name: string): string {
   const value = Deno.env.get(name);
   if (!value) throw new Error(`Missing server configuration: ${name}.`);
   return value;
-}
-
-function isAction(value: unknown): value is ChatAction {
-  return (
-    value === 'create' ||
-    value === 'join' ||
-    value === 'status' ||
-    value === 'send' ||
-    value === 'destroy'
-  );
-}
-
-function validate(body: RequestBody): string | undefined {
-  if (!isAction(body.action)) return 'Unsupported chat action.';
-  if (
-    (body.action === 'create' || body.action === 'join') &&
-    (typeof body.publicKey !== 'string' || !base64Key.test(body.publicKey))
-  ) {
-    return 'Invalid temporary public key.';
-  }
-  if (
-    body.action === 'join' &&
-    (typeof body.invitationToken !== 'string' ||
-      !hexToken.test(body.invitationToken))
-  ) {
-    return 'Invalid or expired QR invitation.';
-  }
-  if (
-    (body.action === 'send' || body.action === 'destroy') &&
-    (typeof body.roomId !== 'string' || !uuid.test(body.roomId))
-  ) {
-    return 'Invalid chat room.';
-  }
-  if (
-    body.action === 'send' &&
-    (typeof body.clientMessageId !== 'string' ||
-      !uuid.test(body.clientMessageId) ||
-      typeof body.nonce !== 'string' ||
-      !base64Nonce.test(body.nonce) ||
-      typeof body.ciphertext !== 'string' ||
-      body.ciphertext.length < 24 ||
-      body.ciphertext.length > 16384 ||
-      !base64Ciphertext.test(body.ciphertext))
-  ) {
-    return 'Invalid encrypted message envelope.';
-  }
-  return undefined;
 }
 
 Deno.serve(async request => {
@@ -96,13 +37,13 @@ Deno.serve(async request => {
     return response({ error: 'Request is too large.' }, 413);
   }
 
-  let body: RequestBody;
+  let body: ChatRequestBody;
   try {
-    body = (await request.json()) as RequestBody;
+    body = (await request.json()) as ChatRequestBody;
   } catch {
     return response({ error: 'Request body must be valid JSON.' }, 400);
   }
-  const validationError = validate(body);
+  const validationError = validateChatRequest(body);
   if (validationError) return response({ error: validationError }, 400);
 
   try {

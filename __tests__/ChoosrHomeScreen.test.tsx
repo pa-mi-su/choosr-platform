@@ -38,6 +38,11 @@ test('top-level gateway preserves Choose and adds isolated Chat entry points', a
     .findByProps({ testID: 'chat-privately-entry' })
     .props.onPress();
   expect(navigate).toHaveBeenCalledWith('ChatHome');
+  expect(
+    renderer?.root.findByProps({
+      children: 'Private chat: gone in 24 hours—or destroy it in one tap.',
+    }),
+  ).toBeDefined();
 
   await ReactTestRenderer.act(() => renderer?.unmount());
 });

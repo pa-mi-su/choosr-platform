@@ -3,7 +3,7 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
-import { Brand, Button, Screen } from '../components/UI';
+import { BackToChoosrButton, Button, Screen } from '../components/UI';
 import { chatSession } from '../chat/runtime';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
@@ -65,27 +65,28 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
   return (
     <Screen testID="chat-home-screen" style={styles.screen}>
       <View style={styles.top}>
-        <Brand compact />
-        <Button
-          label="Choosr Home"
-          variant="quiet"
-          onPress={() => navigation.navigate('Home')}
-        />
+        <BackToChoosrButton onPress={() => navigation.navigate('Home')} />
+        <View style={styles.modeBadge}>
+          <View style={styles.modeDot} />
+          <Text style={styles.modeLabel}>PRIVATE CHAT</Text>
+        </View>
       </View>
       <View style={styles.hero}>
         <Text style={styles.eyebrow}>CHOOSR CHAT</Text>
-        <Text style={styles.title}>
-          Private while it exists. Gone when it ends.
-        </Text>
+        <Text style={styles.title}>Here for now.{`\n`}Gone when you say.</Text>
         <Text style={styles.body}>
-          Exactly two people connect in person with a single-use QR. Choosr
-          never receives readable message content.
+          Start instantly with a one-time private link, or connect in person
+          with a QR. No profile or membership required.
         </Text>
       </View>
       <View style={styles.rules}>
-        <Text style={styles.rule}>QR-only · expires in 90 seconds</Text>
+        <Text style={styles.rule}>
+          Invites work once · expire in 90 seconds
+        </Text>
         <Text style={styles.rule}>Temporary per-chat encryption keys</Text>
-        <Text style={styles.rule}>Automatic destruction after 24 hours</Text>
+        <Text style={styles.ruleStrong}>
+          Gone in 24 hours—or destroy it in one tap.
+        </Text>
       </View>
       <View style={styles.actions}>
         {active ? (
@@ -105,12 +106,14 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
         ) : (
           <>
             <Button
-              label="Create Chat QR"
+              label="Start a Quick Chat"
               loading={loading}
-              onPress={() => navigation.navigate('ChatInvite')}
+              onPress={() =>
+                navigation.navigate('ChatInvite', { focus: 'share' })
+              }
             />
             <Button
-              label="Scan Chat QR"
+              label="Scan a QR"
               variant="secondary"
               disabled={loading}
               onPress={() => navigation.navigate('ChatScan')}
@@ -129,6 +132,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  modeBadge: {
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 11,
+    borderRadius: 17,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  modeLabel: {
+    color: colors.muted,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 1.1,
   },
   hero: { flex: 1, justifyContent: 'center' },
   eyebrow: {
@@ -154,6 +180,12 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   rule: { color: colors.text, fontSize: 13 },
+  ruleStrong: {
+    color: colors.accent,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '900',
+  },
   actions: { gap: 11 },
   limit: { color: colors.faint, fontSize: 10, textAlign: 'center' },
 });

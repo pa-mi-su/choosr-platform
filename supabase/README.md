@@ -19,7 +19,7 @@ schema changes only through the dashboard; create and test a migration here firs
 - Push endpoints are private, and notification events enter a service-role-only outbox.
 - Expiration and cleanup logic is database-owned.
 - Anonymous cleanup tracks actual room activity and preserves identities in live rooms.
-- Ephemeral Chat uses separate tables, one-use 90-second token hashes, strict
+- Ephemeral Chat uses separate tables, one-use 90-second link/QR tokens, strict
   two-member RLS, ciphertext-only message envelopes, and atomic destruction.
 
 ## Files

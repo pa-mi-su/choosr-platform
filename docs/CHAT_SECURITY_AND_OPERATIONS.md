@@ -7,11 +7,18 @@ unsolicited invitations.
 
 ## Trust and encryption boundary
 
-Each device creates a fresh X25519 (`nacl.box`) keypair for one chat. The QR
-contains a 256-bit single-use invitation token and the creator's temporary
-public key. The joiner verifies that public key against the key returned by the
-transactional join before deriving the shared key. Messages use authenticated
-XSalsa20-Poly1305 secret-box envelopes with a new 192-bit nonce.
+Each device creates a fresh X25519 (`nacl.box`) keypair for one chat. The private
+app link and QR are two representations of the same 256-bit single-use token
+and creator temporary public key. The joiner verifies that public key against
+the key returned by the transactional join before deriving the shared key.
+Messages use authenticated XSalsa20-Poly1305 secret-box envelopes with a new
+192-bit nonce.
+
+Manual invitation codes are deliberately unsupported because a human-sized
+code cannot carry the creator public-key proof included in the link and QR.
+Each participant still explicitly confirms the same safety number through the
+channel they used to coordinate. The safety number is derived on-device from
+the shared key and is never sent to Choosr.
 
 Temporary secret and shared keys exist only in application memory. They are
 never written to AsyncStorage, platform key stores, Supabase, Realtime, Edge
@@ -28,9 +35,10 @@ keys, nonces, or ciphertext.
 
 ## Authorization and lifecycle
 
-- Invitations expire after 90 seconds and persist only as SHA-256 token hashes.
+- Invitations expire after 90 seconds. Link/QR tokens persist only as SHA-256
+  hashes.
 - Redemption locks the invitation and room in one transaction, consumes the
-  invitation once, and admits only the unique `joiner` role.
+  invitation once and admits only the unique `joiner` role.
 - A private membership table enforces one active chat per user.
 - RLS exposes active room, participant public-key, and ciphertext rows only to
   current members. Closed rooms expose no rows.
@@ -72,6 +80,13 @@ Functions, server logs, analytics, push providers, and passive database
 disclosure. It prevents token replay, expired-token admission, third-user
 membership, direct client writes, and reopening after destruction.
 
+A private link is a bearer capability: the first person to obtain and redeem it
+can claim the only joiner slot. The custom `choosr://` URL is not fetched by web
+or link-preview services, and it contains no room ID, profile, message, or
+plaintext key material. The messaging service selected by the sender still
+receives the invitation text, so links must not be posted publicly. In-person
+QR plus safety-number comparison remains the strongest identity check.
+
 It does not protect an unlocked or compromised endpoint, and it cannot prevent
 screenshots, screen recording, accessibility capture, malware, or an external
 camera. A participant can manually copy anything they can read. Provider
@@ -92,10 +107,19 @@ weaken the normal E2EE contract, so the UI currently offers only
 
 ## Deployment
 
-Apply `20260724190000_add_ephemeral_chat.sql`, deploy `chat-session`, and deploy
-the updated `dispatch-notifications`. Anonymous authentication, Realtime, Cron,
-the existing Firebase service-account secret, and platform push configuration
-must be enabled. No new static secret is required.
+Apply `20260724190000_add_ephemeral_chat.sql` followed by
+`20260724203000_add_private_chat_links_and_codes.sql`, deploy `chat-session`,
+and deploy the updated `dispatch-notifications`. Anonymous authentication,
+Realtime, Cron, the existing Firebase service-account secret, and platform
+push configuration must be enabled. No new static secret is required.
+
+Native `choosr://chat` handling is configured for iOS and Android. A recipient
+without Choosr must install the app and request a fresh short-lived invitation.
+Automatic App Store/Play Store fallback and post-install continuation remain a
+deployment follow-up until Choosr has a verified public web domain, published
+store URLs, Apple Associated Domains, Android Digital Asset Links, and a
+privacy-reviewed landing page. The invitation secret must remain outside web
+requests, redirects, analytics, and store URLs.
 
 Before promotion, run the repository application, secret, environment, format,
 lint, typecheck, Jest, migration-reset, pgTAP, schema-lint, Android build, and

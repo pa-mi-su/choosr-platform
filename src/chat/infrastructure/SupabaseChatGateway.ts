@@ -45,7 +45,7 @@ function mapFailure(error: unknown): ChatError {
   if (/invitation|conflict|409/i.test(message)) {
     return new ChatError(
       'invitation_unavailable',
-      'That QR invitation has expired or was already used.',
+      'That private-chat invitation has expired or was already used.',
     );
   }
   if (/active_chat/i.test(message)) {
@@ -89,7 +89,7 @@ export class SupabaseChatGateway implements ChatGateway {
     if (!row) {
       throw new ChatError(
         'invitation_unavailable',
-        'That QR invitation is unavailable.',
+        'That private-chat invitation is unavailable.',
       );
     }
     return {

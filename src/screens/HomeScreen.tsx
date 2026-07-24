@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
-import { Brand, Button, Screen } from '../components/UI';
+import { BackToChoosrButton, Button, Screen } from '../components/UI';
 import {
   loadUnreadNotificationCount,
   subscribeToNotificationState,
@@ -34,14 +34,7 @@ export function HomeScreen({ navigation }: Props): React.JSX.Element {
     <Screen testID="home-screen" style={styles.screen}>
       <View style={styles.orangeGlow} />
       <View style={styles.top}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="About Choosr"
-          onPress={() => navigation.navigate('Home')}
-          style={({ pressed }) => pressed && styles.pressed}
-        >
-          <Brand compact />
-        </Pressable>
+        <BackToChoosrButton onPress={() => navigation.navigate('Home')} />
         <View style={styles.topActions}>
           <Pressable
             accessibilityRole="button"

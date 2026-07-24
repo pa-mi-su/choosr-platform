@@ -1,5 +1,6 @@
 import {
   createTemporaryKeyPair,
+  createSafetyNumber,
   decryptMessage,
   deriveSharedKey,
   destroyKey,
@@ -7,7 +8,9 @@ import {
   encryptMessage,
 } from '../src/chat/domain/crypto';
 import {
+  buildPrivateChatShareMessage,
   encodeChatInvitation,
+  encodePrivateChatLink,
   parseChatInvitation,
 } from '../src/chat/domain/invitation';
 import { ChatError, type ChatInvitation } from '../src/chat/domain/types';
@@ -53,9 +56,24 @@ describe('Choosr Chat cryptographic boundary', () => {
     destroyKey(pair.secretKey);
     expect(Array.from(pair.secretKey).every(byte => byte === 0)).toBe(true);
   });
+
+  test('both devices derive the same human-verifiable safety number', () => {
+    const alice = createTemporaryKeyPair();
+    const bob = createTemporaryKeyPair();
+    const aliceShared = deriveSharedKey(
+      encodePublicKey(bob.publicKey),
+      alice.secretKey,
+    );
+    const bobShared = deriveSharedKey(
+      encodePublicKey(alice.publicKey),
+      bob.secretKey,
+    );
+    expect(createSafetyNumber(aliceShared)).toBe(createSafetyNumber(bobShared));
+    expect(createSafetyNumber(aliceShared)).toMatch(/^\d{4} \d{4} \d{4}$/);
+  });
 });
 
-describe('Choosr Chat QR contract', () => {
+describe('Choosr Chat invitation contract', () => {
   const invitation: ChatInvitation = {
     roomId: 'not-encoded',
     token: 'a'.repeat(64),
@@ -71,6 +89,14 @@ describe('Choosr Chat QR contract', () => {
       token: invitation.token,
       creatorPublicKey: invitation.creatorPublicKey,
     });
+  });
+
+  test('share link uses the same one-time token and public key as the QR', () => {
+    const qr = encodeChatInvitation(invitation);
+    const link = encodePrivateChatLink(invitation);
+    expect(parseChatInvitation(link)).toEqual(parseChatInvitation(qr));
+    expect(link).not.toContain(invitation.roomId);
+    expect(buildPrivateChatShareMessage(invitation).message).toContain(link);
   });
 
   test.each([

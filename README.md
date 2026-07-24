@@ -15,10 +15,11 @@ rooms, an in-app notification inbox, native push notifications, and
 cross-device media. Development, UAT, and production are isolated native apps
 with separate cloud configuration and release pipelines.
 
-The top-level Choosr Home also opens **Choosr Chat**, an isolated, QR-only
-two-person conversation with temporary device keys, end-to-end encrypted
-messages, participant-controlled destruction, and automatic 24-hour expiry.
-The existing decision experience remains available through **Choose Together**.
+The top-level Choosr Home also opens **Choosr Chat**, an isolated two-person
+conversation entered through a single-use private link or in-person QR. It
+uses temporary device keys, end-to-end encrypted messages,
+participant-controlled destruction, and automatic 24-hour expiry. The existing
+decision experience remains available through **Choose Together**.
 
 > **Release status:** Choosr is available through App Store Connect/TestFlight
 > and Google Play testing tracks. It has not been released publicly.
@@ -210,8 +211,8 @@ Security is enforced in layers:
 - CI scans the repository for committed secret material.
 - Chat mutations use an isolated authenticated Edge Function plus transactional
   RPCs; only temporary public keys, nonces, and ciphertext cross the network.
-- Chat invitation tokens are single-use, hash-only at rest, and expire after
-  90 seconds; closed rooms reject reads and writes.
+- Chat link/QR tokens are single-use, hash-only at rest, and expire after 90
+  seconds; closed rooms reject reads and writes.
 
 Supabase's `anon` key identifies the public client role; it is not a secret.
 Anonymous authentication still creates an authenticated user identity, allowing
