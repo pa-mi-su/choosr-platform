@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import Swipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { Brand, Button, Screen } from '../components/UI';
@@ -18,6 +19,7 @@ import {
   deleteNotifications,
   markNotificationsRead,
   markAllNotificationsRead,
+  subscribeToNotificationState,
   type ChoosrNotification,
 } from '../services/notificationService';
 import { loadPendingRoomInvitations } from '../services/circleService';
@@ -139,9 +141,15 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
     navigation.navigate(item.kind === 'chat_message' ? 'ChatHome' : 'Circle');
   };
 
-  useEffect(() => {
-    load().catch(() => undefined);
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load().catch(() => undefined);
+      const subscription = subscribeToNotificationState(() => {
+        load().catch(() => undefined);
+      });
+      return () => subscription.remove();
+    }, [load]),
+  );
 
   return (
     <Screen testID="notifications-screen" style={styles.screen}>

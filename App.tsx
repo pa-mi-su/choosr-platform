@@ -1,17 +1,13 @@
 import React, { useEffect } from 'react';
 import { StatusBar, StyleSheet } from 'react-native';
-import {
-  NavigationContainer,
-  type LinkingOptions,
-} from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppNavigator } from './src/navigation/AppNavigator';
+import { appLinking } from './src/navigation/linking';
 import { registerAuthAutoRefresh } from './src/lib/supabase';
-import { roomLinkingPrefixes } from './src/services/roomInvite';
 import { colors } from './src/theme';
-import type { RootStackParamList } from './src/types/navigation';
 import {
   flushPendingNotificationNavigation,
   navigationRef,
@@ -22,17 +18,6 @@ import {
   refreshNotificationState,
   registerNotificationSynchronization,
 } from './src/services/notificationService';
-
-const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: roomLinkingPrefixes,
-  config: {
-    screens: {
-      Join: 'join/:inviteToken',
-      Circle: 'connect/:connectionToken',
-      ChatLinkJoin: 'chat',
-    },
-  },
-};
 
 export default function App(): React.JSX.Element {
   useEffect(() => registerAuthAutoRefresh(), []);
@@ -57,7 +42,7 @@ export default function App(): React.JSX.Element {
         />
         <NavigationContainer
           ref={navigationRef}
-          linking={linking}
+          linking={appLinking}
           onReady={flushPendingNotificationNavigation}
         >
           <AppNavigator />
