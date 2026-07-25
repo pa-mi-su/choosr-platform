@@ -95,7 +95,7 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
   const confirmClear = () =>
     Alert.alert(
       'Clear all notifications?',
-      'This removes every notification from your inbox.',
+      'This removes every notification from your inbox. Pending room invitations will remain under Active rooms & invites.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
