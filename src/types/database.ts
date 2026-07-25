@@ -294,6 +294,22 @@ export type Database = {
           expires_at: string;
         }[];
       };
+      list_active_room_history: {
+        Args: Record<never, never>;
+        Returns: {
+          session_id: string;
+          access_code: string;
+          mode: DecisionMode;
+          status: SessionStatus;
+          round_number: number;
+          expires_at: string;
+          created_at: string;
+          participant_count: number;
+          total_choices: number;
+          completed_choices: number;
+          matched_item_id: string | null;
+        }[];
+      };
       respond_room_invitation: {
         Args: { p_invitation_id: string; p_accept: boolean };
         Returns: {

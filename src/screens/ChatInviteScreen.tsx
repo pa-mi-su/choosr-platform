@@ -9,7 +9,7 @@ import {
 } from '../chat/domain/invitation';
 import type { ChatInvitation } from '../chat/domain/types';
 import { chatSession } from '../chat/runtime';
-import { Brand, Button, Screen } from '../components/UI';
+import { BackToChoosrButton, Button, Screen } from '../components/UI';
 import { ensureAnonymousSession } from '../services/anonymousAuth';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
@@ -139,7 +139,12 @@ export function ChatInviteScreen({
   return (
     <Screen testID="chat-invite-screen" style={styles.screen}>
       <View style={styles.top}>
-        <Brand compact />
+        <BackToChoosrButton
+          label="PRIVATE CHAT"
+          accessibilityLabel="Back to Private Chat"
+          testID="back-to-private-chat"
+          onPress={() => navigation.popTo('ChatHome')}
+        />
         <Button
           label="End & Destroy"
           variant="quiet"

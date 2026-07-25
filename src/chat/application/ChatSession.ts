@@ -33,6 +33,8 @@ type Runtime = {
 
 export class ChatSession {
   private runtime?: Runtime;
+  private orphanedChatWasDestroyed = false;
+  private pendingReconciliation?: Promise<boolean>;
 
   constructor(private readonly gateway: ChatGateway) {}
 
@@ -204,6 +206,15 @@ export class ChatSession {
   }
 
   async reconcileOrphanedRemoteChat(): Promise<boolean> {
+    if (!this.pendingReconciliation) {
+      this.pendingReconciliation = this.performReconciliation().finally(() => {
+        this.pendingReconciliation = undefined;
+      });
+    }
+    return this.pendingReconciliation;
+  }
+
+  private async performReconciliation(): Promise<boolean> {
     await this.flushPendingDestructions();
     const remote = await this.gateway.getActiveChat();
     if (!remote) return false;
@@ -212,7 +223,14 @@ export class ChatSession {
     // killed, the ciphertext can no longer be decrypted, so close it rather
     // than leaving a misleading or recoverable shell.
     await this.gateway.destroy(remote.roomId);
+    this.orphanedChatWasDestroyed = true;
     return false;
+  }
+
+  consumeOrphanedChatDestructionNotice(): boolean {
+    const shouldNotify = this.orphanedChatWasDestroyed;
+    this.orphanedChatWasDestroyed = false;
+    return shouldNotify;
   }
 
   async hasRemoteChat(): Promise<boolean> {

@@ -24,7 +24,8 @@ jest.mock('../src/chat/runtime', () => ({
 
 import { ChatRoomScreen } from '../src/screens/ChatRoomScreen';
 
-test('private messaging stays disabled until the safety number is confirmed', async () => {
+test('messaging is immediately encrypted and comparison details are optional', async () => {
+  const popTo = jest.fn();
   let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
@@ -35,7 +36,7 @@ test('private messaging stays disabled until the safety number is confirmed', as
         }}
       >
         <ChatRoomScreen
-          navigation={{ replace: jest.fn() } as never}
+          navigation={{ popTo, replace: jest.fn() } as never}
           route={{ key: 'chat-room', name: 'ChatRoom' } as never}
         />
       </SafeAreaProvider>,
@@ -45,26 +46,36 @@ test('private messaging stays disabled until the safety number is confirmed', as
   expect(
     renderer?.root.findByProps({ accessibilityLabel: 'Private message' }).props
       .editable,
-  ).toBe(false);
+  ).not.toBe(false);
+  expect(() =>
+    renderer?.root.findByProps({
+      accessibilityLabel: 'Chat safety number 1234 5678 9012',
+    }),
+  ).toThrow();
+
+  await ReactTestRenderer.act(() => {
+    renderer?.root
+      .findByProps({ accessibilityLabel: 'Encryption details' })
+      .props.onPress();
+  });
+
   expect(
     renderer?.root.findByProps({
       accessibilityLabel: 'Chat safety number 1234 5678 9012',
     }),
   ).toBeDefined();
-
-  await ReactTestRenderer.act(() => {
-    renderer?.root
-      .findByProps({ accessibilityLabel: 'The safety numbers match' })
-      .props.onPress();
-  });
-
-  expect(
-    renderer?.root.findByProps({ accessibilityLabel: 'Private message' }).props
-      .editable,
-  ).toBe(true);
+  expect(() =>
+    renderer?.root.findByProps({
+      accessibilityLabel: 'Mark connection as verified',
+    }),
+  ).toThrow();
   expect(
     renderer?.root.findByProps({ accessibilityLabel: 'End & Destroy' }),
   ).toBeDefined();
+  renderer?.root
+    .findByProps({ testID: 'back-to-private-chat' })
+    .props.onPress();
+  expect(popTo).toHaveBeenCalledWith('ChatHome');
 
   await ReactTestRenderer.act(() => renderer?.unmount());
 });

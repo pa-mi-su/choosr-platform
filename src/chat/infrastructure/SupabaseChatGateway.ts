@@ -1,6 +1,11 @@
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 import { supabase } from '../../lib/supabase';
+import {
+  isTransientNetworkFailure,
+  withResilientRequest,
+  withSupabaseReadRetry,
+} from '../../services/requestTimeout';
 import type { ChatGateway } from '../application/ChatGateway';
 import { ChatError } from '../domain/types';
 import type {
@@ -116,14 +121,23 @@ export class SupabaseChatGateway implements ChatGateway {
   }
 
   async listMessages(roomId: string): Promise<ChatEnvelope[]> {
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .select(
-        'id,room_id,sender_user_id,client_message_id,nonce,ciphertext,created_at',
-      )
-      .eq('room_id', roomId)
-      .order('id', { ascending: true })
-      .limit(500);
+    const { data, error } = await withSupabaseReadRetry(
+      signal =>
+        supabase
+          .from('chat_messages')
+          .select(
+            'id,room_id,sender_user_id,client_message_id,nonce,ciphertext,created_at',
+          )
+          .eq('room_id', roomId)
+          .order('id', { ascending: true })
+          .limit(500)
+          .abortSignal(signal),
+      {
+        operation: 'Private chat messages',
+        timeoutMilliseconds: 7_000,
+        backoffMilliseconds: 250,
+      },
+    );
     if (error) throw mapFailure(error);
     return (data ?? []).map(row => ({
       id: row.id,
@@ -186,10 +200,39 @@ export class SupabaseChatGateway implements ChatGateway {
     action: string,
     body: Record<string, unknown>,
   ): Promise<T> {
-    const { data, error } = await supabase.functions.invoke<
-      FunctionResponse<T>
-    >('chat-session', { body: { action, ...body } });
-    if (error) throw mapFailure(error);
+    const attempts = ['status', 'send', 'destroy'].includes(action) ? 2 : 1;
+    let response: {
+      data: FunctionResponse<T> | null;
+      error: unknown;
+    };
+    try {
+      response = await withResilientRequest(
+        async signal => {
+          const result = await supabase.functions.invoke<FunctionResponse<T>>(
+            'chat-session',
+            {
+              body: { action, ...body },
+              signal,
+              timeout: 7_000,
+            },
+          );
+          if (result.error && isTransientNetworkFailure(result.error)) {
+            throw result.error;
+          }
+          return result;
+        },
+        {
+          operation: `Private chat ${action}`,
+          timeoutMilliseconds: 7_500,
+          attempts,
+          backoffMilliseconds: 250,
+        },
+      );
+    } catch (cause) {
+      throw mapFailure(cause);
+    }
+    const { data, error: responseError } = response;
+    if (responseError) throw mapFailure(responseError);
     if (!data || !('data' in data)) {
       throw new ChatError('unknown', 'The chat service returned no result.');
     }

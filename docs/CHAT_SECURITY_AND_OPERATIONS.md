@@ -16,9 +16,12 @@ Messages use authenticated XSalsa20-Poly1305 secret-box envelopes with a new
 
 Manual invitation codes are deliberately unsupported because a human-sized
 code cannot carry the creator public-key proof included in the link and QR.
-Each participant still explicitly confirms the same safety number through the
-channel they used to coordinate. The safety number is derived on-device from
-the shared key and is never sent to Choosr.
+Messaging is end-to-end encrypted immediately after key agreement. The
+encryption-details panel optionally lets participants compare the same safety
+number by phone, video, in person, or another trusted channel. Choosr does not
+block messaging, ask users to claim they compared it, or display an
+unverifiable matched/verified state. The safety number is derived on-device
+from the shared key and is never sent to Choosr.
 
 Temporary secret and shared keys exist only in application memory. They are
 never written to AsyncStorage, platform key stores, Supabase, Realtime, Edge
@@ -85,7 +88,8 @@ can claim the only joiner slot. The custom `choosr://` URL is not fetched by web
 or link-preview services, and it contains no room ID, profile, message, or
 plaintext key material. The messaging service selected by the sender still
 receives the invitation text, so links must not be posted publicly. In-person
-QR plus safety-number comparison remains the strongest identity check.
+QR plus optional safety-number comparison remains the strongest connection
+check.
 
 It does not protect an unlocked or compromised endpoint, and it cannot prevent
 screenshots, screen recording, accessibility capture, malware, or an external
