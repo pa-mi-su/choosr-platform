@@ -14,6 +14,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
 import {
+  answerRoomInvitation,
+  circleErrorMessage,
+  loadPendingRoomInvitations,
+  readCachedCircleSnapshot,
+  type PendingRoomInvitation,
+} from '../services/circleService';
+import {
   loadRoomHistory,
   readCachedRoomHistory,
   type RoomHistoryItem,
@@ -25,13 +32,18 @@ import type { RootStackParamList } from '../types/navigation';
 type Props = NativeStackScreenProps<RootStackParamList, 'ActiveRooms'>;
 type ActiveRoomRow =
   | { kind: 'empty-active'; id: string }
+  | { kind: 'invitation'; id: string; invitation: PendingRoomInvitation }
   | { kind: 'room'; id: string; room: RoomHistoryItem };
 
 export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   const [rooms, setRooms] = useState<RoomHistoryItem[]>([]);
+  const [invitations, setInvitations] = useState<PendingRoomInvitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasSnapshot, setHasSnapshot] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [joiningInvitationId, setJoiningInvitationId] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const hasSnapshotRef = useRef(false);
 
@@ -39,19 +51,40 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     setError(null);
     if (!hasSnapshotRef.current) {
       setLoading(true);
-      const cached = await readCachedRoomHistory();
-      if (cached) {
-        setRooms(cached);
-        hasSnapshotRef.current = true;
-        setHasSnapshot(true);
-        setLoading(false);
-      }
+      await Promise.all([readCachedRoomHistory(), readCachedCircleSnapshot()])
+        .then(([cachedRooms, cachedCircle]) => {
+          if (!cachedRooms && !cachedCircle) return;
+          setRooms(cachedRooms ?? []);
+          setInvitations(cachedCircle?.invitations ?? []);
+          hasSnapshotRef.current = true;
+          setHasSnapshot(true);
+          setLoading(false);
+        })
+        .catch(() => undefined);
     }
+    const [roomResult, invitationResult] = await Promise.allSettled([
+      loadRoomHistory(),
+      loadPendingRoomInvitations(),
+    ]);
     try {
-      const freshRooms = await loadRoomHistory();
-      setRooms(freshRooms);
+      if (
+        roomResult.status === 'rejected' &&
+        invitationResult.status === 'rejected'
+      ) {
+        throw roomResult.reason;
+      }
+      if (roomResult.status === 'fulfilled') setRooms(roomResult.value);
+      if (invitationResult.status === 'fulfilled') {
+        setInvitations(invitationResult.value);
+      }
       hasSnapshotRef.current = true;
       setHasSnapshot(true);
+      if (
+        roomResult.status === 'rejected' ||
+        invitationResult.status === 'rejected'
+      ) {
+        setError('Connection is weak. Some room updates may be delayed.');
+      }
     } catch (cause) {
       setError(
         hasSnapshotRef.current
@@ -82,15 +115,53 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     });
   };
 
+  const openInvitation = async (invitation: PendingRoomInvitation) => {
+    if (joiningInvitationId) return;
+    setJoiningInvitationId(invitation.invitationId);
+    setError(null);
+    try {
+      const room = await answerRoomInvitation(invitation.invitationId, true);
+      if (!room) throw new Error('invitation_unavailable');
+      setInvitations(current =>
+        current.filter(
+          pending => pending.invitationId !== invitation.invitationId,
+        ),
+      );
+      if (invitation.mode === 'eat' || invitation.mode === 'do') {
+        navigation.replace('LocalSetup', {
+          mode: invitation.mode,
+          sessionId: room.sessionId,
+          roundNumber: room.roundNumber,
+        });
+        return;
+      }
+      navigation.replace('Swipe', {
+        sessionId: room.sessionId,
+        roundNumber: room.roundNumber,
+        mode: invitation.mode,
+      });
+    } catch (cause) {
+      setError(circleErrorMessage(cause));
+      setJoiningInvitationId(null);
+    }
+  };
+
   const rows: ActiveRoomRow[] = !hasSnapshot
     ? []
-    : rooms.length === 0
+    : rooms.length === 0 && invitations.length === 0
     ? [{ kind: 'empty-active' as const, id: 'empty:active' }]
-    : rooms.map(room => ({
-        kind: 'room' as const,
-        id: room.sessionId,
-        room,
-      }));
+    : [
+        ...invitations.map(invitation => ({
+          kind: 'invitation' as const,
+          id: `invitation:${invitation.invitationId}`,
+          invitation,
+        })),
+        ...rooms.map(room => ({
+          kind: 'room' as const,
+          id: `room:${room.sessionId}`,
+          room,
+        })),
+      ];
 
   return (
     <Screen testID="active-rooms-screen" style={styles.screen}>
@@ -99,7 +170,7 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
         <Button label="Close" variant="quiet" onPress={navigation.goBack} />
       </View>
       <Text style={styles.eyebrow}>YOUR ROOMS</Text>
-      <Text style={styles.title}>Pick up where you left off.</Text>
+      <Text style={styles.title}>Invites and rooms, all in one place.</Text>
       {loading && !hasSnapshot ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
@@ -130,11 +201,38 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
             if (item.kind === 'empty-active') {
               return (
                 <View style={styles.emptyCard}>
-                  <Text style={styles.emptyTitle}>No active rooms</Text>
+                  <Text style={styles.emptyTitle}>No rooms or invites</Text>
                   <Text style={styles.emptyText}>
-                    Rooms you start or join will appear here, and unfinished
-                    rooms can be resumed later.
+                    Invitations and rooms you start or join will appear here.
+                    Unfinished rooms can be resumed later.
                   </Text>
+                </View>
+              );
+            }
+            if (item.kind === 'invitation') {
+              const invitation = item.invitation;
+              return (
+                <View style={[styles.card, styles.invitationCard]}>
+                  <Text style={styles.icon}>
+                    {modeById[invitation.mode].icon}
+                  </Text>
+                  <View style={styles.copy}>
+                    <Text style={styles.invitationLabel}>ROOM INVITE</Text>
+                    <Text style={styles.cardTitle}>
+                      {invitation.senderDisplayName} wants to choose
+                    </Text>
+                    <Text style={styles.cardMeta}>
+                      {modeById[invitation.mode].title}
+                    </Text>
+                  </View>
+                  <View style={styles.joinButton}>
+                    <Button
+                      label="Join"
+                      loading={joiningInvitationId === invitation.invitationId}
+                      disabled={joiningInvitationId !== null}
+                      onPress={() => openInvitation(invitation)}
+                    />
+                  </View>
                 </View>
               );
             }
@@ -212,6 +310,20 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 18,
     padding: 15,
+  },
+  invitationCard: {
+    borderColor: colors.primary,
+    backgroundColor: colors.raised,
+  },
+  invitationLabel: {
+    color: colors.primary,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    marginBottom: 3,
+  },
+  joinButton: {
+    width: 82,
   },
   pressed: { opacity: 0.72 },
   icon: { fontSize: 25, marginRight: 12 },

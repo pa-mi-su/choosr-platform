@@ -1,0 +1,198 @@
+import notifee, { EventType } from '@notifee/react-native';
+import {
+  getAPNSToken,
+  hasPermission,
+  onMessage,
+} from '@react-native-firebase/messaging';
+
+const mockRpc = jest.fn<
+  Promise<{ error: null }>,
+  [name: string, args?: unknown]
+>(() => Promise.resolve({ error: null }));
+const mockInvoke = jest.fn<
+  Promise<{
+    data: {
+      processed: number;
+      delivered: number;
+      failed: number;
+      recipientsWithoutDevices: number;
+      invalidTokensRemoved: number;
+    };
+    error: null;
+  }>,
+  [name: string, options?: unknown]
+>(() =>
+  Promise.resolve({
+    data: {
+      processed: 0,
+      delivered: 0,
+      failed: 0,
+      recipientsWithoutDevices: 0,
+      invalidTokensRemoved: 0,
+    },
+    error: null,
+  }),
+);
+
+jest.mock('../src/lib/supabase', () => ({
+  supabase: {
+    rpc: (name: string, args?: unknown) => mockRpc(name, args),
+    functions: {
+      invoke: (name: string, options?: unknown) => mockInvoke(name, options),
+    },
+  },
+}));
+jest.mock('../src/services/anonymousAuth', () => ({
+  ensureAnonymousSession: jest.fn(() =>
+    Promise.resolve({ user: { id: 'push-user' } }),
+  ),
+}));
+
+import {
+  refreshPushRegistration,
+  registerPushListeners,
+} from '../src/services/pushNotifications';
+
+describe('push notification reliability', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRpc.mockResolvedValue({ error: null });
+    (getAPNSToken as jest.Mock).mockResolvedValue('test-apns-token');
+    (hasPermission as jest.Mock).mockResolvedValue(1);
+    (notifee.getNotificationSettings as jest.Mock).mockResolvedValue({
+      authorizationStatus: 1,
+      ios: {
+        alert: 1,
+        lockScreen: 1,
+        notificationCenter: 1,
+      },
+    });
+    mockInvoke.mockResolvedValue({
+      data: {
+        processed: 0,
+        delivered: 0,
+        failed: 0,
+        recipientsWithoutDevices: 0,
+        invalidTokensRemoved: 0,
+      },
+      error: null,
+    });
+  });
+
+  test('shows a visible notification while Choosr is foregrounded', async () => {
+    let receiveMessage:
+      | ((message: {
+          messageId: string;
+          notification: { title: string; body: string };
+          data: { kind: string; route: string };
+        }) => void)
+      | undefined;
+    (onMessage as jest.Mock).mockImplementation(
+      (_messaging, listener: typeof receiveMessage) => {
+        receiveMessage = listener;
+        return jest.fn();
+      },
+    );
+    const onForeground = jest.fn();
+    const unsubscribe = registerPushListeners({
+      onOpen: jest.fn(),
+      onForeground,
+    });
+
+    receiveMessage?.({
+      messageId: 'room-invite-1',
+      notification: {
+        title: "You're invited",
+        body: 'Open Choosr to choose together.',
+      },
+      data: { kind: 'room_invitation', route: 'Circle' },
+    });
+    await new Promise<void>(resolve => setImmediate(resolve));
+
+    expect(onForeground).toHaveBeenCalledTimes(1);
+    expect(notifee.displayNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'remote-room-invite-1',
+        title: "You're invited",
+        body: 'Open Choosr to choose together.',
+        data: { kind: 'room_invitation', route: 'Circle' },
+        ios: {
+          foregroundPresentationOptions: {
+            alert: true,
+            badge: true,
+            sound: true,
+            banner: true,
+            list: true,
+          },
+        },
+      }),
+    );
+
+    unsubscribe();
+  });
+
+  test('routes a tap on a foreground notification', () => {
+    let receiveLocalEvent:
+      | ((event: {
+          type: number;
+          detail: { notification: { data: Record<string, string> } };
+        }) => void)
+      | undefined;
+    (notifee.onForegroundEvent as jest.Mock).mockImplementation(listener => {
+      receiveLocalEvent = listener;
+      return jest.fn();
+    });
+    const onOpen = jest.fn();
+    const unsubscribe = registerPushListeners({
+      onOpen,
+      onForeground: jest.fn(),
+    });
+
+    receiveLocalEvent?.({
+      type: EventType.PRESS,
+      detail: {
+        notification: {
+          data: { kind: 'room_invitation', route: 'Circle' },
+        },
+      },
+    });
+
+    expect(onOpen).toHaveBeenCalledWith({
+      data: { kind: 'room_invitation', route: 'Circle' },
+    });
+    unsubscribe();
+  });
+
+  test('waits for the iOS APNs token before registering the FCM token', async () => {
+    (getAPNSToken as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('ready-apns-token');
+
+    await expect(refreshPushRegistration()).resolves.toBe(true);
+
+    expect(getAPNSToken).toHaveBeenCalledTimes(2);
+    expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
+      p_platform: 'ios',
+      p_token: 'test-firebase-token-long-enough',
+    });
+  });
+
+  test('does not claim visible alerts are enabled for provisional iOS delivery', async () => {
+    (hasPermission as jest.Mock).mockResolvedValue(2);
+    (notifee.getNotificationSettings as jest.Mock).mockResolvedValue({
+      authorizationStatus: 2,
+      ios: {
+        alert: 1,
+        lockScreen: 1,
+        notificationCenter: 1,
+      },
+    });
+
+    await expect(refreshPushRegistration()).resolves.toBe(false);
+
+    expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
+      p_platform: 'ios',
+      p_token: 'test-firebase-token-long-enough',
+    });
+  });
+});

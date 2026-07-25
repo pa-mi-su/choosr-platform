@@ -130,6 +130,10 @@ async function sendMessage(input: {
             notification: { notification_count: input.unreadCount },
           },
           apns: {
+            headers: {
+              'apns-priority': '10',
+              'apns-push-type': 'alert',
+            },
             payload: { aps: { sound: 'default', badge: input.unreadCount } },
           },
         },

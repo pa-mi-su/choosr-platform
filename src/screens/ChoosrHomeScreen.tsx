@@ -9,6 +9,7 @@ import {
   loadUnreadNotificationCount,
   subscribeToNotificationState,
 } from '../services/notificationService';
+import { loadPendingRoomInvitations } from '../services/circleService';
 import { loadRoomHistory } from '../services/sessionService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
@@ -53,13 +54,23 @@ export function ChoosrHomeScreen({ navigation }: Props): React.JSX.Element {
     useCallback(() => {
       setChatActive(Boolean(chatSession.active));
       Promise.all([
-        loadRoomHistory().then(rooms =>
+        Promise.allSettled([
+          loadRoomHistory(),
+          loadPendingRoomInvitations(),
+        ]).then(([roomResult, invitationResult]) => {
+          const rooms =
+            roomResult.status === 'fulfilled' ? roomResult.value : [];
+          const invitations =
+            invitationResult.status === 'fulfilled'
+              ? invitationResult.value
+              : [];
           setChooseActive(
-            rooms.some(
-              room => room.status === 'active' || room.status === 'waiting',
-            ),
-          ),
-        ),
+            invitations.length > 0 ||
+              rooms.some(
+                room => room.status === 'active' || room.status === 'waiting',
+              ),
+          );
+        }),
         chatSession.reconcileOrphanedRemoteChat().then(active => {
           setChatActive(active);
           if (chatSession.consumeOrphanedChatDestructionNotice()) {
