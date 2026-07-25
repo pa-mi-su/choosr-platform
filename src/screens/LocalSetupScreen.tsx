@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
@@ -19,6 +22,7 @@ import {
   type LocationSuggestion,
 } from '../services/locationService';
 import { roomErrorMessage } from '../services/roomFlow';
+import { cancelDecisionRoom } from '../services/sessionService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -35,8 +39,54 @@ export function LocalSetupScreen({
     useState<LocationSuggestion | null>(null);
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const mode = modeById[route.params.mode];
+
+  const leave = useCallback(() => {
+    const sessionId = route.params.sessionId;
+    if (!sessionId) {
+      navigation.goBack();
+      return;
+    }
+    if (leaving) return;
+
+    Alert.alert(
+      'Leave this room?',
+      'You already joined this room. Leaving now ends it for both people so nobody is left waiting.',
+      [
+        { text: 'Stay here', style: 'cancel' },
+        {
+          text: 'Leave room',
+          style: 'destructive',
+          onPress: () => {
+            setLeaving(true);
+            setError(null);
+            cancelDecisionRoom(sessionId)
+              .then(() => navigation.replace('ActiveRooms'))
+              .catch(cause => {
+                setError(roomErrorMessage(cause));
+                setLeaving(false);
+              });
+          },
+        },
+      ],
+    );
+  }, [leaving, navigation, route.params.sessionId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener(
+        'hardwareBackPress',
+        () => {
+          if (!route.params.sessionId) return false;
+          leave();
+          return true;
+        },
+      );
+      return () => subscription.remove();
+    }, [leave, route.params.sessionId]),
+  );
 
   useEffect(() => {
     const query = searchArea.trim();
@@ -143,7 +193,12 @@ export function LocalSetupScreen({
     <Screen testID="local-setup-screen" style={styles.screen}>
       <View style={styles.top}>
         <Brand compact />
-        <Button label="Back" variant="quiet" onPress={navigation.goBack} />
+        <Button
+          label="Back"
+          variant="quiet"
+          loading={leaving}
+          onPress={leave}
+        />
       </View>
       <ScrollView
         contentContainerStyle={styles.content}
@@ -230,7 +285,7 @@ export function LocalSetupScreen({
       </ScrollView>
       <Button
         label="Continue"
-        disabled={!selectedLocation || searching || submitting}
+        disabled={!selectedLocation || searching || submitting || leaving}
         loading={submitting}
         onPress={() => {
           continueToRoom().catch(() => undefined);

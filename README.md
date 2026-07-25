@@ -184,9 +184,11 @@ state. Deleting an inbox notification never cancels its underlying room
 invitation; unanswered invitations remain independently discoverable under
 **Active rooms & invites**. Foreground pushes are presented as visible local
 banners, while device-token registration is retried on app resume and waits
-for the iOS APNs token before registering with Firebase. Realtime subscriptions
-are paired with app-resume refresh and bounded recovery polling so the UI
-recovers from dropped socket events.
+for the iOS APNs token before registering with Firebase. A versioned, one-time
+iOS rebind replaces stale FCM installations that Firebase accepts but can no
+longer deliver through APNs. Realtime subscriptions are paired with app-resume
+refresh and bounded recovery polling so the UI recovers from dropped socket
+events.
 
 ## Data and trust model
 

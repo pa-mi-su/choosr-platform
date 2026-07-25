@@ -19,6 +19,7 @@ jest.mock('@react-native-firebase/messaging', () => ({
     AUTHORIZED: 1,
     PROVISIONAL: 2,
   },
+  deleteToken: jest.fn(() => Promise.resolve()),
   getAPNSToken: jest.fn(() => Promise.resolve('test-apns-token')),
   getMessaging: jest.fn(() => ({})),
   getInitialNotification: jest.fn(() => Promise.resolve(null)),
