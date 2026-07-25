@@ -57,7 +57,13 @@ export function AppNavigator(): React.JSX.Element {
       <Stack.Screen name="ActiveRooms" component={ActiveRoomsScreen} />
       <Stack.Screen name="Circle" component={CircleScreen} />
       <Stack.Screen name="ModeSelect" component={ModeSelectScreen} />
-      <Stack.Screen name="LocalSetup" component={LocalSetupScreen} />
+      <Stack.Screen
+        name="LocalSetup"
+        component={LocalSetupScreen}
+        options={({ route }) => ({
+          gestureEnabled: !route.params.sessionId,
+        })}
+      />
       <Stack.Screen name="CustomSetup" component={CustomSetupScreen} />
       <Stack.Screen name="Waiting" component={WaitingScreen} />
       <Stack.Screen name="Join" component={JoinScreen} />

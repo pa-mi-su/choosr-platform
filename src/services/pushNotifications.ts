@@ -7,6 +7,7 @@ import notifee, {
 } from '@notifee/react-native';
 import {
   AuthorizationStatus,
+  deleteToken,
   getAPNSToken,
   getInitialNotification,
   getMessaging,
@@ -32,6 +33,8 @@ import { ensureAnonymousSession } from './anonymousAuth';
 import { registerAndroidPushInstallation } from './androidPushRegistration';
 
 const PUSH_ENABLED_KEY = 'choosr.push.enabled';
+const PUSH_BINDING_VERSION_KEY = 'choosr.push.binding.version';
+const IOS_PUSH_BINDING_VERSION = '2';
 const ANDROID_NOTIFICATION_PERMISSION =
   'android.permission.POST_NOTIFICATIONS' as Permission;
 const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
@@ -147,7 +150,18 @@ async function performTokenSynchronization(): Promise<void> {
     await registerDeviceForRemoteMessages(messaging);
   }
   await waitForIosApnsToken();
+  const bindingVersion = await AsyncStorage.getItem(PUSH_BINDING_VERSION_KEY);
+  if (bindingVersion !== IOS_PUSH_BINDING_VERSION) {
+    // A previously valid FCM installation can remain accepted by Google while
+    // losing its usable APNs association. Rotate once for this binding version
+    // after APNs is ready instead of repeatedly re-saving the stale token.
+    await deleteToken(messaging);
+  }
   await registerToken(await getToken(messaging));
+  await AsyncStorage.setItem(
+    PUSH_BINDING_VERSION_KEY,
+    IOS_PUSH_BINDING_VERSION,
+  );
 }
 
 async function syncCurrentToken(): Promise<void> {
@@ -239,7 +253,12 @@ export async function refreshPushRegistration(): Promise<boolean> {
 }
 
 export async function isPushEnabled(): Promise<boolean> {
-  return hasVisibleAlertPermission();
+  if (!(await hasVisibleAlertPermission())) return false;
+  if (Platform.OS !== 'ios') return true;
+  return (
+    (await AsyncStorage.getItem(PUSH_BINDING_VERSION_KEY)) ===
+    IOS_PUSH_BINDING_VERSION
+  );
 }
 
 export function registerPushListeners(input: {
@@ -255,7 +274,14 @@ export function registerPushListeners(input: {
     );
   });
   const unsubscribeToken = onTokenRefresh(messaging, token => {
-    registerToken(token).catch(error => logPushFailure('token-refresh', error));
+    registerToken(token)
+      .then(() =>
+        AsyncStorage.setItem(
+          PUSH_BINDING_VERSION_KEY,
+          IOS_PUSH_BINDING_VERSION,
+        ),
+      )
+      .catch(error => logPushFailure('token-refresh', error));
   });
   const unsubscribeLocalNotification = notifee.onForegroundEvent(
     ({ type, detail }) => {

@@ -1,5 +1,7 @@
 import notifee, { EventType } from '@notifee/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  deleteToken,
   getAPNSToken,
   hasPermission,
   onMessage,
@@ -54,8 +56,9 @@ import {
 } from '../src/services/pushNotifications';
 
 describe('push notification reliability', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
+    await AsyncStorage.clear();
     mockRpc.mockResolvedValue({ error: null });
     (getAPNSToken as jest.Mock).mockResolvedValue('test-apns-token');
     (hasPermission as jest.Mock).mockResolvedValue(1);
@@ -131,7 +134,7 @@ describe('push notification reliability', () => {
     unsubscribe();
   });
 
-  test('routes a tap on a foreground notification', () => {
+  test('routes a tap on a foreground notification', async () => {
     let receiveLocalEvent:
       | ((event: {
           type: number;
@@ -160,6 +163,7 @@ describe('push notification reliability', () => {
     expect(onOpen).toHaveBeenCalledWith({
       data: { kind: 'room_invitation', route: 'Circle' },
     });
+    await new Promise<void>(resolve => setImmediate(resolve));
     unsubscribe();
   });
 
@@ -171,10 +175,14 @@ describe('push notification reliability', () => {
     await expect(refreshPushRegistration()).resolves.toBe(true);
 
     expect(getAPNSToken).toHaveBeenCalledTimes(2);
+    expect(deleteToken).toHaveBeenCalledTimes(1);
     expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
       p_platform: 'ios',
       p_token: 'test-firebase-token-long-enough',
     });
+
+    await expect(refreshPushRegistration()).resolves.toBe(true);
+    expect(deleteToken).toHaveBeenCalledTimes(1);
   });
 
   test('does not claim visible alerts are enabled for provisional iOS delivery', async () => {
