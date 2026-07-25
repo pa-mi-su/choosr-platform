@@ -160,19 +160,40 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
       <Text style={styles.eyebrow}>YOUR UPDATES</Text>
       <View style={styles.titleRow}>
         <Text style={styles.title}>Notifications</Text>
-        {items.length ? (
-          <View style={styles.headerActions}>
-            <Pressable onPress={markAllRead}>
-              <Text style={styles.headerAction}>Read all</Text>
-            </Pressable>
-            <Pressable onPress={confirmClear}>
-              <Text style={[styles.headerAction, styles.clearAction]}>
-                Clear
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
       </View>
+      {items.length ? (
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Mark all notifications as seen"
+            disabled={!items.some(item => !item.readAt)}
+            onPress={markAllRead}
+            style={({ pressed }) => [
+              styles.headerAction,
+              !items.some(item => !item.readAt) && styles.headerActionDisabled,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.headerActionIcon}>✓✓</Text>
+            <Text style={styles.headerActionText}>Mark all seen</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear notification inbox"
+            onPress={confirmClear}
+            style={({ pressed }) => [
+              styles.headerAction,
+              styles.clearAction,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.clearActionIcon}>×</Text>
+            <Text style={[styles.headerActionText, styles.clearActionText]}>
+              Clear inbox
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
@@ -205,66 +226,99 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <Swipeable
-              friction={2}
-              rightThreshold={42}
-              renderRightActions={() => (
-                <View style={styles.swipeActions}>
-                  {!item.readAt ? (
+          renderItem={({ item }) => {
+            const unread = !item.readAt;
+            return (
+              <Swipeable
+                friction={2}
+                rightThreshold={42}
+                containerStyle={styles.swipeContainer}
+                childrenContainerStyle={styles.swipeChildren}
+                renderRightActions={() => (
+                  <View style={styles.swipeActions}>
+                    {unread ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Mark ${item.title} as seen`}
+                        onPress={() => markRead(item)}
+                        style={[styles.swipeAction, styles.readAction]}
+                      >
+                        <Text style={styles.swipeActionIcon}>✓</Text>
+                        <Text style={styles.swipeActionText}>Seen</Text>
+                      </Pressable>
+                    ) : null}
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`Mark ${item.title} as read`}
-                      onPress={() => markRead(item)}
-                      style={[styles.swipeAction, styles.readAction]}
+                      accessibilityLabel={`Delete ${item.title}`}
+                      onPress={() => remove(item.id)}
+                      style={[styles.swipeAction, styles.deleteAction]}
                     >
-                      <Text style={styles.swipeActionText}>Read</Text>
+                      <Text style={styles.swipeActionIcon}>×</Text>
+                      <Text style={styles.swipeActionText}>Delete</Text>
                     </Pressable>
-                  ) : null}
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete ${item.title}`}
-                    onPress={() => remove(item.id)}
-                    style={[styles.swipeAction, styles.deleteAction]}
-                  >
-                    <Text style={styles.swipeActionText}>Delete</Text>
-                  </Pressable>
-                </View>
-              )}
-            >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${item.title}. ${item.body}`}
-                onPress={() => {
-                  openNotification(item).catch(() =>
-                    setError('That notification could not be opened.'),
-                  );
-                }}
-                style={({ pressed }) => [
-                  styles.card,
-                  !item.readAt && styles.unreadCard,
-                  pressed && styles.pressed,
-                ]}
+                  </View>
+                )}
               >
-                <View style={styles.icon}>
-                  <Text style={styles.iconText}>
-                    {item.kind === 'room_invitation'
-                      ? '✓'
-                      : item.kind === 'chat_message'
-                      ? '◈'
-                      : '●●'}
-                  </Text>
-                </View>
-                <View style={styles.copy}>
-                  <Text style={styles.cardTitle}>{item.title}</Text>
-                  <Text style={styles.cardBody}>{item.body}</Text>
-                  <Text style={styles.date}>{when(item.createdAt)}</Text>
-                </View>
-                {!item.readAt ? <View style={styles.unreadDot} /> : null}
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
-            </Swipeable>
-          )}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${unread ? 'New' : 'Seen'}. ${
+                    item.title
+                  }. ${item.body}`}
+                  accessibilityState={{ selected: unread }}
+                  onPress={() => {
+                    openNotification(item).catch(() =>
+                      setError('That notification could not be opened.'),
+                    );
+                  }}
+                  style={({ pressed }) => [
+                    styles.card,
+                    unread ? styles.unreadCard : styles.openedCard,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={[styles.icon, unread && styles.unreadIcon]}>
+                    <Text style={styles.iconText}>
+                      {item.kind === 'room_invitation'
+                        ? '✓'
+                        : item.kind === 'chat_message'
+                        ? '◈'
+                        : '●●'}
+                    </Text>
+                  </View>
+                  <View style={styles.copy}>
+                    <View style={styles.cardHeading}>
+                      <View
+                        style={[
+                          styles.statePill,
+                          unread ? styles.newPill : styles.openedPill,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statePillText,
+                            !unread && styles.openedPillText,
+                          ]}
+                        >
+                          {unread ? 'NEW' : 'SEEN'}
+                        </Text>
+                      </View>
+                      <Text style={styles.date}>{when(item.createdAt)}</Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.cardTitle,
+                        !unread && styles.openedCardTitle,
+                      ]}
+                    >
+                      {item.title}
+                    </Text>
+                    <Text style={styles.cardBody}>{item.body}</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+              </Swipeable>
+            );
+          }}
         />
       )}
     </Screen>
@@ -297,12 +351,48 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
-  headerActions: { flexDirection: 'row', gap: 14, paddingBottom: 5 },
-  headerAction: { color: colors.primary, fontSize: 11, fontWeight: '900' },
-  clearAction: { color: colors.danger },
+  headerActions: { flexDirection: 'row', gap: 9, marginTop: 17 },
+  headerAction: {
+    minHeight: 42,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: colors.raised,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+  },
+  headerActionDisabled: { opacity: 0.42 },
+  headerActionIcon: {
+    color: colors.success,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  headerActionText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  clearAction: { backgroundColor: colors.surface },
+  clearActionIcon: {
+    color: colors.danger,
+    fontSize: 20,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  clearActionText: { color: colors.danger },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { paddingTop: 24, paddingBottom: 24, gap: 10 },
+  list: { paddingTop: 17, paddingBottom: 24, gap: 11 },
   emptyList: { flexGrow: 1, justifyContent: 'center' },
+  swipeContainer: {
+    overflow: 'hidden',
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+  },
+  swipeChildren: { backgroundColor: colors.background },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,22 +402,31 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 15,
   },
-  unreadCard: { borderColor: colors.primary },
-  unreadDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.danger,
-    marginHorizontal: 8,
+  unreadCard: {
+    borderColor: colors.primary,
+    backgroundColor: colors.raised,
   },
-  swipeActions: { flexDirection: 'row' },
+  openedCard: { borderColor: colors.border, backgroundColor: colors.surface },
+  swipeActions: {
+    flexDirection: 'row',
+    overflow: 'hidden',
+    borderRadius: 20,
+  },
   swipeAction: {
-    minWidth: 72,
+    minWidth: 82,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: 10,
   },
-  readAction: { backgroundColor: colors.accent },
+  readAction: { backgroundColor: '#187A54' },
   deleteAction: { backgroundColor: colors.danger },
+  swipeActionIcon: {
+    color: colors.white,
+    fontSize: 20,
+    lineHeight: 20,
+    fontWeight: '900',
+  },
   swipeActionText: { color: colors.white, fontSize: 12, fontWeight: '900' },
   pressed: { opacity: 0.72 },
   icon: {
@@ -338,11 +437,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  unreadIcon: { backgroundColor: '#263B5B' },
   iconText: { color: colors.primary, fontSize: 15, fontWeight: '900' },
   copy: { flex: 1, marginLeft: 13 },
+  cardHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  statePill: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  newPill: { backgroundColor: colors.primary },
+  openedPill: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  statePillText: {
+    color: colors.background,
+    fontSize: 8,
+    lineHeight: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  openedPillText: { color: colors.faint },
   cardTitle: { color: colors.text, fontSize: 16, fontWeight: '900' },
+  openedCardTitle: { color: colors.muted },
   cardBody: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  date: { color: colors.faint, fontSize: 10, marginTop: 7 },
+  date: { color: colors.faint, fontSize: 10 },
   chevron: { color: colors.faint, fontSize: 28 },
   empty: { alignItems: 'center', paddingHorizontal: 30 },
   bell: { color: colors.primary, fontSize: 50 },

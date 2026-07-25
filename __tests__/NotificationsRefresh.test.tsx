@@ -97,4 +97,59 @@ describe('Notifications inbox refresh', () => {
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
+
+  test('makes new and seen notification states explicit', async () => {
+    mockLoadNotifications.mockResolvedValue([
+      {
+        id: 8,
+        kind: 'room_invitation',
+        title: "You're invited",
+        body: 'Open Choosr to pick together.',
+        payload: { invitation_id: 'invitation-8' },
+        createdAt: '2026-07-25T17:28:00.000Z',
+        readAt: null,
+      },
+      {
+        id: 7,
+        kind: 'connection_request',
+        title: 'New Choosr connection',
+        body: 'Someone wants to add you to their Circle.',
+        payload: { connection_id: 'connection-7' },
+        createdAt: '2026-07-25T16:20:00.000Z',
+        readAt: '2026-07-25T16:21:00.000Z',
+      },
+    ]);
+
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <NotificationsScreen
+            navigation={
+              {
+                goBack: jest.fn(),
+                navigate: jest.fn(),
+              } as never
+            }
+            route={{ key: 'notifications', name: 'Notifications' } as never}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    expect(renderer.root.findByProps({ children: 'NEW' })).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'SEEN' })).toBeDefined();
+    expect(
+      renderer.root.findByProps({
+        accessibilityLabel: 'Mark all notifications as seen',
+      }),
+    ).toBeDefined();
+    expect(
+      renderer.root.findByProps({
+        accessibilityLabel: 'Clear notification inbox',
+      }),
+    ).toBeDefined();
+
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
 });

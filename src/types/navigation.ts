@@ -11,6 +11,7 @@ export type RootStackParamList = {
   About: undefined;
   Notifications: undefined;
   ActiveRooms: undefined;
+  RoomStatus: { sessionId: string };
   Circle: { connectionToken?: string } | undefined;
   ModeSelect: { connectionId?: string; connectionName?: string } | undefined;
   LocalSetup: {

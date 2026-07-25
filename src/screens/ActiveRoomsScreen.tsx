@@ -106,13 +106,18 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     }, [load]),
   );
 
-  const open = async (room: RoomHistoryItem) => {
-    if (room.status !== 'active') return;
-    navigation.navigate('Swipe', {
-      sessionId: room.sessionId,
-      roundNumber: room.roundNumber,
-      mode: room.mode,
-    });
+  const open = (room: RoomHistoryItem) => {
+    if (room.status === 'waiting') {
+      navigation.navigate('RoomStatus', { sessionId: room.sessionId });
+      return;
+    }
+    if (room.status === 'active') {
+      navigation.navigate('Swipe', {
+        sessionId: room.sessionId,
+        roundNumber: room.roundNumber,
+        mode: room.mode,
+      });
+    }
   };
 
   const openInvitation = async (invitation: PendingRoomInvitation) => {
@@ -238,13 +243,22 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
             }
             const room = item.room;
             const resumable = room.status === 'active';
+            const viewable = room.status === 'waiting' || resumable;
             return (
               <Pressable
                 accessibilityRole="button"
-                disabled={!resumable}
+                accessibilityLabel={`${modeById[room.mode].title}. ${
+                  room.status === 'waiting'
+                    ? 'Waiting for a partner. View room status.'
+                    : resumable
+                    ? 'Continue choosing.'
+                    : room.status
+                }`}
+                disabled={!viewable}
                 onPress={() => open(room)}
                 style={({ pressed }) => [
                   styles.card,
+                  room.status === 'waiting' && styles.waitingCard,
                   pressed && styles.pressed,
                 ]}
               >
@@ -266,8 +280,13 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                       : room.status.replace('-', ' ')}
                   </Text>
                 </View>
-                {resumable ? (
-                  <Text style={styles.continue}>Continue ›</Text>
+                {viewable ? (
+                  <View style={styles.roomAction}>
+                    <Text style={styles.roomActionLabel}>
+                      {resumable ? 'Continue' : 'View status'}
+                    </Text>
+                    <Text style={styles.roomActionArrow}>›</Text>
+                  </View>
                 ) : null}
               </Pressable>
             );
@@ -315,6 +334,10 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
     backgroundColor: colors.raised,
   },
+  waitingCard: {
+    borderColor: '#765421',
+    backgroundColor: '#171F2E',
+  },
   invitationLabel: {
     color: colors.primary,
     fontSize: 9,
@@ -330,7 +353,19 @@ const styles = StyleSheet.create({
   copy: { flex: 1 },
   cardTitle: { color: colors.text, fontSize: 15, fontWeight: '900' },
   cardMeta: { color: colors.muted, fontSize: 11, marginTop: 4 },
-  continue: { color: colors.primary, fontSize: 12, fontWeight: '900' },
+  roomAction: { alignItems: 'flex-end', marginLeft: 8 },
+  roomActionLabel: {
+    color: colors.primary,
+    fontSize: 10,
+    lineHeight: 12,
+    fontWeight: '900',
+  },
+  roomActionArrow: {
+    color: colors.primary,
+    fontSize: 23,
+    lineHeight: 23,
+    fontWeight: '600',
+  },
   error: { color: colors.danger, fontSize: 12, textAlign: 'center' },
   emptyCard: {
     backgroundColor: colors.surface,

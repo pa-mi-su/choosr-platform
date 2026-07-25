@@ -21,6 +21,7 @@ import { CircleScreen } from '../screens/CircleScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { CustomSetupScreen } from '../screens/CustomSetupScreen';
 import { ActiveRoomsScreen } from '../screens/ActiveRoomsScreen';
+import { RoomStatusScreen } from '../screens/RoomStatusScreen';
 import { AboutScreen } from '../screens/AboutScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -55,6 +56,7 @@ export function AppNavigator(): React.JSX.Element {
       <Stack.Screen name="About" component={AboutScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="ActiveRooms" component={ActiveRoomsScreen} />
+      <Stack.Screen name="RoomStatus" component={RoomStatusScreen} />
       <Stack.Screen name="Circle" component={CircleScreen} />
       <Stack.Screen name="ModeSelect" component={ModeSelectScreen} />
       <Stack.Screen
