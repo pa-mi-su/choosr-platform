@@ -62,21 +62,27 @@ export function Brand({
 
 export function BackToChoosrButton({
   onPress,
+  label = 'ALL CHOOSR',
+  accessibilityLabel = 'Back to all Choosr experiences',
+  testID = 'back-to-choosr',
 }: {
   onPress: () => void;
+  label?: string;
+  accessibilityLabel?: string;
+  testID?: string;
 }): React.JSX.Element {
   return (
     <Pressable
-      testID="back-to-choosr"
+      testID={testID}
       accessibilityRole="button"
-      accessibilityLabel="Back to all Choosr experiences"
+      accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       style={({ pressed }) => [styles.backToChoosr, pressed && styles.pressed]}
     >
       <View style={styles.backCircle}>
         <Text style={styles.backArrow}>←</Text>
       </View>
-      <Text style={styles.backLabel}>ALL CHOOSR</Text>
+      <Text style={styles.backLabel}>{label}</Text>
     </Pressable>
   );
 }

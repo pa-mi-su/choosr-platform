@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
@@ -46,11 +46,12 @@ function PrivateMark(): React.JSX.Element {
 
 export function ChoosrHomeScreen({ navigation }: Props): React.JSX.Element {
   const [chooseActive, setChooseActive] = useState(false);
-  const [chatActive, setChatActive] = useState(false);
+  const [chatActive, setChatActive] = useState(Boolean(chatSession.active));
   const [unreadCount, setUnreadCount] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
+      setChatActive(Boolean(chatSession.active));
       Promise.all([
         loadRoomHistory().then(rooms =>
           setChooseActive(
@@ -59,7 +60,15 @@ export function ChoosrHomeScreen({ navigation }: Props): React.JSX.Element {
             ),
           ),
         ),
-        chatSession.hasRemoteChat().then(setChatActive),
+        chatSession.reconcileOrphanedRemoteChat().then(active => {
+          setChatActive(active);
+          if (chatSession.consumeOrphanedChatDestructionNotice()) {
+            Alert.alert(
+              'Previous chat destroyed',
+              'Choosr was closed and its temporary encryption keys were erased, so the unreadable chat was destroyed for both people.',
+            );
+          }
+        }),
         loadUnreadNotificationCount().then(setUnreadCount),
       ]).catch(() => undefined);
       const subscription = subscribeToNotificationState(() => {

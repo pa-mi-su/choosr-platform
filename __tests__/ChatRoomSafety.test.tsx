@@ -14,6 +14,8 @@ jest.mock('../src/chat/runtime', () => ({
     },
     messages: [],
     safetyNumber: '1234 5678 9012',
+    isSafetyConfirmed: false,
+    confirmSafetyNumber: jest.fn(),
     refreshStatus: jest.fn().mockResolvedValue('active'),
     refreshMessages: jest.fn().mockResolvedValue([]),
     subscribe: jest.fn(() => ({ unsubscribe: jest.fn() })),
@@ -25,6 +27,7 @@ jest.mock('../src/chat/runtime', () => ({
 import { ChatRoomScreen } from '../src/screens/ChatRoomScreen';
 
 test('private messaging stays disabled until the safety number is confirmed', async () => {
+  const popTo = jest.fn();
   let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
   await ReactTestRenderer.act(async () => {
     renderer = ReactTestRenderer.create(
@@ -35,7 +38,7 @@ test('private messaging stays disabled until the safety number is confirmed', as
         }}
       >
         <ChatRoomScreen
-          navigation={{ replace: jest.fn() } as never}
+          navigation={{ popTo, replace: jest.fn() } as never}
           route={{ key: 'chat-room', name: 'ChatRoom' } as never}
         />
       </SafeAreaProvider>,
@@ -65,6 +68,10 @@ test('private messaging stays disabled until the safety number is confirmed', as
   expect(
     renderer?.root.findByProps({ accessibilityLabel: 'End & Destroy' }),
   ).toBeDefined();
+  renderer?.root
+    .findByProps({ testID: 'back-to-private-chat' })
+    .props.onPress();
+  expect(popTo).toHaveBeenCalledWith('ChatHome');
 
   await ReactTestRenderer.act(() => renderer?.unmount());
 });

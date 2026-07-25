@@ -15,7 +15,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import type { LocalChatMessage } from '../chat/domain/types';
 import { chatSession } from '../chat/runtime';
-import { Brand, Button, Screen } from '../components/UI';
+import { BackToChoosrButton, Button, Screen } from '../components/UI';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -40,7 +40,9 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
   );
   const [sending, setSending] = useState(false);
   const [safetyNumber, setSafetyNumber] = useState(chatSession.safetyNumber);
-  const [safetyConfirmed, setSafetyConfirmed] = useState(false);
+  const [safetyConfirmed, setSafetyConfirmed] = useState(
+    chatSession.isSafetyConfirmed,
+  );
 
   const returnHome = useCallback(
     (remote = false) => {
@@ -50,7 +52,7 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
           'This chat was ended and destroyed. Local messages and temporary keys were purged.',
         );
       }
-      navigation.replace('Home');
+      navigation.replace('ChatHome');
     },
     [navigation],
   );
@@ -139,7 +141,12 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
   return (
     <Screen testID="chat-room-screen" style={styles.screen}>
       <View style={styles.top}>
-        <Brand compact />
+        <BackToChoosrButton
+          label="PRIVATE CHAT"
+          accessibilityLabel="Back to Private Chat"
+          testID="back-to-private-chat"
+          onPress={() => navigation.popTo('ChatHome')}
+        />
         <Button label="End & Destroy" variant="quiet" onPress={destroy} />
       </View>
       <View style={styles.statusRow}>
@@ -168,7 +175,10 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
             accessibilityRole="button"
             accessibilityLabel="The safety numbers match"
             disabled={!safetyNumber}
-            onPress={() => setSafetyConfirmed(true)}
+            onPress={() => {
+              chatSession.confirmSafetyNumber();
+              setSafetyConfirmed(true);
+            }}
             style={({ pressed }) => [
               styles.confirmSafety,
               pressed && styles.pressed,

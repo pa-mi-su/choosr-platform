@@ -28,11 +28,14 @@ type Runtime = {
   ownUserId: string;
   keyPair: TemporaryKeyPair;
   sharedKey?: Uint8Array;
+  safetyConfirmed: boolean;
   messages: LocalChatMessage[];
 };
 
 export class ChatSession {
   private runtime?: Runtime;
+  private orphanedChatWasDestroyed = false;
+  private pendingReconciliation?: Promise<boolean>;
 
   constructor(private readonly gateway: ChatGateway) {}
 
@@ -54,6 +57,21 @@ export class ChatSession {
       : undefined;
   }
 
+  get isSafetyConfirmed(): boolean {
+    return this.runtime?.safetyConfirmed ?? false;
+  }
+
+  confirmSafetyNumber(): void {
+    const runtime = this.requireActiveRuntime();
+    if (!runtime.sharedKey) {
+      throw new ChatError(
+        'encryption_failed',
+        'The private chat safety number is not ready.',
+      );
+    }
+    runtime.safetyConfirmed = true;
+  }
+
   async create(ownUserId: string): Promise<ChatInvitation> {
     if (this.runtime) {
       throw new ChatError(
@@ -69,6 +87,7 @@ export class ChatSession {
       this.runtime = {
         ownUserId,
         keyPair,
+        safetyConfirmed: false,
         messages: [],
         invitation,
         active: {
@@ -111,6 +130,7 @@ export class ChatSession {
       this.runtime = {
         ownUserId,
         keyPair,
+        safetyConfirmed: false,
         messages: [],
         active,
         sharedKey: deriveSharedKey(scanned.creatorPublicKey, keyPair.secretKey),
@@ -204,6 +224,15 @@ export class ChatSession {
   }
 
   async reconcileOrphanedRemoteChat(): Promise<boolean> {
+    if (!this.pendingReconciliation) {
+      this.pendingReconciliation = this.performReconciliation().finally(() => {
+        this.pendingReconciliation = undefined;
+      });
+    }
+    return this.pendingReconciliation;
+  }
+
+  private async performReconciliation(): Promise<boolean> {
     await this.flushPendingDestructions();
     const remote = await this.gateway.getActiveChat();
     if (!remote) return false;
@@ -212,7 +241,14 @@ export class ChatSession {
     // killed, the ciphertext can no longer be decrypted, so close it rather
     // than leaving a misleading or recoverable shell.
     await this.gateway.destroy(remote.roomId);
+    this.orphanedChatWasDestroyed = true;
     return false;
+  }
+
+  consumeOrphanedChatDestructionNotice(): boolean {
+    const shouldNotify = this.orphanedChatWasDestroyed;
+    this.orphanedChatWasDestroyed = false;
+    return shouldNotify;
   }
 
   async hasRemoteChat(): Promise<boolean> {

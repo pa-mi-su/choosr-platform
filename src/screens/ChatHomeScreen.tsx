@@ -21,6 +21,12 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
       chatSession
         .reconcileOrphanedRemoteChat()
         .then(result => {
+          if (chatSession.consumeOrphanedChatDestructionNotice()) {
+            Alert.alert(
+              'Previous chat destroyed',
+              'Choosr was closed and its temporary encryption keys were erased, so the unreadable chat was destroyed for both people.',
+            );
+          }
           if (mounted) setActive(result);
         })
         .catch(() => {
@@ -103,7 +109,10 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
       <View style={styles.actions}>
         {active ? (
           <>
-            <Button label="Continue private chat" onPress={continueChat} />
+            <Button
+              label="Continue active private chat"
+              onPress={continueChat}
+            />
             <Button
               label="End & Destroy"
               variant="secondary"
@@ -125,7 +134,11 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
             />
           </>
         )}
-        <Text style={styles.limit}>Initially limited to one active chat.</Text>
+        <Text style={styles.limit}>
+          {active
+            ? 'Active chat keys remain only on this device.'
+            : 'Initially limited to one active chat.'}
+        </Text>
       </View>
     </Screen>
   );

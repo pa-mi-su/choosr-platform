@@ -14,6 +14,7 @@ jest.mock('../src/chat/runtime', () => ({
   chatSession: {
     active: undefined,
     reconcileOrphanedRemoteChat: jest.fn().mockResolvedValue(false),
+    consumeOrphanedChatDestructionNotice: jest.fn().mockReturnValue(false),
   },
 }));
 

@@ -120,6 +120,8 @@ describe('ChatSession lifecycle', () => {
     const session = new ChatSession(gateway);
     await expect(session.reconcileOrphanedRemoteChat()).resolves.toBe(false);
     expect(gateway.destroyed).toEqual(['20000000-0000-4000-8000-000000000001']);
+    expect(session.consumeOrphanedChatDestructionNotice()).toBe(true);
+    expect(session.consumeOrphanedChatDestructionNotice()).toBe(false);
   });
 
   test('a joined room is destroyed when the QR public key does not match', async () => {
@@ -162,5 +164,13 @@ describe('ChatSession lifecycle', () => {
 
     expect(joiner.safetyNumber).toMatch(/^\d{4} \d{4} \d{4}$/);
     expect(creator.safetyNumber).toBe(joiner.safetyNumber);
+
+    creator.confirmSafetyNumber();
+    expect(creator.isSafetyConfirmed).toBe(true);
+    await creator.refreshStatus();
+    expect(creator.isSafetyConfirmed).toBe(true);
+
+    await creator.destroy();
+    expect(creator.isSafetyConfirmed).toBe(false);
   });
 });
