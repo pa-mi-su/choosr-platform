@@ -9,7 +9,9 @@ import type {
 import type { Json, SessionStatus } from '../types/database';
 import type { Database } from '../types/database';
 import { ensureAnonymousSession } from './anonymousAuth';
+import { readOfflineSnapshot, writeOfflineSnapshot } from './offlineSnapshot';
 import { parseDecisionItem } from './decisionItemParser';
+import { withSupabaseReadRetry } from './requestTimeout';
 
 export type RoomCredentials = {
   sessionId: string;
@@ -40,6 +42,34 @@ export type RoomHistoryItem = DecisionRoom & {
   completedChoices: number;
   matchedItemId: string | null;
 };
+
+const ROOM_HISTORY_CACHE_KEY = '@choosr/active-room-history/v1';
+const ROOM_HISTORY_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
+const ROOM_HISTORY_REQUEST_TIMEOUT_MS = 7_000;
+type RoomHistorySnapshot = {
+  userId: string;
+  rooms: RoomHistoryItem[];
+};
+
+export async function readCachedRoomHistory(): Promise<
+  RoomHistoryItem[] | null
+> {
+  const [{ data }, snapshot] = await Promise.all([
+    supabase.auth.getSession(),
+    readOfflineSnapshot<RoomHistorySnapshot>(
+      ROOM_HISTORY_CACHE_KEY,
+      ROOM_HISTORY_CACHE_MAX_AGE_MS,
+    ),
+  ]);
+  if (!snapshot || snapshot.userId !== data.session?.user.id) return null;
+  const rooms = snapshot.rooms;
+  const now = Date.now();
+  return rooms.filter(
+    room =>
+      (room.status === 'waiting' || room.status === 'active') &&
+      Date.parse(room.expiresAt) > now,
+  );
+}
 
 export type RoomSubscriptionTable = 'sessions' | 'participants' | 'matches';
 export type DecisionSubmissionOutcome =
@@ -181,60 +211,36 @@ export async function loadDecisionRoom(
 }
 
 export async function loadRoomHistory(): Promise<RoomHistoryItem[]> {
-  await ensureAnonymousSession();
-  const { data: sessions, error } = await supabase
-    .from('sessions')
-    .select(
-      'id, access_code, mode, status, round_number, expires_at, created_at',
-    )
-    .in('status', ['waiting', 'active'])
-    .gt('expires_at', new Date().toISOString())
-    .order('created_at', { ascending: false })
-    .limit(30);
-  if (error) throw error;
-
-  return Promise.all(
-    sessions.map(async session => {
-      const [participants, items, swipes, match] = await Promise.all([
-        supabase
-          .from('participants')
-          .select('id', { count: 'exact', head: true })
-          .eq('session_id', session.id),
-        supabase
-          .from('session_items')
-          .select('id', { count: 'exact', head: true })
-          .eq('session_id', session.id)
-          .eq('round', session.round_number),
-        supabase
-          .from('swipes')
-          .select('id', { count: 'exact', head: true })
-          .eq('session_id', session.id)
-          .eq('round', session.round_number),
-        supabase
-          .from('matches')
-          .select('item_id')
-          .eq('session_id', session.id)
-          .eq('round', session.round_number)
-          .maybeSingle(),
-      ]);
-      const queryError =
-        participants.error ?? items.error ?? swipes.error ?? match.error;
-      if (queryError) throw queryError;
-      return {
-        sessionId: session.id,
-        accessCode: session.access_code,
-        mode: session.mode,
-        status: session.status,
-        roundNumber: session.round_number,
-        expiresAt: session.expires_at,
-        createdAt: session.created_at,
-        participantCount: participants.count ?? 0,
-        totalChoices: items.count ?? 0,
-        completedChoices: swipes.count ?? 0,
-        matchedItemId: match.data?.item_id ?? null,
-      };
-    }),
+  const authenticatedSession = await ensureAnonymousSession();
+  const { data: sessions, error } = await withSupabaseReadRetry(
+    signal => supabase.rpc('list_active_room_history').abortSignal(signal),
+    {
+      operation: 'Active room history',
+      timeoutMilliseconds: ROOM_HISTORY_REQUEST_TIMEOUT_MS,
+      backoffMilliseconds: 250,
+    },
   );
+  if (error) throw error;
+  const rooms = sessions.map(session => ({
+    sessionId: session.session_id,
+    accessCode: session.access_code,
+    mode: session.mode,
+    status: session.status,
+    roundNumber: session.round_number,
+    expiresAt: session.expires_at,
+    createdAt: session.created_at,
+    participantCount: Number(session.participant_count),
+    totalChoices: Number(session.total_choices),
+    completedChoices: Number(session.completed_choices),
+    matchedItemId: session.matched_item_id,
+  }));
+  // Access codes are short-lived invitation credentials, so they are omitted
+  // from unencrypted device snapshots and restored only by a live refresh.
+  await writeOfflineSnapshot(ROOM_HISTORY_CACHE_KEY, {
+    userId: authenticatedSession.user.id,
+    rooms: rooms.map(room => ({ ...room, accessCode: '' })),
+  });
+  return rooms;
 }
 
 export async function loadRoomOutcome(sessionId: string): Promise<RoomOutcome> {

@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { withRequestTimeout } from './requestTimeout';
 
 const AUTH_TIMEOUT_MS = 8_000;
-const SESSION_VERIFICATION_TTL_MS = 5 * 60 * 1_000;
+const SESSION_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1_000;
 
 let pendingSession: Promise<Session> | undefined;
 let lastVerifiedUserId: string | undefined;
@@ -42,7 +42,10 @@ async function resolveAnonymousSession(): Promise<Session> {
     }
 
     if (userError && userError.status !== 401 && userError.status !== 403) {
-      throw userError;
+      // A locally valid session remains useful during a transient outage.
+      // Protected requests still enforce the JWT server-side and will surface
+      // a real authorization failure if the identity is no longer valid.
+      return existing.session;
     }
 
     // A scheduled retention job can remove an old anonymous identity while a

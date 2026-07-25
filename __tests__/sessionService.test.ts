@@ -32,6 +32,7 @@ const queryResult = (value: unknown) => {
     limit: jest.fn(),
     maybeSingle: jest.fn(),
     single: jest.fn(),
+    abortSignal: jest.fn(),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
@@ -41,6 +42,7 @@ const queryResult = (value: unknown) => {
   builder.limit.mockResolvedValue(value);
   builder.maybeSingle.mockResolvedValue(value);
   builder.single.mockResolvedValue(value);
+  builder.abortSignal.mockResolvedValue(value);
   builder.then = resolve => resolve(value);
   return builder;
 };
@@ -48,36 +50,27 @@ const queryResult = (value: unknown) => {
 describe('loadRoomHistory', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockEnsureAnonymousSession.mockResolvedValue({});
+    mockEnsureAnonymousSession.mockResolvedValue({
+      user: { id: 'anonymous-user-1' },
+    });
   });
 
   it('loads active rooms and only the match from the current round', async () => {
     const session = {
-      id: 'session-1',
+      session_id: 'session-1',
       access_code: 'ABCDEFGH',
       mode: 'custom',
       status: 'active',
       round_number: 2,
       expires_at: '2026-07-23T00:00:00.000Z',
       created_at: '2026-07-22T00:00:00.000Z',
+      participant_count: 2,
+      total_choices: 4,
+      completed_choices: 2,
+      matched_item_id: 'choice-2',
     };
-    const sessions = queryResult({ data: [session], error: null });
-    const participants = queryResult({ count: 2, error: null });
-    const items = queryResult({ count: 4, error: null });
-    const swipes = queryResult({ count: 2, error: null });
-    const match = queryResult({
-      data: { item_id: 'choice-2' },
-      error: null,
-    });
-
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'sessions') return sessions;
-      if (table === 'participants') return participants;
-      if (table === 'session_items') return items;
-      if (table === 'swipes') return swipes;
-      if (table === 'matches') return match;
-      throw new Error(`Unexpected table: ${table}`);
-    });
+    const history = queryResult({ data: [session], error: null });
+    mockRpc.mockReturnValue(history);
 
     await expect(loadRoomHistory()).resolves.toEqual([
       expect.objectContaining({
@@ -86,14 +79,12 @@ describe('loadRoomHistory', () => {
         matchedItemId: 'choice-2',
       }),
     ]);
-    expect(match.eq).toHaveBeenCalledWith('session_id', 'session-1');
-    expect(match.eq).toHaveBeenCalledWith('round', 2);
-    expect(sessions.in).toHaveBeenCalledWith('status', ['waiting', 'active']);
-    expect(sessions.gt).toHaveBeenCalledWith('expires_at', expect.any(String));
+    expect(mockRpc).toHaveBeenCalledWith('list_active_room_history');
+    expect(history.abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
   });
 
   it('returns an empty history as a successful result', async () => {
-    mockFrom.mockReturnValue(queryResult({ data: [], error: null }));
+    mockRpc.mockReturnValue(queryResult({ data: [], error: null }));
 
     await expect(loadRoomHistory()).resolves.toEqual([]);
   });

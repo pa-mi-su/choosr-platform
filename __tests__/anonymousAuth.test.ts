@@ -50,4 +50,22 @@ describe('ensureAnonymousSession', () => {
     expect(mockGetSession).toHaveBeenCalledTimes(2);
     expect(mockGetUser).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps a valid local session usable during a verification outage', async () => {
+    const outageSession = {
+      user: { id: 'anonymous-user-outage' },
+    };
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: outageSession },
+      error: null,
+    });
+    mockGetUser.mockResolvedValueOnce({
+      data: { user: null },
+      error: new TypeError('Network request failed'),
+    });
+
+    await expect(ensureAnonymousSession()).resolves.toBe(outageSession);
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockSignInAnonymously).not.toHaveBeenCalled();
+  });
 });

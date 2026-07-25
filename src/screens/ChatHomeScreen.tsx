@@ -12,16 +12,26 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ChatHome'>;
 
 export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
   const [active, setActive] = useState(Boolean(chatSession.active));
-  const [loading, setLoading] = useState(true);
+  const [checking, setChecking] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
-      setLoading(true);
+      let mounted = true;
+      setChecking(true);
       chatSession
         .reconcileOrphanedRemoteChat()
-        .then(setActive)
-        .catch(() => setActive(Boolean(chatSession.active)))
-        .finally(() => setLoading(false));
+        .then(result => {
+          if (mounted) setActive(result);
+        })
+        .catch(() => {
+          if (mounted) setActive(Boolean(chatSession.active));
+        })
+        .finally(() => {
+          if (mounted) setChecking(false);
+        });
+      return () => {
+        mounted = false;
+      };
     }, []),
   );
 
@@ -67,8 +77,10 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
       <View style={styles.top}>
         <BackToChoosrButton onPress={() => navigation.navigate('Home')} />
         <View style={styles.modeBadge}>
-          <View style={styles.modeDot} />
-          <Text style={styles.modeLabel}>PRIVATE CHAT</Text>
+          <View style={[styles.modeDot, checking && styles.modeDotChecking]} />
+          <Text style={styles.modeLabel}>
+            {checking ? 'CHECKING' : 'PRIVATE CHAT'}
+          </Text>
         </View>
       </View>
       <View style={styles.hero}>
@@ -91,15 +103,10 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
       <View style={styles.actions}>
         {active ? (
           <>
-            <Button
-              label="Continue private chat"
-              loading={loading}
-              onPress={continueChat}
-            />
+            <Button label="Continue private chat" onPress={continueChat} />
             <Button
               label="End & Destroy"
               variant="secondary"
-              disabled={loading}
               onPress={destroy}
             />
           </>
@@ -107,7 +114,6 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
           <>
             <Button
               label="Start a Quick Chat"
-              loading={loading}
               onPress={() =>
                 navigation.navigate('ChatInvite', { focus: 'share' })
               }
@@ -115,7 +121,6 @@ export function ChatHomeScreen({ navigation }: Props): React.JSX.Element {
             <Button
               label="Scan a QR"
               variant="secondary"
-              disabled={loading}
               onPress={() => navigation.navigate('ChatScan')}
             />
           </>
@@ -150,6 +155,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.success,
   },
+  modeDotChecking: { backgroundColor: colors.faint },
   modeLabel: {
     color: colors.muted,
     fontSize: 8,

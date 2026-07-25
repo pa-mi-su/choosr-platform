@@ -4,7 +4,11 @@ import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
 import { env } from '../config/generatedEnv';
+import { createTimedFetch } from '../services/requestTimeout';
 import type { Database } from '../types/database';
+
+const SUPABASE_HTTP_TIMEOUT_MS = 20_000;
+const timedFetch = createTimedFetch(fetch, SUPABASE_HTTP_TIMEOUT_MS);
 
 export const supabase = createClient<Database>(
   env.supabaseUrl,
@@ -17,6 +21,7 @@ export const supabase = createClient<Database>(
       detectSessionInUrl: false,
       lock: processLock,
     },
+    global: { fetch: timedFetch },
   },
 );
 

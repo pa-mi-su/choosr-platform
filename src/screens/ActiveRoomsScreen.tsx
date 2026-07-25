@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,6 +15,7 @@ import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
 import {
   loadRoomHistory,
+  readCachedRoomHistory,
   type RoomHistoryItem,
 } from '../services/sessionService';
 import { serviceFailureMessage } from '../services/serviceError';
@@ -29,20 +30,36 @@ type ActiveRoomRow =
 export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   const [rooms, setRooms] = useState<RoomHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasSnapshotRef = useRef(false);
 
   const load = useCallback(async () => {
     setError(null);
+    if (!hasSnapshotRef.current) {
+      setLoading(true);
+      const cached = await readCachedRoomHistory();
+      if (cached) {
+        setRooms(cached);
+        hasSnapshotRef.current = true;
+        setHasSnapshot(true);
+        setLoading(false);
+      }
+    }
     try {
-      setRooms(await loadRoomHistory());
+      const freshRooms = await loadRoomHistory();
+      setRooms(freshRooms);
+      hasSnapshotRef.current = true;
+      setHasSnapshot(true);
     } catch (cause) {
-      setRooms([]);
       setError(
-        serviceFailureMessage(
-          cause,
-          'Your rooms could not be loaded. Pull down to retry.',
-        ),
+        hasSnapshotRef.current
+          ? 'Connection is weak. Showing your saved rooms.'
+          : serviceFailureMessage(
+              cause,
+              'Your rooms could not be loaded. Pull down to retry.',
+            ),
       );
     } finally {
       setLoading(false);
@@ -65,7 +82,7 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     });
   };
 
-  const rows: ActiveRoomRow[] = error
+  const rows: ActiveRoomRow[] = !hasSnapshot
     ? []
     : rooms.length === 0
     ? [{ kind: 'empty-active' as const, id: 'empty:active' }]
@@ -83,7 +100,7 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
       </View>
       <Text style={styles.eyebrow}>YOUR ROOMS</Text>
       <Text style={styles.title}>Pick up where you left off.</Text>
-      {loading ? (
+      {loading && !hasSnapshot ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
@@ -103,7 +120,11 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
             />
           }
           ListHeaderComponent={
-            error ? <Text style={styles.error}>{error}</Text> : null
+            error ? (
+              <Pressable accessibilityRole="button" onPress={load}>
+                <Text style={styles.error}>{error} Tap to retry.</Text>
+              </Pressable>
+            ) : null
           }
           renderItem={({ item }) => {
             if (item.kind === 'empty-active') {
@@ -136,7 +157,9 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                   </Text>
                   <Text style={styles.cardMeta}>
                     {room.status === 'waiting'
-                      ? `Waiting for a partner · ${room.accessCode}`
+                      ? room.accessCode
+                        ? `Waiting for a partner · ${room.accessCode}`
+                        : 'Waiting for a partner · reconnect to share'
                       : resumable
                       ? `${Math.min(
                           room.completedChoices,

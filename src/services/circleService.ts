@@ -2,12 +2,15 @@ import { supabase } from '../lib/supabase';
 import type { DecisionMode } from '../types/domain';
 import { ensureAnonymousSession } from './anonymousAuth';
 import { dispatchPendingNotifications } from './pushNotifications';
+import { readOfflineSnapshot, writeOfflineSnapshot } from './offlineSnapshot';
 import { profilePhotoUrl } from './profilePhotoService';
 import { photoFailureMessage } from './photoUploadService';
-import { withRequestTimeout } from './requestTimeout';
+import { withSupabaseReadRetry } from './requestTimeout';
 import { serviceFailureMessage } from './serviceError';
 
-const CIRCLE_REQUEST_TIMEOUT_MS = 10_000;
+const CIRCLE_REQUEST_TIMEOUT_MS = 7_000;
+const CIRCLE_CACHE_KEY = '@choosr/circle/v1';
+const CIRCLE_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 
 export type ChoosrProfile = {
   userId: string;
@@ -37,12 +40,51 @@ export type PendingRoomInvitation = {
   expiresAt: string;
 };
 
+export type CircleSnapshot = {
+  profile: ChoosrProfile | null;
+  people: CirclePerson[];
+  invitations: PendingRoomInvitation[];
+};
+type StoredCircleSnapshot = {
+  userId: string;
+  snapshot: CircleSnapshot;
+};
+
+export async function readCachedCircleSnapshot(): Promise<CircleSnapshot | null> {
+  const [{ data }, stored] = await Promise.all([
+    supabase.auth.getSession(),
+    readOfflineSnapshot<StoredCircleSnapshot>(
+      CIRCLE_CACHE_KEY,
+      CIRCLE_CACHE_MAX_AGE_MS,
+    ),
+  ]);
+  if (!stored || stored.userId !== data.session?.user.id) return null;
+  return stored.snapshot;
+}
+
+export async function loadCircleSnapshot(): Promise<CircleSnapshot> {
+  const authenticatedSession = await ensureAnonymousSession();
+  const profile = await loadOwnProfile();
+  const [people, invitations] = profile
+    ? await Promise.all([loadCircle(), loadPendingRoomInvitations()])
+    : [[], []];
+  const snapshot = { profile, people, invitations };
+  await writeOfflineSnapshot<StoredCircleSnapshot>(CIRCLE_CACHE_KEY, {
+    userId: authenticatedSession.user.id,
+    snapshot,
+  });
+  return snapshot;
+}
+
 export async function loadOwnProfile(): Promise<ChoosrProfile | null> {
   await ensureAnonymousSession();
-  const { data, error } = await withRequestTimeout(
-    supabase.rpc('get_choosr_profile'),
-    CIRCLE_REQUEST_TIMEOUT_MS,
-    'Circle profile lookup',
+  const { data, error } = await withSupabaseReadRetry(
+    signal => supabase.rpc('get_choosr_profile').abortSignal(signal),
+    {
+      timeoutMilliseconds: CIRCLE_REQUEST_TIMEOUT_MS,
+      operation: 'Circle profile lookup',
+      backoffMilliseconds: 250,
+    },
   );
   if (error) {
     throw error;
@@ -86,10 +128,13 @@ export async function saveOwnProfile(input: {
 
 export async function loadCircle(): Promise<CirclePerson[]> {
   await ensureAnonymousSession();
-  const { data, error } = await withRequestTimeout(
-    supabase.rpc('list_circle'),
-    CIRCLE_REQUEST_TIMEOUT_MS,
-    'Circle lookup',
+  const { data, error } = await withSupabaseReadRetry(
+    signal => supabase.rpc('list_circle').abortSignal(signal),
+    {
+      timeoutMilliseconds: CIRCLE_REQUEST_TIMEOUT_MS,
+      operation: 'Circle lookup',
+      backoffMilliseconds: 250,
+    },
   );
   if (error) {
     throw error;
@@ -187,10 +232,13 @@ export async function loadPendingRoomInvitations(): Promise<
   PendingRoomInvitation[]
 > {
   await ensureAnonymousSession();
-  const { data, error } = await withRequestTimeout(
-    supabase.rpc('list_pending_room_invitations'),
-    CIRCLE_REQUEST_TIMEOUT_MS,
-    'Room invitation lookup',
+  const { data, error } = await withSupabaseReadRetry(
+    signal => supabase.rpc('list_pending_room_invitations').abortSignal(signal),
+    {
+      timeoutMilliseconds: CIRCLE_REQUEST_TIMEOUT_MS,
+      operation: 'Room invitation lookup',
+      backoffMilliseconds: 250,
+    },
   );
   if (error) {
     throw error;

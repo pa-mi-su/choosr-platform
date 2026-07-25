@@ -224,7 +224,15 @@ deletion remains separate from removing a Circle connection.
 Choosr treats remote operations as bounded state transitions rather than
 indefinite spinners:
 
-- network calls use explicit timeouts and actionable error mapping;
+- HTTP calls have hard abortable time budgets; safe transient reads retry with
+  short exponential backoff instead of spinning indefinitely;
+- Circle and active-room screens render bounded local snapshots immediately,
+  refresh in the background, and retain saved state through temporary outages;
+- active-room history is loaded by one membership-authorized RPC rather than
+  per-room request fan-out;
+- private Chat entry remains interactive while remote cleanup/status checks run
+  in the background; message/status/destruction requests are bounded and
+  idempotent operations retry once when safe;
 - location autocomplete is debounced and stale responses are ignored;
 - place discovery uses bounded adaptive searches and concurrent image caching;
 - swipe submission is idempotent and finalization is transactional;
