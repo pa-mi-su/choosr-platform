@@ -34,15 +34,13 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
     chatSession.messages,
   );
   const [draft, setDraft] = useState('');
-  const [connection, setConnection] = useState('Connecting…');
+  const [connection, setConnection] = useState('End-to-end encrypted');
   const [lifetime, setLifetime] = useState(
     remainingLifetime(chatSession.active?.expiresAt),
   );
   const [sending, setSending] = useState(false);
   const [safetyNumber, setSafetyNumber] = useState(chatSession.safetyNumber);
-  const [safetyConfirmed, setSafetyConfirmed] = useState(
-    chatSession.isSafetyConfirmed,
-  );
+  const [showEncryptionDetails, setShowEncryptionDetails] = useState(false);
 
   const returnHome = useCallback(
     (remote = false) => {
@@ -64,12 +62,16 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
         returnHome(true);
         return;
       }
-      setConnection(status === 'active' ? 'Encrypted · Connected' : 'Waiting');
+      setConnection(
+        status === 'active'
+          ? 'End-to-end encrypted'
+          : 'Encrypted · Waiting to connect',
+      );
       setMessages([...(await chatSession.refreshMessages())]);
       setSafetyNumber(chatSession.safetyNumber);
       setLifetime(remainingLifetime(chatSession.active?.expiresAt));
     } catch {
-      setConnection('Offline · will retry');
+      setConnection('Encrypted · Reconnecting');
     }
   }, [returnHome]);
 
@@ -153,13 +155,13 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.connection}>{connection}</Text>
         <Text style={styles.lifetime}>{lifetime}</Text>
       </View>
-      {!safetyConfirmed ? (
+      {showEncryptionDetails ? (
         <View style={styles.safetyCard}>
           <View style={styles.safetyCopy}>
-            <Text style={styles.safetyTitle}>Compare safety numbers</Text>
+            <Text style={styles.safetyTitle}>Compare encryption number</Text>
             <Text style={styles.safetyBody}>
-              Both devices must show the same number. Compare it in person or
-              through the channel used for the invitation.
+              Optional: compare this number by phone, video, in person, or
+              another trusted way for extra assurance.
             </Text>
           </View>
           <Text
@@ -173,25 +175,28 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
           </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="The safety numbers match"
-            disabled={!safetyNumber}
-            onPress={() => {
-              chatSession.confirmSafetyNumber();
-              setSafetyConfirmed(true);
-            }}
+            accessibilityLabel="Close encryption details"
+            onPress={() => setShowEncryptionDetails(false)}
             style={({ pressed }) => [
               styles.confirmSafety,
               pressed && styles.pressed,
-              !safetyNumber && styles.disabled,
             ]}
           >
-            <Text style={styles.confirmSafetyText}>Numbers match</Text>
+            <Text style={styles.confirmSafetyText}>Done</Text>
           </Pressable>
         </View>
       ) : (
-        <Text style={styles.safetyConfirmed}>
-          ✓ Safety number confirmed on this device
-        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Encryption details"
+          onPress={() => setShowEncryptionDetails(true)}
+          style={({ pressed }) => [
+            styles.encryptionDetails,
+            pressed && styles.pressed,
+          ]}
+        >
+          <Text style={styles.encryptionDetailsText}>Encryption details</Text>
+        </Pressable>
       )}
       <KeyboardAvoidingView
         style={styles.chat}
@@ -226,13 +231,12 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
             placeholderTextColor={colors.faint}
             maxLength={2000}
             multiline
-            editable={safetyConfirmed}
             style={styles.input}
           />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Send encrypted message"
-            disabled={!safetyConfirmed || !draft.trim() || sending}
+            disabled={!draft.trim() || sending}
             onPress={send}
             style={({ pressed }) => [
               styles.send,
@@ -266,6 +270,16 @@ const styles = StyleSheet.create({
   connection: { color: colors.success, fontSize: 11, fontWeight: '800' },
   lifetime: { color: colors.accent, fontSize: 11, fontWeight: '800' },
   chat: { flex: 1 },
+  encryptionDetails: {
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  encryptionDetailsText: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: '800',
+  },
   safetyCard: {
     marginTop: 12,
     padding: 14,
@@ -293,13 +307,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.raised,
   },
   confirmSafetyText: { color: colors.text, fontSize: 12, fontWeight: '900' },
-  safetyConfirmed: {
-    color: colors.success,
-    fontSize: 10,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginTop: 10,
-  },
   messages: { flexGrow: 1, justifyContent: 'flex-end', paddingVertical: 16 },
   empty: {
     color: colors.faint,

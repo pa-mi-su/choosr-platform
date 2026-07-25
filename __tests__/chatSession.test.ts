@@ -164,13 +164,5 @@ describe('ChatSession lifecycle', () => {
 
     expect(joiner.safetyNumber).toMatch(/^\d{4} \d{4} \d{4}$/);
     expect(creator.safetyNumber).toBe(joiner.safetyNumber);
-
-    creator.confirmSafetyNumber();
-    expect(creator.isSafetyConfirmed).toBe(true);
-    await creator.refreshStatus();
-    expect(creator.isSafetyConfirmed).toBe(true);
-
-    await creator.destroy();
-    expect(creator.isSafetyConfirmed).toBe(false);
   });
 });

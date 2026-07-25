@@ -14,8 +14,6 @@ jest.mock('../src/chat/runtime', () => ({
     },
     messages: [],
     safetyNumber: '1234 5678 9012',
-    isSafetyConfirmed: false,
-    confirmSafetyNumber: jest.fn(),
     refreshStatus: jest.fn().mockResolvedValue('active'),
     refreshMessages: jest.fn().mockResolvedValue([]),
     subscribe: jest.fn(() => ({ unsubscribe: jest.fn() })),
@@ -26,7 +24,7 @@ jest.mock('../src/chat/runtime', () => ({
 
 import { ChatRoomScreen } from '../src/screens/ChatRoomScreen';
 
-test('private messaging stays disabled until the safety number is confirmed', async () => {
+test('messaging is immediately encrypted and comparison details are optional', async () => {
   const popTo = jest.fn();
   let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
   await ReactTestRenderer.act(async () => {
@@ -48,23 +46,29 @@ test('private messaging stays disabled until the safety number is confirmed', as
   expect(
     renderer?.root.findByProps({ accessibilityLabel: 'Private message' }).props
       .editable,
-  ).toBe(false);
+  ).not.toBe(false);
+  expect(() =>
+    renderer?.root.findByProps({
+      accessibilityLabel: 'Chat safety number 1234 5678 9012',
+    }),
+  ).toThrow();
+
+  await ReactTestRenderer.act(() => {
+    renderer?.root
+      .findByProps({ accessibilityLabel: 'Encryption details' })
+      .props.onPress();
+  });
+
   expect(
     renderer?.root.findByProps({
       accessibilityLabel: 'Chat safety number 1234 5678 9012',
     }),
   ).toBeDefined();
-
-  await ReactTestRenderer.act(() => {
-    renderer?.root
-      .findByProps({ accessibilityLabel: 'The safety numbers match' })
-      .props.onPress();
-  });
-
-  expect(
-    renderer?.root.findByProps({ accessibilityLabel: 'Private message' }).props
-      .editable,
-  ).toBe(true);
+  expect(() =>
+    renderer?.root.findByProps({
+      accessibilityLabel: 'Mark connection as verified',
+    }),
+  ).toThrow();
   expect(
     renderer?.root.findByProps({ accessibilityLabel: 'End & Destroy' }),
   ).toBeDefined();

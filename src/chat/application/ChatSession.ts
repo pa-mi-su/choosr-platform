@@ -28,7 +28,6 @@ type Runtime = {
   ownUserId: string;
   keyPair: TemporaryKeyPair;
   sharedKey?: Uint8Array;
-  safetyConfirmed: boolean;
   messages: LocalChatMessage[];
 };
 
@@ -57,21 +56,6 @@ export class ChatSession {
       : undefined;
   }
 
-  get isSafetyConfirmed(): boolean {
-    return this.runtime?.safetyConfirmed ?? false;
-  }
-
-  confirmSafetyNumber(): void {
-    const runtime = this.requireActiveRuntime();
-    if (!runtime.sharedKey) {
-      throw new ChatError(
-        'encryption_failed',
-        'The private chat safety number is not ready.',
-      );
-    }
-    runtime.safetyConfirmed = true;
-  }
-
   async create(ownUserId: string): Promise<ChatInvitation> {
     if (this.runtime) {
       throw new ChatError(
@@ -87,7 +71,6 @@ export class ChatSession {
       this.runtime = {
         ownUserId,
         keyPair,
-        safetyConfirmed: false,
         messages: [],
         invitation,
         active: {
@@ -130,7 +113,6 @@ export class ChatSession {
       this.runtime = {
         ownUserId,
         keyPair,
-        safetyConfirmed: false,
         messages: [],
         active,
         sharedKey: deriveSharedKey(scanned.creatorPublicKey, keyPair.secretKey),
