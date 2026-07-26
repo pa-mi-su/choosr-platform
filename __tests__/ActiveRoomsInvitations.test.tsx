@@ -97,4 +97,54 @@ describe('Active Rooms invitations', () => {
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
+
+  test('opens a waiting room so its status can be viewed or cancelled', async () => {
+    mockLoadRoomHistory.mockResolvedValue([
+      {
+        sessionId: 'waiting-session',
+        accessCode: 'N4BB4KML',
+        mode: 'do',
+        status: 'waiting',
+        roundNumber: 1,
+        expiresAt: '2026-07-26T12:00:00.000Z',
+        participantCount: 1,
+        createdAt: '2026-07-25T12:00:00.000Z',
+        totalChoices: 0,
+        completedChoices: 0,
+        matchedItemId: null,
+      },
+    ]);
+    mockLoadPendingRoomInvitations.mockResolvedValue([]);
+    const navigate = jest.fn();
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ActiveRoomsScreen
+            navigation={
+              { goBack: jest.fn(), navigate, replace: jest.fn() } as never
+            }
+            route={{ key: 'rooms', name: 'ActiveRooms' } as never}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    expect(
+      renderer.root.findByProps({ children: 'View status' }),
+    ).toBeDefined();
+    renderer.root
+      .findByProps({
+        accessibilityLabel:
+          'Pick an activity. Waiting for a partner. View room status.',
+      })
+      .props.onPress();
+
+    expect(navigate).toHaveBeenCalledWith('RoomStatus', {
+      sessionId: 'waiting-session',
+    });
+
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
 });
