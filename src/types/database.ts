@@ -323,6 +323,10 @@ export type Database = {
         Args: { p_platform: 'ios' | 'android'; p_token: string };
         Returns: undefined;
       };
+      has_registered_push_token: {
+        Args: Record<never, never>;
+        Returns: boolean;
+      };
       unread_notification_count: {
         Args: Record<never, never>;
         Returns: number;

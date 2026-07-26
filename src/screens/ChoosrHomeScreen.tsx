@@ -11,6 +11,11 @@ import {
 } from '../services/notificationService';
 import { loadPendingRoomInvitations } from '../services/circleService';
 import { loadRoomHistory } from '../services/sessionService';
+import {
+  enablePushNotifications,
+  isPushEnabled,
+  refreshPushRegistration,
+} from '../services/pushNotifications';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -49,6 +54,18 @@ export function ChoosrHomeScreen({ navigation }: Props): React.JSX.Element {
   const [chooseActive, setChooseActive] = useState(false);
   const [chatActive, setChatActive] = useState(Boolean(chatSession.active));
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pushHealthy, setPushHealthy] = useState<boolean | null>(null);
+  const [repairingPush, setRepairingPush] = useState(false);
+
+  const verifyPush = useCallback(async () => {
+    if (await refreshPushRegistration()) {
+      setPushHealthy(true);
+      return;
+    }
+    // A transient network failure must not be presented as a device-settings
+    // problem. The server-backed check throws when health cannot be verified.
+    setPushHealthy(await isPushEnabled());
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -81,6 +98,7 @@ export function ChoosrHomeScreen({ navigation }: Props): React.JSX.Element {
           }
         }),
         loadUnreadNotificationCount().then(setUnreadCount),
+        verifyPush(),
       ]).catch(() => undefined);
       const subscription = subscribeToNotificationState(() => {
         loadUnreadNotificationCount()
@@ -88,8 +106,16 @@ export function ChoosrHomeScreen({ navigation }: Props): React.JSX.Element {
           .catch(() => undefined);
       });
       return () => subscription.remove();
-    }, []),
+    }, [verifyPush]),
   );
+
+  const repairPush = async () => {
+    if (repairingPush) return;
+    setRepairingPush(true);
+    const repaired = await enablePushNotifications();
+    setPushHealthy(repaired);
+    setRepairingPush(false);
+  };
 
   return (
     <Screen testID="choosr-home-screen" style={styles.screen}>
@@ -129,6 +155,37 @@ export function ChoosrHomeScreen({ navigation }: Props): React.JSX.Element {
           </Pressable>
         </View>
       </View>
+
+      {pushHealthy === false ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Fix room alerts"
+          disabled={repairingPush}
+          onPress={() => {
+            repairPush().catch(() => setRepairingPush(false));
+          }}
+          style={({ pressed }) => [
+            styles.pushWarning,
+            pressed && styles.utilityPressed,
+          ]}
+        >
+          <View style={styles.pushWarningIcon}>
+            <Text style={styles.pushWarningIconText}>!</Text>
+          </View>
+          <View style={styles.pushWarningCopy}>
+            <Text style={styles.pushWarningTitle}>
+              Room alerts need attention
+            </Text>
+            <Text style={styles.pushWarningText}>
+              Tap to reconnect this phone so invitations arrive when Choosr is
+              closed.
+            </Text>
+          </View>
+          <Text style={styles.pushWarningAction}>
+            {repairingPush ? 'FIXING…' : 'FIX'}
+          </Text>
+        </Pressable>
+      ) : null}
 
       <View style={styles.content}>
         <View style={styles.hero}>
@@ -282,6 +339,53 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeText: { color: colors.white, fontSize: 9, fontWeight: '900' },
+  pushWarning: {
+    minHeight: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    backgroundColor: '#2B2017',
+    borderWidth: 1,
+    borderColor: '#79511F',
+    borderRadius: 18,
+    marginTop: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+  },
+  pushWarningIcon: {
+    width: 31,
+    height: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    backgroundColor: colors.accent,
+  },
+  pushWarningIconText: {
+    color: colors.background,
+    fontSize: 18,
+    lineHeight: 21,
+    fontWeight: '900',
+  },
+  pushWarningCopy: { flex: 1 },
+  pushWarningTitle: {
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 15,
+    fontWeight: '900',
+  },
+  pushWarningText: {
+    color: colors.muted,
+    fontSize: 9,
+    lineHeight: 13,
+    marginTop: 2,
+  },
+  pushWarningAction: {
+    color: colors.accent,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
   content: {
     flex: 1,
     justifyContent: 'center',
