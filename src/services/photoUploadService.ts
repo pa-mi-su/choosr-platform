@@ -149,6 +149,6 @@ export function photoFailureMessage(
 export function logPhotoFailure(context: string, error: unknown): void {
   if (__DEV__) {
     const normalized = normalizePhotoFailure(error);
-    console.error(`[photo:${context}] ${normalized.code}`, normalized.cause);
+    console.error(`[photo:${context}] ${normalized.code}`);
   }
 }

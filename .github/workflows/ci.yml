@@ -49,7 +49,7 @@ jobs:
           fi
 
           changed_files="$(git diff --name-only "$range")"
-          if grep -Eq '^(android/|src/|index\.js$|package(-lock)?\.json$|react-native\.config\.js$|babel\.config\.js$|scripts/generate-env\.mjs$)' <<< "$changed_files"; then
+          if grep -Eq '^(android/|src/|App\.tsx$|index\.js$|package(-lock)?\.json$|react-native\.config\.js$|babel\.config\.js$|scripts/generate-env\.mjs$)' <<< "$changed_files"; then
             echo "android=true" >> "$GITHUB_OUTPUT"
           else
             echo "android=false" >> "$GITHUB_OUTPUT"

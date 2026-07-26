@@ -9,18 +9,6 @@ export type RoomDestination =
   | 'no-match'
   | 'closed';
 
-export async function loadItemsWithFallback<T>(
-  loadItems: () => Promise<T[]>,
-  fallbackItems: readonly T[],
-): Promise<T[]> {
-  try {
-    const items = await loadItems();
-    return items.length ? items : [...fallbackItems];
-  } catch {
-    return [...fallbackItems];
-  }
-}
-
 export function getRoomDestination(
   status: SessionStatus,
   matchedItemId: string | null,

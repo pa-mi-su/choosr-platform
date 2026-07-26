@@ -54,7 +54,7 @@ jest.mock('../src/services/anonymousAuth', () => ({
 }));
 
 import {
-  isPushEnabled,
+  isPushPermissionEnabled,
   refreshPushRegistration,
   registerPushListeners,
 } from '../src/services/pushNotifications';
@@ -182,7 +182,10 @@ describe('push notification reliability', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce('ready-apns-token');
 
-    await expect(refreshPushRegistration()).resolves.toBe(true);
+    await expect(refreshPushRegistration()).resolves.toEqual({
+      permission: 'enabled',
+      delivery: 'ready',
+    });
 
     expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(1);
     expect(getAPNSToken).toHaveBeenCalledTimes(2);
@@ -192,15 +195,21 @@ describe('push notification reliability', () => {
       p_token: 'test-firebase-token-long-enough',
     });
 
-    await expect(refreshPushRegistration()).resolves.toBe(true);
+    await expect(refreshPushRegistration()).resolves.toEqual({
+      permission: 'enabled',
+      delivery: 'ready',
+    });
     expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(2);
     expect(deleteToken).toHaveBeenCalledTimes(1);
   });
 
   test('always asks iOS to register for remote messages instead of trusting cached native state', async () => {
-    await expect(refreshPushRegistration()).resolves.toBe(true);
+    await expect(refreshPushRegistration()).resolves.toEqual({
+      permission: 'enabled',
+      delivery: 'ready',
+    });
 
-    expect(requestPermission).toHaveBeenCalledTimes(1);
+    expect(requestPermission).not.toHaveBeenCalled();
     expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(1);
     expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
       p_platform: 'ios',
@@ -225,7 +234,10 @@ describe('push notification reliability', () => {
       .mockResolvedValueOnce('recovered-apns-token');
 
     try {
-      await expect(refreshPushRegistration()).resolves.toBe(true);
+      await expect(refreshPushRegistration()).resolves.toEqual({
+        permission: 'enabled',
+        delivery: 'ready',
+      });
 
       expect(unregisterDeviceForRemoteMessages).toHaveBeenCalledTimes(1);
       expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(2);
@@ -250,7 +262,10 @@ describe('push notification reliability', () => {
       }),
     );
 
-    await expect(refreshPushRegistration()).resolves.toBe(true);
+    await expect(refreshPushRegistration()).resolves.toEqual({
+      permission: 'enabled',
+      delivery: 'ready',
+    });
 
     expect(deleteToken).toHaveBeenCalledTimes(1);
     expect(
@@ -258,7 +273,7 @@ describe('push notification reliability', () => {
     ).toHaveLength(2);
   });
 
-  test('does not report alerts ready when the server has no device endpoint', async () => {
+  test('separates enabled OS permission from an unavailable server endpoint', async () => {
     mockRpc.mockImplementation(name =>
       Promise.resolve({
         data: name === 'has_registered_push_token' ? false : undefined,
@@ -266,26 +281,47 @@ describe('push notification reliability', () => {
       }),
     );
 
-    await expect(isPushEnabled()).resolves.toBe(false);
+    await expect(isPushPermissionEnabled()).resolves.toBe(true);
+    await expect(refreshPushRegistration()).resolves.toEqual({
+      permission: 'enabled',
+      delivery: 'unavailable',
+    });
   });
 
-  test('does not claim visible alerts are enabled for provisional iOS delivery', async () => {
-    (requestPermission as jest.Mock).mockResolvedValue(2);
+  test('accepts provisional iOS authorization without requiring every presentation surface', async () => {
     (hasPermission as jest.Mock).mockResolvedValue(2);
     (notifee.getNotificationSettings as jest.Mock).mockResolvedValue({
       authorizationStatus: 2,
       ios: {
         alert: 1,
-        lockScreen: 1,
-        notificationCenter: 1,
+        lockScreen: 0,
+        notificationCenter: 0,
       },
     });
 
-    await expect(refreshPushRegistration()).resolves.toBe(false);
+    await expect(isPushPermissionEnabled()).resolves.toBe(true);
+    await expect(refreshPushRegistration()).resolves.toEqual({
+      permission: 'enabled',
+      delivery: 'ready',
+    });
 
     expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
       p_platform: 'ios',
       p_token: 'test-firebase-token-long-enough',
     });
+  });
+
+  test('does not attempt endpoint registration when OS permission is disabled', async () => {
+    (hasPermission as jest.Mock).mockResolvedValue(0);
+
+    await expect(refreshPushRegistration()).resolves.toEqual({
+      permission: 'disabled',
+      delivery: 'unavailable',
+    });
+    expect(registerDeviceForRemoteMessages).not.toHaveBeenCalled();
+    expect(mockRpc).not.toHaveBeenCalledWith(
+      'register_push_token',
+      expect.anything(),
+    );
   });
 });

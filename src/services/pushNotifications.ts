@@ -1,10 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import notifee, {
-  AndroidImportance,
-  AuthorizationStatus as NotifeeAuthorizationStatus,
-  EventType,
-  IOSNotificationSetting,
-} from '@notifee/react-native';
+import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 import {
   AuthorizationStatus,
   deleteToken,
@@ -32,19 +27,21 @@ import { supabase } from '../lib/supabase';
 import { ensureAnonymousSession } from './anonymousAuth';
 import { registerAndroidPushInstallation } from './androidPushRegistration';
 
-const PUSH_ENABLED_KEY = 'choosr.push.enabled';
-const PUSH_BINDING_VERSION_KEY = 'choosr.push.binding.version';
 const PUSH_ROTATION_VERSION_KEY = 'choosr.push.rotation.version';
-const IOS_PUSH_BINDING_VERSION = '3';
+const IOS_PUSH_BINDING_VERSION = '4';
 const ANDROID_NOTIFICATION_PERMISSION =
   'android.permission.POST_NOTIFICATIONS' as Permission;
 const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
 const IOS_APNS_RETRY_DELAYS_MS = [0, 250, 750, 1500, 3000, 5000] as const;
 const IOS_APNS_RESET_DELAY_MS = 250;
-const TOKEN_SYNC_RETRY_DELAYS_MS = [0, 500, 1500, 3500] as const;
+const TOKEN_SYNC_RETRY_DELAYS_MS = [0, 500, 1500] as const;
 const PUSH_CHANNEL_ID = 'choosr-invitations';
 
 let pendingTokenSynchronization: Promise<void> | undefined;
+
+export type PushRegistrationHealth =
+  | { permission: 'disabled'; delivery: 'unavailable' }
+  | { permission: 'enabled'; delivery: 'ready' | 'unavailable' };
 
 export type NotificationDispatchSummary = {
   processed: number;
@@ -109,19 +106,6 @@ async function hasDeliveryPermission(): Promise<boolean> {
   return (
     status === AuthorizationStatus.AUTHORIZED ||
     status === AuthorizationStatus.PROVISIONAL
-  );
-}
-
-async function hasVisibleAlertPermission(): Promise<boolean> {
-  if (!(await hasDeliveryPermission())) return false;
-  if (Platform.OS !== 'ios') return true;
-
-  const settings = await notifee.getNotificationSettings();
-  return (
-    settings.authorizationStatus === NotifeeAuthorizationStatus.AUTHORIZED &&
-    settings.ios.alert === IOSNotificationSetting.ENABLED &&
-    settings.ios.lockScreen === IOSNotificationSetting.ENABLED &&
-    settings.ios.notificationCenter === IOSNotificationSetting.ENABLED
   );
 }
 
@@ -195,10 +179,6 @@ async function performTokenSynchronization(): Promise<void> {
     );
   }
   await registerToken(await getToken(messaging));
-  await AsyncStorage.setItem(
-    PUSH_BINDING_VERSION_KEY,
-    IOS_PUSH_BINDING_VERSION,
-  );
 }
 
 async function syncCurrentToken(): Promise<void> {
@@ -280,12 +260,12 @@ async function displayForegroundNotification(
 export async function enablePushNotifications(): Promise<boolean> {
   try {
     if (!(await requestPlatformPermission(true))) return false;
-    await synchronizePushEndpoint();
-    if (!(await hasVisibleAlertPermission())) {
-      await notifee.openNotificationSettings().catch(() => undefined);
-      return false;
-    }
-    await AsyncStorage.setItem(PUSH_ENABLED_KEY, 'true');
+    // Permission and endpoint registration are separate facts. Once the OS
+    // grants permission, do not tell the user alerts are disabled merely
+    // because APNs, FCM, or the network is temporarily unavailable.
+    await synchronizePushEndpoint().catch(error =>
+      logPushFailure('enable-registration', error),
+    );
     return true;
   } catch (error) {
     logPushFailure('enable', error);
@@ -293,27 +273,21 @@ export async function enablePushNotifications(): Promise<boolean> {
   }
 }
 
-export async function refreshPushRegistration(): Promise<boolean> {
+export async function refreshPushRegistration(): Promise<PushRegistrationHealth> {
+  if (!(await hasDeliveryPermission())) {
+    return { permission: 'disabled', delivery: 'unavailable' };
+  }
   try {
-    // requestPermission is idempotent after the first decision and returns the
-    // current authorization. Calling it here also covers existing profiles
-    // that never completed notification onboarding on this installation.
-    if (!(await requestPlatformPermission())) return false;
     await synchronizePushEndpoint();
-    const alertsVisible = await hasVisibleAlertPermission();
-    if (alertsVisible) {
-      await AsyncStorage.setItem(PUSH_ENABLED_KEY, 'true');
-    }
-    return alertsVisible;
+    return { permission: 'enabled', delivery: 'ready' };
   } catch (error) {
     logPushFailure('refresh', error);
-    return false;
+    return { permission: 'enabled', delivery: 'unavailable' };
   }
 }
 
-export async function isPushEnabled(): Promise<boolean> {
-  if (!(await hasVisibleAlertPermission())) return false;
-  return hasServerPushEndpoint();
+export async function isPushPermissionEnabled(): Promise<boolean> {
+  return hasDeliveryPermission();
 }
 
 export function registerPushListeners(input: {
@@ -329,14 +303,7 @@ export function registerPushListeners(input: {
     );
   });
   const unsubscribeToken = onTokenRefresh(messaging, token => {
-    registerToken(token)
-      .then(() =>
-        AsyncStorage.setItem(
-          PUSH_BINDING_VERSION_KEY,
-          IOS_PUSH_BINDING_VERSION,
-        ),
-      )
-      .catch(error => logPushFailure('token-refresh', error));
+    registerToken(token).catch(error => logPushFailure('token-refresh', error));
   });
   const unsubscribeLocalNotification = notifee.onForegroundEvent(
     ({ type, detail }) => {

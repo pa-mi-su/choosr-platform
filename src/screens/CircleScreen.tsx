@@ -38,8 +38,7 @@ import { chooseAndUploadProfilePhoto } from '../services/profilePhotoService';
 import { logPhotoFailure } from '../services/photoUploadService';
 import {
   enablePushNotifications,
-  isPushEnabled,
-  refreshPushRegistration,
+  isPushPermissionEnabled,
 } from '../services/pushNotifications';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
@@ -57,7 +56,7 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
   const [hasSnapshot, setHasSnapshot] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
   const connectionToken = route.params?.connectionToken;
   const redemptionStarted = useRef(false);
   const hasSnapshotRef = useRef(false);
@@ -93,13 +92,8 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
           await redeemCircleInvite(connectionToken);
           applySnapshot(await loadCircleSnapshot());
         }
-        isPushEnabled()
-          .then(notificationsEnabled => {
-            setPushEnabled(notificationsEnabled);
-            if (notificationsEnabled) {
-              refreshPushRegistration().catch(() => undefined);
-            }
-          })
+        isPushPermissionEnabled()
+          .then(setPushEnabled)
           .catch(() => undefined);
       }
     } catch (cause) {
@@ -317,7 +311,7 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
               </Pressable>
             </View>
 
-            {!pushEnabled ? (
+            {pushEnabled === false ? (
               <View style={styles.alertPanel}>
                 <View style={styles.alertCopy}>
                   <Text style={styles.alertTitle}>Don’t miss an invite</Text>

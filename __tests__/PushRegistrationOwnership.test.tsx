@@ -2,8 +2,6 @@ import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-const mockEnablePushNotifications = jest.fn();
-const mockIsPushEnabled = jest.fn();
 const mockRefreshPushRegistration = jest.fn();
 
 jest.mock('@react-navigation/native', () => {
@@ -16,9 +14,6 @@ jest.mock('@react-navigation/native', () => {
   };
 });
 jest.mock('../src/services/pushNotifications', () => ({
-  enablePushNotifications: (...args: unknown[]) =>
-    mockEnablePushNotifications(...args),
-  isPushEnabled: (...args: unknown[]) => mockIsPushEnabled(...args),
   refreshPushRegistration: (...args: unknown[]) =>
     mockRefreshPushRegistration(...args),
 }));
@@ -47,55 +42,17 @@ const metrics = {
   insets: { top: 47, right: 0, bottom: 34, left: 0 },
 };
 
-describe('push registration health banner', () => {
+describe('push registration ownership', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockRefreshPushRegistration.mockResolvedValue(false);
-    mockIsPushEnabled.mockResolvedValue(false);
-    mockEnablePushNotifications.mockResolvedValue(true);
+    mockRefreshPushRegistration.mockResolvedValue({
+      permission: 'enabled',
+      delivery: 'unavailable',
+    });
   });
 
-  test('surfaces and repairs a missing server endpoint', async () => {
+  test('does not show a settings warning or start registration from the gateway', async () => {
     let renderer!: ReactTestRenderer.ReactTestRenderer;
-    await ReactTestRenderer.act(async () => {
-      renderer = ReactTestRenderer.create(
-        <SafeAreaProvider initialMetrics={metrics}>
-          <ChoosrHomeScreen
-            navigation={{ navigate: jest.fn() } as never}
-            route={{ key: 'home', name: 'Home' } as never}
-          />
-        </SafeAreaProvider>,
-      );
-    });
-
-    expect(
-      renderer.root.findByProps({
-        children: 'Room alerts need attention',
-      }),
-    ).toBeDefined();
-
-    await ReactTestRenderer.act(async () => {
-      await renderer.root
-        .findByProps({
-          accessibilityLabel: 'Fix room alerts',
-        })
-        .props.onPress();
-    });
-
-    expect(mockEnablePushNotifications).toHaveBeenCalledTimes(1);
-    expect(() =>
-      renderer.root.findByProps({
-        children: 'Room alerts need attention',
-      }),
-    ).toThrow();
-
-    await ReactTestRenderer.act(async () => renderer.unmount());
-  });
-
-  test('does not mislabel a transient health-check failure as disabled alerts', async () => {
-    mockIsPushEnabled.mockRejectedValue(new Error('network_unavailable'));
-    let renderer!: ReactTestRenderer.ReactTestRenderer;
-
     await ReactTestRenderer.act(async () => {
       renderer = ReactTestRenderer.create(
         <SafeAreaProvider initialMetrics={metrics}>
@@ -112,6 +69,7 @@ describe('push registration health banner', () => {
         children: 'Room alerts need attention',
       }),
     ).toThrow();
+    expect(mockRefreshPushRegistration).not.toHaveBeenCalled();
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });

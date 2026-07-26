@@ -1,27 +1,11 @@
 import {
   findFirstUnswipedIndex,
   getRoomDestination,
-  loadItemsWithFallback,
   normalizeRoomCode,
   roomErrorMessage,
 } from '../src/services/roomFlow';
 
 describe('real room flow', () => {
-  it('uses a fallback deck when live discovery is temporarily unavailable', async () => {
-    await expect(
-      loadItemsWithFallback(
-        () => Promise.reject(new Error('Failed to fetch')),
-        ['fallback'],
-      ),
-    ).resolves.toEqual(['fallback']);
-  });
-
-  it('keeps a non-empty live discovery deck', async () => {
-    await expect(
-      loadItemsWithFallback(() => Promise.resolve(['live']), ['fallback']),
-    ).resolves.toEqual(['live']);
-  });
-
   it('does not treat a waiting room as joined', () => {
     expect(getRoomDestination('waiting', null)).toBe('waiting');
   });
