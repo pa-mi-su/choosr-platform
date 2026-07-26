@@ -8,7 +8,7 @@ import {
 } from '@react-native-firebase/messaging';
 
 const mockRpc = jest.fn<
-  Promise<{ error: null }>,
+  Promise<{ data?: unknown; error: null }>,
   [name: string, args?: unknown]
 >(() => Promise.resolve({ error: null }));
 const mockInvoke = jest.fn<
@@ -51,6 +51,7 @@ jest.mock('../src/services/anonymousAuth', () => ({
 }));
 
 import {
+  isPushEnabled,
   refreshPushRegistration,
   registerPushListeners,
 } from '../src/services/pushNotifications';
@@ -59,7 +60,12 @@ describe('push notification reliability', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     await AsyncStorage.clear();
-    mockRpc.mockResolvedValue({ error: null });
+    mockRpc.mockImplementation(name =>
+      Promise.resolve({
+        data: name === 'has_registered_push_token' ? true : undefined,
+        error: null,
+      }),
+    );
     (getAPNSToken as jest.Mock).mockResolvedValue('test-apns-token');
     (hasPermission as jest.Mock).mockResolvedValue(1);
     (notifee.getNotificationSettings as jest.Mock).mockResolvedValue({
@@ -183,6 +189,37 @@ describe('push notification reliability', () => {
 
     await expect(refreshPushRegistration()).resolves.toBe(true);
     expect(deleteToken).toHaveBeenCalledTimes(1);
+  });
+
+  test('retries a missing server endpoint without repeatedly deleting the iOS token', async () => {
+    let healthChecks = 0;
+    mockRpc.mockImplementation(name =>
+      Promise.resolve({
+        data:
+          name === 'has_registered_push_token'
+            ? ++healthChecks >= 2
+            : undefined,
+        error: null,
+      }),
+    );
+
+    await expect(refreshPushRegistration()).resolves.toBe(true);
+
+    expect(deleteToken).toHaveBeenCalledTimes(1);
+    expect(
+      mockRpc.mock.calls.filter(([name]) => name === 'register_push_token'),
+    ).toHaveLength(2);
+  });
+
+  test('does not report alerts ready when the server has no device endpoint', async () => {
+    mockRpc.mockImplementation(name =>
+      Promise.resolve({
+        data: name === 'has_registered_push_token' ? false : undefined,
+        error: null,
+      }),
+    );
+
+    await expect(isPushEnabled()).resolves.toBe(false);
   });
 
   test('does not claim visible alerts are enabled for provisional iOS delivery', async () => {

@@ -34,11 +34,13 @@ import { registerAndroidPushInstallation } from './androidPushRegistration';
 
 const PUSH_ENABLED_KEY = 'choosr.push.enabled';
 const PUSH_BINDING_VERSION_KEY = 'choosr.push.binding.version';
-const IOS_PUSH_BINDING_VERSION = '2';
+const PUSH_ROTATION_VERSION_KEY = 'choosr.push.rotation.version';
+const IOS_PUSH_BINDING_VERSION = '3';
 const ANDROID_NOTIFICATION_PERMISSION =
   'android.permission.POST_NOTIFICATIONS' as Permission;
 const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
 const IOS_APNS_RETRY_DELAYS_MS = [0, 250, 750, 1500] as const;
+const TOKEN_SYNC_RETRY_DELAYS_MS = [0, 500, 1500, 3500] as const;
 const PUSH_CHANNEL_ID = 'choosr-invitations';
 
 let pendingTokenSynchronization: Promise<void> | undefined;
@@ -59,6 +61,13 @@ async function registerToken(token: string): Promise<void> {
   });
   if (error) throw error;
   await dispatchPendingNotifications();
+}
+
+async function hasServerPushEndpoint(): Promise<boolean> {
+  await ensureAnonymousSession();
+  const { data, error } = await supabase.rpc('has_registered_push_token');
+  if (error) throw error;
+  return data;
 }
 
 async function requestPlatformPermission(): Promise<boolean> {
@@ -150,12 +159,16 @@ async function performTokenSynchronization(): Promise<void> {
     await registerDeviceForRemoteMessages(messaging);
   }
   await waitForIosApnsToken();
-  const bindingVersion = await AsyncStorage.getItem(PUSH_BINDING_VERSION_KEY);
-  if (bindingVersion !== IOS_PUSH_BINDING_VERSION) {
+  const rotationVersion = await AsyncStorage.getItem(PUSH_ROTATION_VERSION_KEY);
+  if (rotationVersion !== IOS_PUSH_BINDING_VERSION) {
     // A previously valid FCM installation can remain accepted by Google while
-    // losing its usable APNs association. Rotate once for this binding version
-    // after APNs is ready instead of repeatedly re-saving the stale token.
+    // losing its usable APNs association. Record the rotation separately so a
+    // transient backend failure cannot cause repeated token deletion.
     await deleteToken(messaging);
+    await AsyncStorage.setItem(
+      PUSH_ROTATION_VERSION_KEY,
+      IOS_PUSH_BINDING_VERSION,
+    );
   }
   await registerToken(await getToken(messaging));
   await AsyncStorage.setItem(
@@ -171,6 +184,25 @@ async function syncCurrentToken(): Promise<void> {
     });
   }
   return pendingTokenSynchronization;
+}
+
+async function synchronizePushEndpoint(): Promise<void> {
+  let lastError: unknown;
+  for (const delayMilliseconds of TOKEN_SYNC_RETRY_DELAYS_MS) {
+    if (delayMilliseconds) await wait(delayMilliseconds);
+    try {
+      await syncCurrentToken();
+      if (await hasServerPushEndpoint()) return;
+      const missingEndpoint = new Error(
+        'Push registration did not reach the server.',
+      );
+      missingEndpoint.name = 'push/server-endpoint-missing';
+      throw missingEndpoint;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 async function displayForegroundNotification(
@@ -224,7 +256,7 @@ async function displayForegroundNotification(
 export async function enablePushNotifications(): Promise<boolean> {
   try {
     if (!(await requestPlatformPermission())) return false;
-    await syncCurrentToken();
+    await synchronizePushEndpoint();
     if (!(await hasVisibleAlertPermission())) {
       await notifee.openNotificationSettings().catch(() => undefined);
       return false;
@@ -240,7 +272,7 @@ export async function enablePushNotifications(): Promise<boolean> {
 export async function refreshPushRegistration(): Promise<boolean> {
   try {
     if (!(await hasDeliveryPermission())) return false;
-    await syncCurrentToken();
+    await synchronizePushEndpoint();
     const alertsVisible = await hasVisibleAlertPermission();
     if (alertsVisible) {
       await AsyncStorage.setItem(PUSH_ENABLED_KEY, 'true');
@@ -254,11 +286,7 @@ export async function refreshPushRegistration(): Promise<boolean> {
 
 export async function isPushEnabled(): Promise<boolean> {
   if (!(await hasVisibleAlertPermission())) return false;
-  if (Platform.OS !== 'ios') return true;
-  return (
-    (await AsyncStorage.getItem(PUSH_BINDING_VERSION_KEY)) ===
-    IOS_PUSH_BINDING_VERSION
-  );
+  return hasServerPushEndpoint();
 }
 
 export function registerPushListeners(input: {
