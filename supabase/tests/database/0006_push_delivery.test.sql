@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(18);
 
 select has_extension('pg_net', 'pg_net is available for scheduled dispatch');
 select has_function(
@@ -12,6 +12,12 @@ select is(
   (select count(*) from cron.job where jobname = 'choosr-notification-dispatch'),
   1::bigint,
   'notification delivery is scheduled independently of mobile clients'
+);
+select has_trigger(
+  'public',
+  'notification_outbox',
+  'notification_outbox_dispatch_insert',
+  'new notification jobs start immediate push dispatch'
 );
 
 select has_column(

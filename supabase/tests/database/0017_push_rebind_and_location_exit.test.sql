@@ -17,18 +17,25 @@ select is(
     where user_id = 'd0000000-0000-0000-0000-000000000001'
       and platform = 'ios'
   ),
-  1::bigint,
-  're-registering an iOS installation replaces its stale platform token'
+  2::bigint,
+  'registering a second iPhone preserves both delivery endpoints'
 );
-select is(
-  (
-    select token
+select ok(
+  exists (
+    select 1
     from public.device_push_tokens
     where user_id = 'd0000000-0000-0000-0000-000000000001'
       and platform = 'ios'
+      and token = 'ios-token-aaaaaaaaaaaaaaaa'
+  )
+  and exists (
+    select 1
+    from public.device_push_tokens
+    where user_id = 'd0000000-0000-0000-0000-000000000001'
+      and platform = 'ios'
+      and token = 'ios-token-bbbbbbbbbbbbbbbb'
   ),
-  'ios-token-bbbbbbbbbbbbbbbb',
-  'the replacement iOS token is the only endpoint retained'
+  'both iPhones remain eligible for the same notification'
 );
 
 select * from public.upsert_choosr_profile('Location Host', 'location_host');

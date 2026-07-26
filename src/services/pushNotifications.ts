@@ -1,5 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
+import notifee, {
+  AndroidImportance,
+  EventType,
+  IOSNotificationSetting,
+} from '@notifee/react-native';
 import {
   AuthorizationStatus,
   deleteToken,
@@ -106,6 +110,17 @@ async function hasDeliveryPermission(): Promise<boolean> {
   return (
     status === AuthorizationStatus.AUTHORIZED ||
     status === AuthorizationStatus.PROVISIONAL
+  );
+}
+
+async function hasVisibleNotificationPresentation(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return hasDeliveryPermission();
+  if (!(await hasDeliveryPermission())) return false;
+  const settings = await notifee.getNotificationSettings();
+  return (
+    settings.ios.alert === IOSNotificationSetting.ENABLED ||
+    settings.ios.lockScreen === IOSNotificationSetting.ENABLED ||
+    settings.ios.notificationCenter === IOSNotificationSetting.ENABLED
   );
 }
 
@@ -260,6 +275,10 @@ async function displayForegroundNotification(
 export async function enablePushNotifications(): Promise<boolean> {
   try {
     if (!(await requestPlatformPermission(true))) return false;
+    if (!(await hasVisibleNotificationPresentation())) {
+      await notifee.openNotificationSettings().catch(() => undefined);
+      return false;
+    }
     // Permission and endpoint registration are separate facts. Once the OS
     // grants permission, do not tell the user alerts are disabled merely
     // because APNs, FCM, or the network is temporarily unavailable.
@@ -287,7 +306,7 @@ export async function refreshPushRegistration(): Promise<PushRegistrationHealth>
 }
 
 export async function isPushPermissionEnabled(): Promise<boolean> {
-  return hasDeliveryPermission();
+  return hasVisibleNotificationPresentation();
 }
 
 export function registerPushListeners(input: {

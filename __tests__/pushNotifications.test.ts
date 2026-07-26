@@ -54,6 +54,7 @@ jest.mock('../src/services/anonymousAuth', () => ({
 }));
 
 import {
+  enablePushNotifications,
   isPushPermissionEnabled,
   refreshPushRegistration,
   registerPushListeners,
@@ -309,6 +310,35 @@ describe('push notification reliability', () => {
       p_platform: 'ios',
       p_token: 'test-firebase-token-long-enough',
     });
+  });
+
+  test('does not report iOS alerts enabled when every visible presentation surface is disabled', async () => {
+    (notifee.getNotificationSettings as jest.Mock).mockResolvedValue({
+      authorizationStatus: 1,
+      ios: {
+        alert: 0,
+        lockScreen: 0,
+        notificationCenter: 0,
+      },
+    });
+
+    await expect(isPushPermissionEnabled()).resolves.toBe(false);
+  });
+
+  test('opens iOS notification settings when authorization exists but visible alerts are disabled', async () => {
+    (notifee.getNotificationSettings as jest.Mock).mockResolvedValue({
+      authorizationStatus: 1,
+      ios: {
+        alert: 0,
+        lockScreen: 0,
+        notificationCenter: 0,
+      },
+    });
+
+    await expect(enablePushNotifications()).resolves.toBe(false);
+
+    expect(notifee.openNotificationSettings).toHaveBeenCalledTimes(1);
+    expect(registerDeviceForRemoteMessages).not.toHaveBeenCalled();
   });
 
   test('does not attempt endpoint registration when OS permission is disabled', async () => {
