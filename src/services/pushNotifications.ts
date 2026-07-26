@@ -13,12 +13,12 @@ import {
   getMessaging,
   getToken,
   hasPermission,
-  isDeviceRegisteredForRemoteMessages,
   onMessage,
   onNotificationOpenedApp,
   onTokenRefresh,
   registerDeviceForRemoteMessages,
   requestPermission,
+  unregisterDeviceForRemoteMessages,
   type RemoteMessage,
 } from '@react-native-firebase/messaging';
 import {
@@ -39,7 +39,8 @@ const IOS_PUSH_BINDING_VERSION = '3';
 const ANDROID_NOTIFICATION_PERMISSION =
   'android.permission.POST_NOTIFICATIONS' as Permission;
 const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
-const IOS_APNS_RETRY_DELAYS_MS = [0, 250, 750, 1500] as const;
+const IOS_APNS_RETRY_DELAYS_MS = [0, 250, 750, 1500, 3000, 5000] as const;
+const IOS_APNS_RESET_DELAY_MS = 250;
 const TOKEN_SYNC_RETRY_DELAYS_MS = [0, 500, 1500, 3500] as const;
 const PUSH_CHANNEL_ID = 'choosr-invitations';
 
@@ -70,7 +71,9 @@ async function hasServerPushEndpoint(): Promise<boolean> {
   return data;
 }
 
-async function requestPlatformPermission(): Promise<boolean> {
+async function requestPlatformPermission(
+  openSettingsWhenDenied = false,
+): Promise<boolean> {
   if (Platform.OS === 'android') {
     if (Number(Platform.Version) < 33) return true;
     const result = await PermissionsAndroid.request(
@@ -85,8 +88,13 @@ async function requestPlatformPermission(): Promise<boolean> {
     sound: true,
     provisional: false,
   });
-  if (status !== AuthorizationStatus.AUTHORIZED) {
-    await notifee.openNotificationSettings().catch(() => undefined);
+  if (
+    status !== AuthorizationStatus.AUTHORIZED &&
+    status !== AuthorizationStatus.PROVISIONAL
+  ) {
+    if (openSettingsWhenDenied) {
+      await notifee.openNotificationSettings().catch(() => undefined);
+    }
     return false;
   }
   return true;
@@ -145,6 +153,24 @@ async function waitForIosApnsToken(): Promise<void> {
   throw error;
 }
 
+async function ensureIosApnsToken(): Promise<void> {
+  const messaging = getMessaging();
+  await registerDeviceForRemoteMessages(messaging);
+  try {
+    await waitForIosApnsToken();
+  } catch (error) {
+    if (diagnosticCode(error) !== 'push/apns-token-unavailable') throw error;
+
+    // UIApplication can retain a stale "registered" state while Firebase has
+    // no APNs token for this installation. Reset only after a bounded wait
+    // proves that state is unusable, then make one fresh registration attempt.
+    await unregisterDeviceForRemoteMessages(messaging);
+    await wait(IOS_APNS_RESET_DELAY_MS);
+    await registerDeviceForRemoteMessages(messaging);
+    await waitForIosApnsToken();
+  }
+}
+
 async function performTokenSynchronization(): Promise<void> {
   if (Platform.OS === 'android') {
     await registerToken(await registerAndroidPushInstallation());
@@ -152,13 +178,11 @@ async function performTokenSynchronization(): Promise<void> {
   }
 
   const messaging = getMessaging();
-  if (
-    Platform.OS === 'ios' &&
-    !isDeviceRegisteredForRemoteMessages(messaging)
-  ) {
-    await registerDeviceForRemoteMessages(messaging);
-  }
-  await waitForIosApnsToken();
+  // Apple recommends calling registerForRemoteNotifications on every launch.
+  // The operation is idempotent and is the source of truth: a cached
+  // "registered" flag can survive even when this installation has no usable
+  // APNs token.
+  await ensureIosApnsToken();
   const rotationVersion = await AsyncStorage.getItem(PUSH_ROTATION_VERSION_KEY);
   if (rotationVersion !== IOS_PUSH_BINDING_VERSION) {
     // A previously valid FCM installation can remain accepted by Google while
@@ -255,7 +279,7 @@ async function displayForegroundNotification(
 
 export async function enablePushNotifications(): Promise<boolean> {
   try {
-    if (!(await requestPlatformPermission())) return false;
+    if (!(await requestPlatformPermission(true))) return false;
     await synchronizePushEndpoint();
     if (!(await hasVisibleAlertPermission())) {
       await notifee.openNotificationSettings().catch(() => undefined);
@@ -271,7 +295,10 @@ export async function enablePushNotifications(): Promise<boolean> {
 
 export async function refreshPushRegistration(): Promise<boolean> {
   try {
-    if (!(await hasDeliveryPermission())) return false;
+    // requestPermission is idempotent after the first decision and returns the
+    // current authorization. Calling it here also covers existing profiles
+    // that never completed notification onboarding on this installation.
+    if (!(await requestPlatformPermission())) return false;
     await synchronizePushEndpoint();
     const alertsVisible = await hasVisibleAlertPermission();
     if (alertsVisible) {

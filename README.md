@@ -189,7 +189,11 @@ verified against the server rather than inferred from local permission state.
 A versioned, one-time iOS rebind replaces stale FCM installations without
 repeatedly deleting a token during transient failures; bounded retries repair
 missing endpoints, and the gateway visibly prompts the user when device
-settings still prevent registration. Realtime subscriptions are paired with
+settings still prevent registration. iOS registration follows Apple's
+idempotent launch contract: every startup requests the current authorization,
+registers for remote notifications, waits for APNs, repairs a stale native
+registration once when iOS reports registered without supplying a token, then
+persists the resulting Firebase token. Realtime subscriptions are paired with
 app-resume refresh and bounded recovery polling so the UI recovers from dropped
 socket events.
 
