@@ -4,6 +4,7 @@ import {
   buildServiceAccountClaims,
   readBearerAccessToken,
 } from './googleAuth.ts';
+import { normalizeFcmFailure } from './fcmError.ts';
 
 type ServiceAccount = {
   project_id: string;
@@ -142,14 +143,14 @@ async function sendMessage(input: {
   );
   if (response.ok) return { ok: true, invalidToken: false };
 
-  const responseText = await response.text();
+  const failure = normalizeFcmFailure(
+    response.status,
+    await response.text(),
+  );
   return {
     ok: false,
-    invalidToken:
-      response.status === 404 ||
-      responseText.includes('UNREGISTERED') ||
-      responseText.includes('INVALID_ARGUMENT'),
-    error: `FCM ${response.status}: ${responseText.slice(0, 300)}`,
+    invalidToken: failure.invalidToken,
+    error: failure.code,
   };
 }
 

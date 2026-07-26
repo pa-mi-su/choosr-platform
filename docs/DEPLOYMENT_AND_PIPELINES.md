@@ -51,12 +51,12 @@ production.
 
 ## GitHub Actions
 
-| Workflow              | Trigger                                    | Effect                                                           |
-| --------------------- | ------------------------------------------ | ---------------------------------------------------------------- |
-| `ci.yml`              | PR or push involving an environment branch | Formatting, lint, types, Jest, pgTAP, schema lint, Android build |
-| `ios-ci.yml`          | iOS/application PR changes or manual       | Unsigned production simulator build                              |
-| `supabase-deploy.yml` | Push to `uat` or `main`                    | Guarded UAT/production migrations and Edge Functions             |
-| `mobile-build.yml`    | Push to `uat` or `main`                    | UAT tester distribution or production store-candidate upload     |
+| Workflow              | Trigger                                 | Effect                                                           |
+| --------------------- | --------------------------------------- | ---------------------------------------------------------------- |
+| `ci.yml`              | PR, promoted branch push, or manual run | Formatting, lint, types, Jest, pgTAP, schema lint, Android build |
+| `ios-ci.yml`          | iOS/application PR changes or manual    | Unsigned production simulator build                              |
+| `supabase-deploy.yml` | Push to `dev`, `uat`, or `main`         | Guarded environment migrations and Edge Functions                |
+| `mobile-build.yml`    | Push to `dev`, `uat`, or `main`         | Signed environment artifact and optional distribution/upload     |
 
 Deployment workflows are intentionally fail-closed. They do not deploy or build signed
 artifacts until the matching GitHub environment sets the enable variable to `true`.
@@ -136,8 +136,8 @@ Perform these stages in order. Keep every deployment gate `false` until its stag
    `ios/Choosr/Firebase/dev/GoogleService-Info.plist`. These files remain ignored.
 5. Register the Apple development App ID with Push Notifications, then use automatic Xcode
    development signing for local devices.
-6. Run `npm run android:dev` and `npm run ios:dev`. The `dev` branch runs CI but never deploys
-   a hosted backend or distributes a signed release.
+6. Run `npm run android:dev` and `npm run ios:dev`. Dev deployment and signed-build workflows
+   remain fail-closed unless their GitHub environment gates are explicitly enabled.
 7. For physical devices, set `.env.dev` to the Mac's private Wi-Fi address on port `54321`;
    simulators may use `127.0.0.1`. Never use a private HTTP URL for UAT or Production.
 

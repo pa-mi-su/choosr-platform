@@ -111,11 +111,10 @@ weaken the normal E2EE contract, so the UI currently offers only
 
 ## Deployment
 
-Apply `20260724190000_add_ephemeral_chat.sql` followed by
-`20260724203000_add_private_chat_links_and_codes.sql`, deploy `chat-session`,
-and deploy the updated `dispatch-notifications`. Anonymous authentication,
-Realtime, Cron, the existing Firebase service-account secret, and platform
-push configuration must be enabled. No new static secret is required.
+Apply `20260724190000_add_ephemeral_chat.sql`, deploy `chat-session`, and deploy
+the updated `dispatch-notifications`. Anonymous authentication, Realtime, Cron,
+the existing Firebase service-account secret, and platform push configuration
+must be enabled. No new static secret is required.
 
 Native `choosr://chat` handling is configured for iOS and Android. A recipient
 without Choosr must install the app and request a fresh short-lived invitation.
