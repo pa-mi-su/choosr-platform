@@ -339,6 +339,21 @@ export type Database = {
         Args: { p_platform: 'ios' | 'android'; p_token: string };
         Returns: undefined;
       };
+      report_push_registration: {
+        Args: {
+          p_platform: 'ios' | 'android';
+          p_status: 'ready' | 'unavailable';
+          p_stage: string;
+          p_code: string;
+          p_app_version: string;
+          p_build_number: string;
+        };
+        Returns: undefined;
+      };
+      push_token_status: {
+        Args: { p_token: string };
+        Returns: 'active' | 'invalidated' | 'missing';
+      };
       has_registered_push_token: {
         Args: Record<never, never>;
         Returns: boolean;

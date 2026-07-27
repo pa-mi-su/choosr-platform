@@ -5,6 +5,8 @@ import notifee, {
 } from '@notifee/react-native';
 import {
   AuthorizationStatus,
+  deleteToken,
+  getAPNSToken,
   getInitialNotification,
   getMessaging,
   getToken,
@@ -23,6 +25,7 @@ import {
   type Permission,
 } from 'react-native';
 
+import { env } from '../config/generatedEnv';
 import { supabase } from '../lib/supabase';
 import { ensureAnonymousSession } from './anonymousAuth';
 import { registerAndroidPushInstallation } from './androidPushRegistration';
@@ -30,10 +33,21 @@ import { registerAndroidPushInstallation } from './androidPushRegistration';
 const ANDROID_NOTIFICATION_PERMISSION =
   'android.permission.POST_NOTIFICATIONS' as Permission;
 const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
+const IOS_APNS_RETRY_DELAYS_MS = [0, 250, 750, 1500, 3000] as const;
 const TOKEN_SYNC_RETRY_DELAYS_MS = [0, 500, 1500] as const;
 const PUSH_CHANNEL_ID = 'choosr-invitations';
 
 let pendingTokenSynchronization: Promise<void> | undefined;
+
+type PushStage =
+  | 'permission'
+  | 'apns_registration'
+  | 'apns_token'
+  | 'fcm_token'
+  | 'server_registration';
+
+type StagedPushError = Error & { pushStage?: PushStage };
+type PushTokenStatus = 'active' | 'invalidated' | 'missing';
 
 export type PushRegistrationHealth =
   | { permission: 'disabled'; delivery: 'unavailable' }
@@ -47,7 +61,7 @@ export type NotificationDispatchSummary = {
   invalidTokensRemoved: number;
 };
 
-async function registerToken(token: string): Promise<void> {
+async function registerToken(token: string): Promise<PushTokenStatus> {
   await ensureAnonymousSession();
   const { error } = await supabase.rpc('register_push_token', {
     p_platform: Platform.OS === 'ios' ? 'ios' : 'android',
@@ -55,6 +69,42 @@ async function registerToken(token: string): Promise<void> {
   });
   if (error) throw error;
   await dispatchPendingNotifications();
+  const { data: status, error: statusError } = await supabase.rpc(
+    'push_token_status',
+    { p_token: token },
+  );
+  if (statusError) throw statusError;
+  return status;
+}
+
+async function reportPushRegistration(
+  status: 'ready' | 'unavailable',
+  stage: PushStage,
+  code: string,
+): Promise<void> {
+  try {
+    await ensureAnonymousSession();
+    await supabase.rpc('report_push_registration', {
+      p_platform: Platform.OS === 'ios' ? 'ios' : 'android',
+      p_status: status,
+      p_stage: stage,
+      p_code: code,
+      p_app_version: env.appVersion,
+      p_build_number: env.buildNumber,
+    });
+  } catch (error) {
+    logPushFailure('health-report', error);
+  }
+}
+
+async function reportPushFailure(error: unknown): Promise<void> {
+  await reportPushRegistration(
+    'unavailable',
+    error instanceof Error && (error as StagedPushError).pushStage
+      ? (error as StagedPushError).pushStage!
+      : 'server_registration',
+    diagnosticCode(error),
+  );
 }
 
 async function hasServerPushEndpoint(): Promise<boolean> {
@@ -133,9 +183,46 @@ const logPushFailure = (context: string, error: unknown): void => {
 const wait = (milliseconds: number) =>
   new Promise<void>(resolve => setTimeout(resolve, milliseconds));
 
+async function atPushStage<T>(
+  stage: PushStage,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof Error) {
+      (error as StagedPushError).pushStage = stage;
+    }
+    throw error;
+  }
+}
+
+async function waitForIosApnsToken(): Promise<void> {
+  const messaging = getMessaging();
+  for (const delayMilliseconds of IOS_APNS_RETRY_DELAYS_MS) {
+    if (delayMilliseconds) await wait(delayMilliseconds);
+    if (await getAPNSToken(messaging)) return;
+  }
+  const error = new Error('APNs token is not ready.');
+  error.name = 'push/apns-token-unavailable';
+  throw error;
+}
+
 async function performTokenSynchronization(): Promise<void> {
   if (Platform.OS === 'android') {
-    await registerToken(await registerAndroidPushInstallation());
+    const token = await atPushStage('fcm_token', () =>
+      registerAndroidPushInstallation(),
+    );
+    const status = await atPushStage('server_registration', () =>
+      registerToken(token),
+    );
+    if (status !== 'active') {
+      const error = new Error('FCM rejected the Android installation token.');
+      error.name = 'push/fcm-token-rejected';
+      (error as StagedPushError).pushStage = 'fcm_token';
+      throw error;
+    }
+    await reportPushRegistration('ready', 'server_registration', 'ok');
     return;
   }
 
@@ -144,8 +231,34 @@ async function performTokenSynchronization(): Promise<void> {
   // part of recovery: if obtaining its replacement fails, the server loses the
   // only endpoint it could still deliver to. Firebase owns the APNs binding and
   // getToken surfaces readiness failures for the retry loop below.
-  await registerDeviceForRemoteMessages(messaging);
-  await registerToken(await getToken(messaging));
+  await atPushStage('apns_registration', () =>
+    registerDeviceForRemoteMessages(messaging),
+  );
+  // FCM cannot create a usable iOS installation until Apple has returned the
+  // APNs token. On a cold launch that callback is asynchronous, so a direct
+  // getToken call can fail before registration has had time to complete.
+  await atPushStage('apns_token', waitForIosApnsToken);
+  let token = await atPushStage('fcm_token', () => getToken(messaging));
+  let status = await atPushStage('server_registration', () =>
+    registerToken(token),
+  );
+  if (status === 'invalidated') {
+    // This is not speculative token churn: the delivery worker has retained
+    // FCM's canonical UNREGISTERED result for this exact token. Rotate once,
+    // after APNs is ready, so Firebase cannot return the rejected cache entry.
+    await atPushStage('fcm_token', () => deleteToken(messaging));
+    token = await atPushStage('fcm_token', () => getToken(messaging));
+    status = await atPushStage('server_registration', () =>
+      registerToken(token),
+    );
+  }
+  if (status !== 'active') {
+    const error = new Error('FCM rejected the iOS installation token.');
+    error.name = 'push/fcm-token-rejected';
+    (error as StagedPushError).pushStage = 'fcm_token';
+    throw error;
+  }
+  await reportPushRegistration('ready', 'server_registration', 'ok');
 }
 
 async function syncCurrentToken(): Promise<void> {
@@ -226,17 +339,30 @@ async function displayForegroundNotification(
 
 export async function enablePushNotifications(): Promise<boolean> {
   try {
-    if (!(await requestPlatformPermission(true))) return false;
+    if (!(await requestPlatformPermission(true))) {
+      await reportPushRegistration(
+        'unavailable',
+        'permission',
+        'permission_disabled',
+      );
+      return false;
+    }
     if (!(await hasVisibleNotificationPresentation())) {
+      await reportPushRegistration(
+        'unavailable',
+        'permission',
+        'presentation_disabled',
+      );
       await notifee.openNotificationSettings().catch(() => undefined);
       return false;
     }
     // Permission and endpoint registration are separate facts. Once the OS
     // grants permission, do not tell the user alerts are disabled merely
     // because APNs, FCM, or the network is temporarily unavailable.
-    await synchronizePushEndpoint().catch(error =>
-      logPushFailure('enable-registration', error),
-    );
+    await synchronizePushEndpoint().catch(async error => {
+      logPushFailure('enable-registration', error);
+      await reportPushFailure(error);
+    });
     return true;
   } catch (error) {
     logPushFailure('enable', error);
@@ -246,6 +372,11 @@ export async function enablePushNotifications(): Promise<boolean> {
 
 export async function refreshPushRegistration(): Promise<PushRegistrationHealth> {
   if (!(await hasDeliveryPermission())) {
+    await reportPushRegistration(
+      'unavailable',
+      'permission',
+      'permission_disabled',
+    );
     return { permission: 'disabled', delivery: 'unavailable' };
   }
   try {
@@ -253,6 +384,7 @@ export async function refreshPushRegistration(): Promise<PushRegistrationHealth>
     return { permission: 'enabled', delivery: 'ready' };
   } catch (error) {
     logPushFailure('refresh', error);
+    await reportPushFailure(error);
     return { permission: 'enabled', delivery: 'unavailable' };
   }
 }

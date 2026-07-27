@@ -40,4 +40,16 @@ describe('FCM error boundary', () => {
       invalidToken: false,
     });
   });
+
+  test('does not invalidate a token for a generic HTTP 404', () => {
+    expect(
+      normalizeFcmFailure(
+        404,
+        JSON.stringify({ error: { status: 'NOT_FOUND' } }),
+      ),
+    ).toEqual({
+      code: 'FCM_404_NOT_FOUND',
+      invalidToken: false,
+    });
+  });
 });
