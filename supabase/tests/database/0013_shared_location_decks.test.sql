@@ -9,7 +9,7 @@ select has_table(
 select has_function(
   'public',
   'create_location_decision_session',
-  array['text', 'double precision', 'double precision', 'text', 'text']
+  array['text', 'double precision', 'double precision', 'text', 'text', 'text']
 );
 select has_function(
   'public',

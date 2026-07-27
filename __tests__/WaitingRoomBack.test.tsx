@@ -70,4 +70,39 @@ describe('waiting room navigation', () => {
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
+
+  test('persists the creator cuisine preference in a food room', async () => {
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <WaitingScreen
+            navigation={{ replace: jest.fn(), popToTop: jest.fn() } as never}
+            route={{
+              key: 'waiting-food',
+              name: 'Waiting',
+              params: {
+                mode: 'eat',
+                searchArea: 'Orlando, Florida',
+                searchLatitude: 28.5383,
+                searchLongitude: -81.3792,
+                cuisineFilter: 'mexican',
+              },
+            }}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    expect(mockCreateLocationDecisionRoom).toHaveBeenCalledWith({
+      mode: 'eat',
+      latitude: 28.5383,
+      longitude: -81.3792,
+      locationLabel: 'Orlando, Florida',
+      cuisineFilter: 'mexican',
+    });
+
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
 });

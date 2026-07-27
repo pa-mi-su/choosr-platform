@@ -182,10 +182,11 @@ describe('createLocationDecisionRoom', () => {
 
     await expect(
       createLocationDecisionRoom({
-        mode: 'do',
+        mode: 'eat',
         latitude: 28.5383,
         longitude: -81.3792,
         locationLabel: 'Orlando, Florida',
+        cuisineFilter: 'mexican',
       }),
     ).resolves.toEqual({
       sessionId: 'session-1',
@@ -194,10 +195,11 @@ describe('createLocationDecisionRoom', () => {
       expiresAt: '2026-07-25T00:00:00.000Z',
     });
     expect(mockRpc).toHaveBeenCalledWith('create_location_decision_session', {
-      p_mode: 'do',
+      p_mode: 'eat',
       p_latitude: 28.5383,
       p_longitude: -81.3792,
       p_location_label: 'Orlando, Florida',
+      p_cuisine_filter: 'mexican',
       p_region: 'US',
     });
   });

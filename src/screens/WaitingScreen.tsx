@@ -27,6 +27,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const searchArea = route.params.searchArea;
   const searchLatitude = route.params.searchLatitude;
   const searchLongitude = route.params.searchLongitude;
+  const cuisineFilter = route.params.cuisineFilter;
   const connectionId = route.params.connectionId;
   const connectionName = route.params.connectionName;
   const customItems = route.params.customItems;
@@ -69,6 +70,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
               latitude: searchLatitude!,
               longitude: searchLongitude!,
               locationLabel: searchArea!,
+              cuisineFilter: mode.id === 'eat' ? cuisineFilter ?? 'all' : 'all',
             });
       setInviteToken(credentials.inviteToken);
       setRoom({
@@ -94,6 +96,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     }
   }, [
     connectionId,
+    cuisineFilter,
     customItems,
     mode.id,
     searchArea,

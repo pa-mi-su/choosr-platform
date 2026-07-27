@@ -9,6 +9,8 @@ import {
   EXCLUDED_ACTIVITY_TYPES,
   isEligibleActivityPlace,
 } from './activityTypes.ts';
+import { googleTypesForCuisine } from './cuisines.ts';
+import { variedQualitySelection } from './variedSelection.ts';
 import { isPublicWebUrl } from './websitePreview.ts';
 
 const IMAGE_BUCKET = 'discovery-images';
@@ -223,29 +225,9 @@ function placeScore(
   );
 }
 
-function diverseTopPlaces(candidates: ValidGooglePlace[]) {
-  const selected: ValidGooglePlace[] = [];
-  const typeCounts = new Map<string, number>();
-  for (const place of candidates) {
-    const type = place.primaryType ?? 'other';
-    const count = typeCounts.get(type) ?? 0;
-    if (count >= 2) continue;
-    selected.push(place);
-    typeCounts.set(type, count + 1);
-    if (selected.length === GOOGLE_RESULT_LIMIT) break;
-  }
-  for (const place of candidates) {
-    if (selected.length === GOOGLE_RESULT_LIMIT) break;
-    if (!selected.some(candidate => candidate.id === place.id)) {
-      selected.push(place);
-    }
-  }
-  return selected;
-}
-
 async function searchGooglePlaces(
   key: string,
-  mode: 'eat' | 'do',
+  request: DeckRequest,
   center: { latitude: number; longitude: number },
   radius: number,
 ) {
@@ -259,10 +241,12 @@ async function searchGooglePlaces(
         'X-Goog-FieldMask': GOOGLE_PLACES_FIELDS,
       },
       body: JSON.stringify({
-        ...(mode === 'eat'
-          ? { includedTypes: ['restaurant'] }
+        ...(request.mode === 'eat'
+          ? { includedTypes: googleTypesForCuisine(request.cuisineFilter) }
           : { includedPrimaryTypes: ACTIVITY_PRIMARY_TYPES }),
-        ...(mode === 'eat' ? {} : { excludedTypes: EXCLUDED_ACTIVITY_TYPES }),
+        ...(request.mode === 'eat'
+          ? {}
+          : { excludedTypes: EXCLUDED_ACTIVITY_TYPES }),
         maxResultCount: GOOGLE_SEARCH_CANDIDATE_LIMIT,
         rankPreference: 'POPULARITY',
         locationRestriction: { circle: { center, radius } },
@@ -292,12 +276,7 @@ async function buildGoogleNearbyDeck(
   const candidatesById = new Map<string, ValidGooglePlace>();
 
   for (const radius of radii) {
-    const candidates = await searchGooglePlaces(
-      key,
-      request.mode,
-      center,
-      radius,
-    );
+    const candidates = await searchGooglePlaces(key, request, center, radius);
     candidates
       .filter(place => validGooglePlace(place, request.mode))
       .forEach(place => {
@@ -306,12 +285,13 @@ async function buildGoogleNearbyDeck(
     if (candidatesById.size >= GOOGLE_RESULT_LIMIT) break;
   }
 
-  const places = diverseTopPlaces(
+  const places = variedQualitySelection(
     [...candidatesById.values()].sort(
       (left, right) =>
         placeScore(right, participantLocations) -
         placeScore(left, participantLocations),
     ),
+    GOOGLE_RESULT_LIMIT,
   );
   const images = await Promise.all(
     places.map(async place => {

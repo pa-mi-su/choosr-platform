@@ -1,3 +1,5 @@
+import type { CuisineFilter } from '../data/cuisines';
+
 export type Json =
   | string
   | number
@@ -31,6 +33,7 @@ type SessionRow = {
   expires_at: string;
   matched_at: string | null;
   completed_at: string | null;
+  cuisine_filter: CuisineFilter;
 };
 
 type ParticipantRow = {
@@ -242,6 +245,7 @@ export type Database = {
           p_latitude: number;
           p_longitude: number;
           p_location_label: string;
+          p_cuisine_filter?: CuisineFilter;
           p_region?: string;
         };
         Returns: {

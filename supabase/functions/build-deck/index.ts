@@ -101,6 +101,7 @@ Deno.serve(async request => {
           latitude: participantLocations[0].latitude,
           longitude: participantLocations[0].longitude,
           locationLabel: context.location_label,
+          cuisineFilter: context.cuisine_filter,
           participantLocations,
         }),
       );

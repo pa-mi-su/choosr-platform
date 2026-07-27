@@ -6,6 +6,7 @@ import type {
   DecisionMode,
   SwipeDirection,
 } from '../types/domain';
+import type { CuisineFilter } from '../data/cuisines';
 import type { Json, SessionStatus } from '../types/database';
 import type { Database } from '../types/database';
 import { ensureAnonymousSession } from './anonymousAuth';
@@ -142,6 +143,7 @@ export async function createLocationDecisionRoom(input: {
   latitude: number;
   longitude: number;
   locationLabel: string;
+  cuisineFilter?: CuisineFilter;
   region?: string;
 }): Promise<RoomCredentials> {
   await ensureAnonymousSession();
@@ -152,6 +154,8 @@ export async function createLocationDecisionRoom(input: {
       p_latitude: input.latitude,
       p_longitude: input.longitude,
       p_location_label: input.locationLabel,
+      p_cuisine_filter:
+        input.mode === 'eat' ? input.cuisineFilter ?? 'all' : 'all',
       p_region: input.region ?? 'US',
     },
   );
