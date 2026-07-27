@@ -9,7 +9,10 @@ import {
   EXCLUDED_ACTIVITY_TYPES,
   isEligibleActivityPlace,
 } from './activityTypes.ts';
-import { googleTypesForCuisine } from './cuisines.ts';
+import {
+  googleFoodTypeRestriction,
+  matchesGoogleCuisine,
+} from './googleCuisineFilter.ts';
 import { variedQualitySelection } from './variedSelection.ts';
 import { isPublicWebUrl } from './websitePreview.ts';
 
@@ -242,7 +245,7 @@ async function searchGooglePlaces(
       },
       body: JSON.stringify({
         ...(request.mode === 'eat'
-          ? { includedTypes: googleTypesForCuisine(request.cuisineFilter) }
+          ? googleFoodTypeRestriction(request.cuisineFilter)
           : { includedPrimaryTypes: ACTIVITY_PRIMARY_TYPES }),
         ...(request.mode === 'eat'
           ? {}
@@ -278,7 +281,12 @@ async function buildGoogleNearbyDeck(
   for (const radius of radii) {
     const candidates = await searchGooglePlaces(key, request, center, radius);
     candidates
-      .filter(place => validGooglePlace(place, request.mode))
+      .filter(
+        place =>
+          validGooglePlace(place, request.mode) &&
+          (request.mode !== 'eat' ||
+            matchesGoogleCuisine(place, request.cuisineFilter)),
+      )
       .forEach(place => {
         candidatesById.set(place.id, place);
       });
