@@ -5,11 +5,15 @@ Protected content adapter for the Choosr decision engine.
 - `do` geocodes a ZIP/postal code and queries Geoapify Places using
   `GEOAPIFY_API_KEY`.
 - `eat` uses the same server-side geocoding boundary, then queries Google Places API
-  (New) with `GOOGLE_PLACES_API_KEY`.
+  (New) with `GOOGLE_PLACES_API_KEY`. The creator's cuisine preference maps to
+  supported Google Place types in the provider query.
 - Provider credentials are Supabase secrets and never mobile environment values.
 - Food decks are hard-capped at five restaurants. Cards include a Google place photo when
   available, cuisine/type, rating and review count, distance, address, Google Maps action,
   and visible Google/photo attribution.
+- Food choices are sampled from a quality-ranked candidate pool instead of
+  always taking the same top five. Repeated identical searches can therefore
+  rotate the actual restaurants while retaining quality and distance signals.
 - Google photo media is resolved and cached by the Edge Function in the
   `discovery-images` bucket. The Google API key never appears in the mobile payload.
 - `DISCOVERY_RESULT_LIMIT` optionally changes the Activity default (10, bounded to 1–20).

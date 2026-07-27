@@ -1,8 +1,15 @@
-export type ChatAction = 'create' | 'join' | 'status' | 'send' | 'destroy';
+export type ChatAction =
+  | 'create'
+  | 'join'
+  | 'openDecision'
+  | 'status'
+  | 'send'
+  | 'destroy';
 
 export type ChatRequestBody = {
   action?: unknown;
   roomId?: unknown;
+  sessionId?: unknown;
   invitationToken?: unknown;
   publicKey?: unknown;
   clientMessageId?: unknown;
@@ -21,6 +28,7 @@ export function isChatAction(value: unknown): value is ChatAction {
   return (
     value === 'create' ||
     value === 'join' ||
+    value === 'openDecision' ||
     value === 'status' ||
     value === 'send' ||
     value === 'destroy'
@@ -30,10 +38,18 @@ export function isChatAction(value: unknown): value is ChatAction {
 export function validateChatRequest(body: ChatRequestBody): string | undefined {
   if (!isChatAction(body.action)) return 'Unsupported chat action.';
   if (
-    (body.action === 'create' || body.action === 'join') &&
+    (body.action === 'create' ||
+      body.action === 'join' ||
+      body.action === 'openDecision') &&
     (typeof body.publicKey !== 'string' || !base64Key.test(body.publicKey))
   ) {
     return 'Invalid temporary public key.';
+  }
+  if (
+    body.action === 'openDecision' &&
+    (typeof body.sessionId !== 'string' || !uuid.test(body.sessionId))
+  ) {
+    return 'Invalid matched room.';
   }
   if (
     body.action === 'join' &&

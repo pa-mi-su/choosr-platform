@@ -1,4 +1,5 @@
 import type { DecisionItem, DecisionMode } from './domain';
+import type { CuisineFilter } from '../data/cuisines';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -29,6 +30,7 @@ export type RootStackParamList = {
     searchArea?: string;
     searchLatitude?: number;
     searchLongitude?: number;
+    cuisineFilter?: CuisineFilter;
     connectionId?: string;
     connectionName?: string;
     customPrompt?: string;
@@ -47,6 +49,20 @@ export type RootStackParamList = {
     mode: DecisionMode;
     searchArea?: string;
   };
-  Match: { sessionId: string; item: DecisionItem; searchArea?: string };
-  NoMatch: { sessionId: string; mode: DecisionMode; searchArea?: string };
+  Match: {
+    sessionId: string;
+    item: DecisionItem;
+    searchArea?: string;
+    openedFromHistory?: boolean;
+    partnerDisplayName?: string | null;
+    partnerPhotoUrl?: string | null;
+  };
+  NoMatch: {
+    sessionId: string;
+    mode: DecisionMode;
+    searchArea?: string;
+    openedFromHistory?: boolean;
+    partnerDisplayName?: string | null;
+    partnerPhotoUrl?: string | null;
+  };
 };

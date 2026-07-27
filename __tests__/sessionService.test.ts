@@ -17,6 +17,8 @@ import {
   acknowledgeDecisionRoom,
   cancelDecisionRoom,
   createLocationDecisionRoom,
+  dismissAllCompletedRooms,
+  dismissCompletedRoom,
   loadRoomHistory,
   submitDecisionReliably,
 } from '../src/services/sessionService';
@@ -69,6 +71,8 @@ describe('loadRoomHistory', () => {
       total_choices: 4,
       completed_choices: 2,
       matched_item_id: 'choice-2',
+      partner_display_name: 'Alex',
+      partner_avatar_path: null,
     };
     const history = queryResult({ data: [session], error: null });
     mockRpc.mockReturnValue(history);
@@ -78,6 +82,8 @@ describe('loadRoomHistory', () => {
         sessionId: 'session-1',
         roundNumber: 2,
         matchedItemId: 'choice-2',
+        partnerDisplayName: 'Alex',
+        partnerPhotoUrl: null,
       }),
     ]);
     expect(mockRpc).toHaveBeenCalledWith('list_active_room_history');
@@ -88,6 +94,28 @@ describe('loadRoomHistory', () => {
     mockRpc.mockReturnValue(queryResult({ data: [], error: null }));
 
     await expect(loadRoomHistory()).resolves.toEqual([]);
+  });
+});
+
+describe('completed room history controls', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEnsureAnonymousSession.mockResolvedValue({
+      user: { id: 'anonymous-user-1' },
+    });
+    mockRpc.mockResolvedValue({ data: 1, error: null });
+  });
+
+  it('deletes one completed result only for the current participant', async () => {
+    await expect(dismissCompletedRoom('session-1')).resolves.toBeUndefined();
+    expect(mockRpc).toHaveBeenCalledWith('dismiss_completed_room', {
+      p_session_id: 'session-1',
+    });
+  });
+
+  it('deletes all completed results only for the current participant', async () => {
+    await expect(dismissAllCompletedRooms()).resolves.toBeUndefined();
+    expect(mockRpc).toHaveBeenCalledWith('dismiss_all_completed_rooms');
   });
 });
 
@@ -154,10 +182,11 @@ describe('createLocationDecisionRoom', () => {
 
     await expect(
       createLocationDecisionRoom({
-        mode: 'do',
+        mode: 'eat',
         latitude: 28.5383,
         longitude: -81.3792,
         locationLabel: 'Orlando, Florida',
+        cuisineFilter: 'mexican',
       }),
     ).resolves.toEqual({
       sessionId: 'session-1',
@@ -166,10 +195,11 @@ describe('createLocationDecisionRoom', () => {
       expiresAt: '2026-07-25T00:00:00.000Z',
     });
     expect(mockRpc).toHaveBeenCalledWith('create_location_decision_session', {
-      p_mode: 'do',
+      p_mode: 'eat',
       p_latitude: 28.5383,
       p_longitude: -81.3792,
       p_location_label: 'Orlando, Florida',
+      p_cuisine_filter: 'mexican',
       p_region: 'US',
     });
   });

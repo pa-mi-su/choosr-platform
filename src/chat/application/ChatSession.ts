@@ -132,6 +132,40 @@ export class ChatSession {
     }
   }
 
+  async openDecision(ownUserId: string, sessionId: string): Promise<void> {
+    if (this.runtime) {
+      throw new ChatError(
+        'active_chat_exists',
+        'End your current private chat before starting another.',
+      );
+    }
+    const keyPair = createTemporaryKeyPair();
+    try {
+      const active = await this.gateway.openDecisionChat(
+        sessionId,
+        encodePublicKey(keyPair.publicKey),
+      );
+      this.runtime = {
+        ownUserId,
+        keyPair,
+        messages: [],
+        active,
+        ...(active.peerPublicKey
+          ? {
+              sharedKey: deriveSharedKey(
+                active.peerPublicKey,
+                keyPair.secretKey,
+              ),
+            }
+          : {}),
+      };
+      if (active.status === 'active') await this.refreshMessages();
+    } catch (error) {
+      destroyKey(keyPair.secretKey);
+      throw error;
+    }
+  }
+
   async refreshStatus(): Promise<'inviting' | 'active' | 'destroyed'> {
     const runtime = this.runtime;
     if (!runtime) return 'destroyed';

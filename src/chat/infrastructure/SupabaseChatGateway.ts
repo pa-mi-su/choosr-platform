@@ -31,6 +31,7 @@ type ActiveRow = {
   own_public_key: string;
   peer_public_key: string | null;
   room_expires_at: string;
+  decision_session_id: string | null;
 };
 type JoinRow = {
   room_id: string;
@@ -47,7 +48,7 @@ function mapFailure(error: unknown): ChatError {
     error && typeof error === 'object' && 'message' in error
       ? String(error.message)
       : '';
-  if (/invitation|conflict|409/i.test(message)) {
+  if (/invitation|not available|unavailable|conflict|409/i.test(message)) {
     return new ChatError(
       'invitation_unavailable',
       'That private-chat invitation has expired or was already used.',
@@ -107,6 +108,33 @@ export class SupabaseChatGateway implements ChatGateway {
     };
   }
 
+  async openDecisionChat(
+    sessionId: string,
+    publicKey: string,
+  ): Promise<ActiveChatState> {
+    const row = first(
+      await this.invoke<ActiveRow[]>('openDecision', {
+        sessionId,
+        publicKey,
+      }),
+    );
+    if (!row) {
+      throw new ChatError(
+        'invitation_unavailable',
+        'That matched private chat is unavailable.',
+      );
+    }
+    return {
+      roomId: row.room_id,
+      role: row.role,
+      status: row.status,
+      publicKey,
+      peerPublicKey: row.peer_public_key ?? undefined,
+      decisionSessionId: row.decision_session_id ?? undefined,
+      expiresAt: row.room_expires_at,
+    };
+  }
+
   async getActiveChat(): Promise<ActiveChatState | undefined> {
     const row = first(await this.invoke<ActiveRow[]>('status', {}));
     if (!row) return undefined;
@@ -116,6 +144,7 @@ export class SupabaseChatGateway implements ChatGateway {
       status: row.status,
       publicKey: row.own_public_key,
       peerPublicKey: row.peer_public_key ?? undefined,
+      decisionSessionId: row.decision_session_id ?? undefined,
       expiresAt: row.room_expires_at,
     };
   }

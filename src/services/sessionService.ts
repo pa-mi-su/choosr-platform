@@ -6,11 +6,13 @@ import type {
   DecisionMode,
   SwipeDirection,
 } from '../types/domain';
+import type { CuisineFilter } from '../data/cuisines';
 import type { Json, SessionStatus } from '../types/database';
 import type { Database } from '../types/database';
 import { ensureAnonymousSession } from './anonymousAuth';
 import { readOfflineSnapshot, writeOfflineSnapshot } from './offlineSnapshot';
 import { parseDecisionItem } from './decisionItemParser';
+import { profilePhotoUrl } from './profilePhotoService';
 import { withSupabaseReadRetry } from './requestTimeout';
 
 export type RoomCredentials = {
@@ -41,15 +43,34 @@ export type RoomHistoryItem = DecisionRoom & {
   totalChoices: number;
   completedChoices: number;
   matchedItemId: string | null;
+  partnerDisplayName: string | null;
+  partnerPhotoUrl: string | null;
+  selectionComplete: boolean;
+  resultAcknowledged: boolean;
 };
 
-const ROOM_HISTORY_CACHE_KEY = '@choosr/active-room-history/v1';
+const ROOM_HISTORY_CACHE_KEY = '@choosr/active-room-history/v2';
 const ROOM_HISTORY_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
 const ROOM_HISTORY_REQUEST_TIMEOUT_MS = 7_000;
 type RoomHistorySnapshot = {
   userId: string;
   rooms: RoomHistoryItem[];
 };
+
+async function updateCachedRoomHistory(
+  userId: string,
+  update: (rooms: RoomHistoryItem[]) => RoomHistoryItem[],
+): Promise<void> {
+  const snapshot = await readOfflineSnapshot<RoomHistorySnapshot>(
+    ROOM_HISTORY_CACHE_KEY,
+    ROOM_HISTORY_CACHE_MAX_AGE_MS,
+  );
+  if (!snapshot || snapshot.userId !== userId) return;
+  await writeOfflineSnapshot(ROOM_HISTORY_CACHE_KEY, {
+    ...snapshot,
+    rooms: update(snapshot.rooms),
+  });
+}
 
 export async function readCachedRoomHistory(): Promise<
   RoomHistoryItem[] | null
@@ -124,6 +145,7 @@ export async function createLocationDecisionRoom(input: {
   latitude: number;
   longitude: number;
   locationLabel: string;
+  cuisineFilter?: CuisineFilter;
   region?: string;
 }): Promise<RoomCredentials> {
   await ensureAnonymousSession();
@@ -134,6 +156,8 @@ export async function createLocationDecisionRoom(input: {
       p_latitude: input.latitude,
       p_longitude: input.longitude,
       p_location_label: input.locationLabel,
+      p_cuisine_filter:
+        input.mode === 'eat' ? input.cuisineFilter ?? 'all' : 'all',
       p_region: input.region ?? 'US',
     },
   );
@@ -233,6 +257,10 @@ export async function loadRoomHistory(): Promise<RoomHistoryItem[]> {
     totalChoices: Number(session.total_choices),
     completedChoices: Number(session.completed_choices),
     matchedItemId: session.matched_item_id,
+    partnerDisplayName: session.partner_display_name,
+    partnerPhotoUrl: profilePhotoUrl(session.partner_avatar_path),
+    selectionComplete: session.selection_complete,
+    resultAcknowledged: session.result_acknowledged,
   }));
   // Access codes are short-lived invitation credentials, so they are omitted
   // from unencrypted device snapshots and restored only by a live refresh.
@@ -493,6 +521,28 @@ export async function acknowledgeDecisionRoom(
   if (error) {
     throw error;
   }
+}
+
+export async function dismissCompletedRoom(sessionId: string): Promise<void> {
+  const authenticatedSession = await ensureAnonymousSession();
+  const { error } = await supabase.rpc('dismiss_completed_room', {
+    p_session_id: sessionId,
+  });
+  if (error) throw error;
+  await updateCachedRoomHistory(authenticatedSession.user.id, rooms =>
+    rooms.filter(room => room.sessionId !== sessionId),
+  );
+}
+
+export async function dismissAllCompletedRooms(): Promise<void> {
+  const authenticatedSession = await ensureAnonymousSession();
+  const { error } = await supabase.rpc('dismiss_all_completed_rooms');
+  if (error) throw error;
+  await updateCachedRoomHistory(authenticatedSession.user.id, rooms =>
+    rooms.filter(
+      room => room.status !== 'matched' && room.status !== 'completed',
+    ),
+  );
 }
 
 export function subscribeToRoom(

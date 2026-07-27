@@ -1,3 +1,5 @@
+import { isCuisineFilter, type CuisineFilter } from './providers/cuisines.ts';
+
 export type DecisionMode = 'eat' | 'do';
 
 export type DiscoveryLocation = {
@@ -16,6 +18,7 @@ export type DeckRequest = {
   maxResults?: number;
   region?: string;
   participantLocations?: DiscoveryLocation[];
+  cuisineFilter?: CuisineFilter;
 };
 
 export type ProviderItem = {
@@ -118,6 +121,14 @@ export function parseDeckRequest(value: unknown): DeckRequest {
   if (typeof region !== 'string' || !/^[A-Za-z]{2}$/.test(region)) {
     throw new DeckRequestError('Invalid region.');
   }
+  const cuisineFilter =
+    body.cuisineFilter === undefined ? 'all' : body.cuisineFilter;
+  if (!isCuisineFilter(cuisineFilter)) {
+    throw new DeckRequestError('Invalid cuisineFilter.');
+  }
+  if (mode !== 'eat' && cuisineFilter !== 'all') {
+    throw new DeckRequestError('Cuisine filters are only available for food.');
+  }
 
   return {
     mode,
@@ -129,5 +140,6 @@ export function parseDeckRequest(value: unknown): DeckRequest {
     ...(postalCode === undefined ? {} : { postalCode }),
     ...(radiusMeters === undefined ? {} : { radiusMeters }),
     ...(maxResults === undefined ? {} : { maxResults }),
+    cuisineFilter,
   };
 }

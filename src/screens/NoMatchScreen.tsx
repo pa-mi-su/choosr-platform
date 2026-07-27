@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
+import { ProfileAvatar } from '../components/ProfileAvatar';
 import { modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
@@ -18,7 +19,13 @@ import type { RootStackParamList } from '../types/navigation';
 type Props = NativeStackScreenProps<RootStackParamList, 'NoMatch'>;
 
 export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
-  const { sessionId, searchArea } = route.params;
+  const {
+    sessionId,
+    searchArea,
+    openedFromHistory = false,
+    partnerDisplayName,
+    partnerPhotoUrl,
+  } = route.params;
   const mode = modeById[route.params.mode];
   const [restarting, setRestarting] = useState(false);
   const [ending, setEnding] = useState(false);
@@ -27,7 +34,14 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
   const followRestart = useCallback(async () => {
     try {
       const room = await loadDecisionRoom(sessionId);
-      if (room.status === 'active') {
+      if (
+        openedFromHistory &&
+        (room.status === 'cancelled' || room.status === 'expired')
+      ) {
+        navigation.goBack();
+      } else if (openedFromHistory) {
+        return;
+      } else if (room.status === 'active') {
         navigation.replace('Swipe', {
           sessionId,
           roundNumber: room.roundNumber,
@@ -40,7 +54,7 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
     } catch {
       // A later Realtime event or poll will retry.
     }
-  }, [navigation, searchArea, sessionId]);
+  }, [navigation, openedFromHistory, searchArea, sessionId]);
 
   useRoomSync({
     sessionId,
@@ -96,22 +110,43 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
         <Text style={styles.eyebrow}>NO MATCH YET</Text>
         <Text style={styles.title}>Good taste takes another round.</Text>
         <Text style={styles.subtitle}>
-          Start a fresh shared deck. Your partner will move to it automatically.
+          {openedFromHistory
+            ? 'This completed room ended without a shared match.'
+            : 'Start a fresh shared deck. Your partner will move to it automatically.'}
         </Text>
+        {partnerDisplayName ? (
+          <View style={styles.partner}>
+            <ProfileAvatar
+              displayName={partnerDisplayName}
+              photoUrl={partnerPhotoUrl}
+              size="small"
+            />
+            <View>
+              <Text style={styles.partnerLabel}>CHOSE WITH</Text>
+              <Text style={styles.partnerName}>{partnerDisplayName}</Text>
+            </View>
+          </View>
+        ) : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </View>
       <View style={styles.actions}>
-        <Button
-          label="Try another deck"
-          loading={restarting}
-          onPress={restart}
-        />
-        <Button
-          label="End room"
-          variant="quiet"
-          loading={ending}
-          onPress={endRoom}
-        />
+        {openedFromHistory ? (
+          <Button label="Go back" variant="quiet" onPress={navigation.goBack} />
+        ) : (
+          <>
+            <Button
+              label="Try another deck"
+              loading={restarting}
+              onPress={restart}
+            />
+            <Button
+              label="End room"
+              variant="quiet"
+              loading={ending}
+              onPress={endRoom}
+            />
+          </>
+        )}
       </View>
     </Screen>
   );
@@ -151,6 +186,24 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
     marginTop: 12,
+  },
+  partner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 20,
+  },
+  partnerLabel: {
+    color: colors.faint,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  partnerName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 2,
   },
   error: {
     color: colors.danger,

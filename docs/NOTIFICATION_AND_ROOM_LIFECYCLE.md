@@ -56,6 +56,11 @@ per-channel settings remain authoritative.
   `completed_at`, independently of either participant pressing Done.
 - Done records acknowledgment and exits the screen; it does not delete shared
   history.
+- A participant may delete one completed result or clear all completed results
+  from their own history. This records a per-participant dismissal and never
+  changes the room or the other participant's history.
+- Historical result screens are read-only, identify the other participant by
+  profile name and photo when available, and return to the completed list.
 - Cleanup expires completed history only after the 24-hour window.
 
 ## Delivery guarantees
