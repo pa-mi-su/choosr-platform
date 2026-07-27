@@ -52,6 +52,7 @@ jest.mock('../src/services/anonymousAuth', () => ({
   ),
 }));
 
+import { env } from '../src/config/generatedEnv';
 import {
   enablePushNotifications,
   isPushPermissionEnabled,
@@ -422,8 +423,8 @@ describe('push notification reliability', () => {
       p_status: 'unavailable',
       p_stage: 'permission',
       p_code: 'permission_disabled',
-      p_app_version: '1.0.0',
-      p_build_number: '1',
+      p_app_version: env.appVersion,
+      p_build_number: env.buildNumber,
     });
   });
 });
