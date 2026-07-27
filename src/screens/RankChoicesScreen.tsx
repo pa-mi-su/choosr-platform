@@ -26,8 +26,7 @@ import { getRoomDestination, roomErrorMessage } from '../services/roomFlow';
 import {
   cancelDecisionRoom,
   loadDecisionDeck,
-  loadOwnAcceptedItemIds,
-  loadOwnRankingSubmission,
+  loadOwnRankingContext,
   loadRoomOutcome,
   submitDecisionRankings,
 } from '../services/sessionService';
@@ -125,18 +124,25 @@ export function RankChoicesScreen({
     setError(null);
     transitioning.current = false;
     try {
-      const [deck, acceptedIds, ranking, outcome] = await Promise.all([
+      const [deck, ranking, outcome] = await Promise.all([
         loadDecisionDeck(sessionId, roundNumber),
-        loadOwnAcceptedItemIds(sessionId, roundNumber),
-        loadOwnRankingSubmission(sessionId, roundNumber),
+        loadOwnRankingContext(sessionId, roundNumber),
         loadRoomOutcome(sessionId),
       ]);
       deckRef.current = deck;
+      const acceptedIds = new Set(ranking.acceptedItemIds);
       const acceptedItems = deck.filter(item => acceptedIds.has(item.id));
+      if (
+        acceptedItems.length !== ranking.acceptedItemIds.length ||
+        requiredRankedChoiceCount(acceptedItems.length) !==
+          ranking.requiredRankCount
+      ) {
+        throw new Error('ranking_context_mismatch');
+      }
       setAccepted(acceptedItems);
       setRankedIds(
-        ranking.itemIds.length > 0
-          ? ranking.itemIds
+        ranking.rankedItemIds.length > 0
+          ? ranking.rankedItemIds
           : acceptedItems.length === 1
           ? [acceptedItems[0].id]
           : [],

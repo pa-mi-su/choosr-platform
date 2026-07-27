@@ -440,6 +440,19 @@ export type Database = {
           matched_item_id: string | null;
         }[];
       };
+      get_own_ranking_context: {
+        Args: {
+          p_session_id: string;
+          p_round: number;
+        };
+        Returns: {
+          accepted_item_ids: string[];
+          ranked_item_ids: string[];
+          required_rank_count: number;
+          submitted: boolean;
+          deck_completed: boolean;
+        }[];
+      };
       create_chat_invitation: {
         Args: { p_public_key: string };
         Returns: {
