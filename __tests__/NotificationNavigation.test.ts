@@ -18,6 +18,7 @@ describe('notification tap navigation', () => {
   it.each([
     ['room_invitation', 'ActiveRooms'],
     ['connection_request', 'Circle'],
+    ['chat_invitation', 'ChatHome'],
     ['chat_message', 'ChatHome'],
   ] as const)('routes %s to %s', (kind, destination) => {
     openFromNotification({ data: { kind } } as never);

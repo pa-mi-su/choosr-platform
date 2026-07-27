@@ -14,7 +14,8 @@ export function openFromNotification(message: RemoteMessage): void {
     message.data?.kind === 'room_invitation' ||
     message.data?.route === 'ActiveRooms'
       ? 'ActiveRooms'
-      : message.data?.kind === 'chat_message' ||
+      : message.data?.kind === 'chat_invitation' ||
+        message.data?.kind === 'chat_message' ||
         message.data?.route === 'ChatHome'
       ? 'ChatHome'
       : 'Circle';

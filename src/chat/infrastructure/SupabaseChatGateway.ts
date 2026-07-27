@@ -12,6 +12,7 @@ import type {
   ActiveChatState,
   ChatEnvelope,
   ChatInvitation,
+  PendingDecisionChatInvitation,
   ChatRole,
   ChatRoomStatus,
 } from '../domain/types';
@@ -37,6 +38,15 @@ type JoinRow = {
   room_id: string;
   peer_public_key: string;
   room_expires_at: string;
+};
+type PendingDecisionInvitationRow = {
+  chat_room_id: string;
+  decision_session_id: string;
+  inviter_display_name: string;
+  inviter_avatar_path: string | null;
+  matched_item_title: string;
+  created_at: string;
+  expires_at: string;
 };
 
 function first<T>(value: T[] | T | null | undefined): T | undefined {
@@ -149,6 +159,32 @@ export class SupabaseChatGateway implements ChatGateway {
     };
   }
 
+  async listPendingDecisionInvitations(): Promise<
+    PendingDecisionChatInvitation[]
+  > {
+    const rows = await this.invoke<PendingDecisionInvitationRow[]>(
+      'listDecisionInvites',
+      {},
+    );
+    return rows.map(row => ({
+      roomId: row.chat_room_id,
+      decisionSessionId: row.decision_session_id,
+      inviterDisplayName: row.inviter_display_name,
+      inviterPhotoUrl: row.inviter_avatar_path
+        ? supabase.storage
+            .from('profile-photos')
+            .getPublicUrl(row.inviter_avatar_path).data.publicUrl
+        : null,
+      matchedItemTitle: row.matched_item_title,
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+    }));
+  }
+
+  async declineDecisionInvitation(roomId: string): Promise<void> {
+    await this.invoke<null>('declineDecisionInvite', { roomId });
+  }
+
   async listMessages(roomId: string): Promise<ChatEnvelope[]> {
     const { data, error } = await withSupabaseReadRetry(
       signal =>
@@ -229,7 +265,14 @@ export class SupabaseChatGateway implements ChatGateway {
     action: string,
     body: Record<string, unknown>,
   ): Promise<T> {
-    const attempts = ['status', 'send', 'destroy'].includes(action) ? 2 : 1;
+    const attempts = [
+      'status',
+      'send',
+      'destroy',
+      'listDecisionInvites',
+    ].includes(action)
+      ? 2
+      : 1;
     let response: {
       data: FunctionResponse<T> | null;
       error: unknown;

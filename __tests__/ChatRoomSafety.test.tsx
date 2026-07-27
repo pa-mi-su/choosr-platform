@@ -79,3 +79,50 @@ test('messaging is immediately encrypted and comparison details are optional', a
 
   await ReactTestRenderer.act(() => renderer?.unmount());
 });
+
+test('a waiting matched chat has no composer until the other person accepts', async () => {
+  const runtime = jest.requireMock('../src/chat/runtime').chatSession;
+  runtime.active.status = 'inviting';
+  runtime.active.peerDisplayName = 'Maria';
+  runtime.refreshStatus.mockResolvedValue('inviting');
+
+  let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 47, right: 0, bottom: 34, left: 0 },
+        }}
+      >
+        <ChatRoomScreen
+          navigation={{ popTo: jest.fn(), replace: jest.fn() } as never}
+          route={{ key: 'waiting-chat', name: 'ChatRoom' } as never}
+        />
+      </SafeAreaProvider>,
+    );
+  });
+  await ReactTestRenderer.act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+
+  expect(
+    renderer?.root.findAll(
+      node => node.children.join('') === 'Waiting for Maria to join.',
+    ),
+  ).toHaveLength(1);
+  expect(() =>
+    renderer?.root.findByProps({ accessibilityLabel: 'Private message' }),
+  ).toThrow();
+  expect(() =>
+    renderer?.root.findByProps({
+      accessibilityLabel: 'Send encrypted message',
+    }),
+  ).toThrow();
+
+  await ReactTestRenderer.act(() => renderer?.unmount());
+  runtime.active.status = 'active';
+  delete runtime.active.peerDisplayName;
+  runtime.refreshStatus.mockResolvedValue('active');
+});

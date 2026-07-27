@@ -34,7 +34,14 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
     chatSession.messages,
   );
   const [draft, setDraft] = useState('');
-  const [connection, setConnection] = useState('End-to-end encrypted');
+  const [connection, setConnection] = useState(
+    chatSession.active?.status === 'inviting'
+      ? 'Encrypted · Waiting to connect'
+      : 'End-to-end encrypted',
+  );
+  const [chatStatus, setChatStatus] = useState(
+    chatSession.active?.status ?? 'inviting',
+  );
   const [lifetime, setLifetime] = useState(
     remainingLifetime(chatSession.active?.expiresAt),
   );
@@ -62,6 +69,7 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
         returnHome(true);
         return;
       }
+      setChatStatus(status);
       setConnection(
         status === 'active'
           ? 'End-to-end encrypted'
@@ -155,7 +163,25 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.connection}>{connection}</Text>
         <Text style={styles.lifetime}>{lifetime}</Text>
       </View>
-      {showEncryptionDetails ? (
+      {chatStatus === 'inviting' ? (
+        <View style={styles.waiting}>
+          <View style={styles.waitingMark}>
+            <Text style={styles.waitingMarkText}>···</Text>
+          </View>
+          <Text style={styles.waitingEyebrow}>INVITATION SENT</Text>
+          <Text style={styles.waitingTitle}>
+            Waiting for{' '}
+            {chatSession.active?.peerDisplayName ?? 'the other person'} to join.
+          </Text>
+          <Text style={styles.waitingBody}>
+            Messaging unlocks after they accept and both devices complete the
+            private encryption handshake.
+          </Text>
+          <Text style={styles.waitingPrivacy}>
+            No message can be written or stored before the chat is encrypted.
+          </Text>
+        </View>
+      ) : showEncryptionDetails ? (
         <View style={styles.safetyCard}>
           <View style={styles.safetyCopy}>
             <Text style={styles.safetyTitle}>Compare encryption number</Text>
@@ -198,55 +224,57 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
           <Text style={styles.encryptionDetailsText}>Encryption details</Text>
         </Pressable>
       )}
-      <KeyboardAvoidingView
-        style={styles.chat}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <FlatList
-          data={[...messages]}
-          keyExtractor={message => message.id}
-          contentContainerStyle={styles.messages}
-          ListEmptyComponent={
-            <Text style={styles.empty}>
-              Messages are readable only on these two devices.
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <View
-              style={[
-                styles.bubble,
-                item.sentByMe ? styles.mine : styles.theirs,
+      {chatStatus === 'active' ? (
+        <KeyboardAvoidingView
+          style={styles.chat}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <FlatList
+            data={[...messages]}
+            keyExtractor={message => message.id}
+            contentContainerStyle={styles.messages}
+            ListEmptyComponent={
+              <Text style={styles.empty}>
+                Messages are readable only on these two devices.
+              </Text>
+            }
+            renderItem={({ item }) => (
+              <View
+                style={[
+                  styles.bubble,
+                  item.sentByMe ? styles.mine : styles.theirs,
+                ]}
+              >
+                <Text style={styles.message}>{item.text}</Text>
+              </View>
+            )}
+          />
+          <View style={styles.composer}>
+            <TextInput
+              accessibilityLabel="Private message"
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="Private message"
+              placeholderTextColor={colors.faint}
+              maxLength={2000}
+              multiline
+              style={styles.input}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Send encrypted message"
+              disabled={!draft.trim() || sending}
+              onPress={send}
+              style={({ pressed }) => [
+                styles.send,
+                (pressed || sending) && styles.pressed,
               ]}
             >
-              <Text style={styles.message}>{item.text}</Text>
-            </View>
-          )}
-        />
-        <View style={styles.composer}>
-          <TextInput
-            accessibilityLabel="Private message"
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="Private message"
-            placeholderTextColor={colors.faint}
-            maxLength={2000}
-            multiline
-            style={styles.input}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Send encrypted message"
-            disabled={!draft.trim() || sending}
-            onPress={send}
-            style={({ pressed }) => [
-              styles.send,
-              (pressed || sending) && styles.pressed,
-            ]}
-          >
-            <Text style={styles.sendText}>Send</Text>
-          </Pressable>
-        </View>
-      </KeyboardAvoidingView>
+              <Text style={styles.sendText}>Send</Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      ) : null}
       <Text style={styles.warning}>
         Screenshots and external photographs cannot be prevented.
       </Text>
@@ -288,6 +316,58 @@ const styles = StyleSheet.create({
     borderColor: colors.blue,
     backgroundColor: colors.surface,
     gap: 10,
+  },
+  waiting: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+  },
+  waitingMark: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.success,
+    backgroundColor: colors.surface,
+  },
+  waitingMarkText: {
+    color: colors.success,
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: 3,
+    marginTop: -8,
+  },
+  waitingEyebrow: {
+    color: colors.success,
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.8,
+    marginTop: 20,
+  },
+  waitingTitle: {
+    color: colors.text,
+    fontSize: 25,
+    lineHeight: 31,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginTop: 9,
+  },
+  waitingBody: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginTop: 13,
+  },
+  waitingPrivacy: {
+    color: colors.faint,
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: 'center',
+    marginTop: 16,
   },
   safetyCopy: { gap: 3 },
   safetyTitle: { color: colors.text, fontSize: 13, fontWeight: '900' },

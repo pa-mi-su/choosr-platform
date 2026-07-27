@@ -2,6 +2,8 @@ export type ChatAction =
   | 'create'
   | 'join'
   | 'openDecision'
+  | 'listDecisionInvites'
+  | 'declineDecisionInvite'
   | 'status'
   | 'send'
   | 'destroy';
@@ -29,6 +31,8 @@ export function isChatAction(value: unknown): value is ChatAction {
     value === 'create' ||
     value === 'join' ||
     value === 'openDecision' ||
+    value === 'listDecisionInvites' ||
+    value === 'declineDecisionInvite' ||
     value === 'status' ||
     value === 'send' ||
     value === 'destroy'
@@ -59,7 +63,9 @@ export function validateChatRequest(body: ChatRequestBody): string | undefined {
     return 'Invalid or expired private-chat invitation.';
   }
   if (
-    (body.action === 'send' || body.action === 'destroy') &&
+    (body.action === 'send' ||
+      body.action === 'destroy' ||
+      body.action === 'declineDecisionInvite') &&
     (typeof body.roomId !== 'string' || !uuid.test(body.roomId))
   ) {
     return 'Invalid chat room.';

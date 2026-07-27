@@ -87,7 +87,11 @@ describe('completed room ownership', () => {
     });
 
     expect(mockReconcileChat).toHaveBeenCalledTimes(1);
-    expect(mockOpenDecision).toHaveBeenCalledWith('user-1', 'matched-session');
+    expect(mockOpenDecision).toHaveBeenCalledWith(
+      'user-1',
+      'matched-session',
+      undefined,
+    );
     expect(navigate).toHaveBeenCalledWith('ChatRoom');
     expect(
       renderer.root.findByProps({
