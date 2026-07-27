@@ -1,20 +1,22 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { buildPreviewDeck, modeById } from '../data/decisions';
-import { fetchLiveDecisionDeck } from '../services/deckService';
 import { useRoomSync } from '../hooks/useRoomSync';
-import { loadItemsWithFallback, roomErrorMessage } from '../services/roomFlow';
-import { buildRoomInvite } from '../services/roomInvite';
+import { roomErrorMessage } from '../services/roomFlow';
+import {
+  buildNativeSharePayload,
+  buildRoomInvite,
+} from '../services/roomInvite';
 import {
   circleErrorMessage,
   inviteCirclePerson,
 } from '../services/circleService';
 import {
-  cancelDecisionRoom,
   createDecisionRoom,
+  createLocationDecisionRoom,
   loadDecisionRoom,
   type DecisionRoom,
 } from '../services/sessionService';
@@ -28,6 +30,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   const searchArea = route.params.searchArea;
   const searchLatitude = route.params.searchLatitude;
   const searchLongitude = route.params.searchLongitude;
+  const cuisineFilter = route.params.cuisineFilter;
   const connectionId = route.params.connectionId;
   const connectionName = route.params.connectionName;
   const customItems = route.params.customItems;
@@ -49,23 +52,29 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     setCreationError(null);
     setInviteError(null);
     try {
-      const items =
+      if (
+        mode.id !== 'custom' &&
+        (!searchArea ||
+          !Number.isFinite(searchLatitude) ||
+          !Number.isFinite(searchLongitude))
+      ) {
+        throw new Error('A validated starting location is required.');
+      }
+      const credentials =
         mode.id === 'custom'
-          ? customItems ?? []
-          : await loadItemsWithFallback(
-              () =>
-                fetchLiveDecisionDeck({
-                  mode: mode.id,
-                  latitude: searchLatitude,
-                  longitude: searchLongitude,
-                  maxResults: 10,
-                }),
-              buildPreviewDeck(mode.id, searchArea),
-            );
-      const credentials = await createDecisionRoom({
-        mode: mode.id,
-        items: items.length ? items : buildPreviewDeck(mode.id, searchArea),
-      });
+          ? await createDecisionRoom({
+              mode: mode.id,
+              items: customItems?.length
+                ? customItems
+                : buildPreviewDeck(mode.id, searchArea),
+            })
+          : await createLocationDecisionRoom({
+              mode: mode.id,
+              latitude: searchLatitude!,
+              longitude: searchLongitude!,
+              locationLabel: searchArea!,
+              cuisineFilter: mode.id === 'eat' ? cuisineFilter ?? 'all' : 'all',
+            });
       setInviteToken(credentials.inviteToken);
       setRoom({
         ...credentials,
@@ -90,6 +99,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     }
   }, [
     connectionId,
+    cuisineFilter,
     customItems,
     mode.id,
     searchArea,
@@ -100,6 +110,21 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   useEffect(() => {
     createRoom().catch(() => undefined);
   }, [createRoom]);
+
+  const backToMain = useCallback(() => {
+    navigation.replace('ChooseHome');
+  }, [navigation]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        backToMain();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [backToMain]);
 
   const refreshRoom = useCallback(async () => {
     if (!sessionId) {
@@ -129,6 +154,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
   });
 
   const ready = room?.status === 'active' && room.participantCount === 2;
+  const partnerJoined =
+    room?.status === 'waiting' && room.participantCount === 2;
   const retryCircleInvite = async () => {
     if (!room || !connectionId) return;
     setInviteError(null);
@@ -151,24 +178,15 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
         ? { decisionPrompt: route.params.customPrompt }
         : {}),
     });
-    Share.share({
-      title: 'Join my Choosr room',
-      message: invite.message,
-      url: invite.url,
-    }).catch(() => undefined);
+    Share.share(
+      buildNativeSharePayload('Choosr · Room invitation', invite),
+    ).catch(() => undefined);
   };
-  const cancel = async () => {
-    if (room) {
-      await cancelDecisionRoom(room.sessionId).catch(() => undefined);
-    }
-    navigation.popToTop();
-  };
-
   return (
     <Screen testID="waiting-screen" style={styles.screen}>
       <View style={styles.top}>
         <Brand compact />
-        <Button label="Cancel" variant="quiet" onPress={cancel} />
+        <Button label="Back" variant="quiet" onPress={backToMain} />
       </View>
       <View style={styles.content}>
         <View style={styles.people}>
@@ -186,6 +204,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             ? 'ROOM CREATION FAILED'
             : ready
             ? 'PARTNER JOINED'
+            : partnerJoined
+            ? 'BUILDING YOUR CHOICES'
             : circleInviteSent
             ? 'INVITATION SENT'
             : 'ROOM CREATED'}
@@ -197,6 +217,8 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             ? 'We couldn’t create this room.'
             : ready
             ? 'Ready when you are.'
+            : partnerJoined
+            ? 'Building your shared deck next.'
             : circleInviteSent && connectionName
             ? `${connectionName} is invited.`
             : 'Invite your person.'}

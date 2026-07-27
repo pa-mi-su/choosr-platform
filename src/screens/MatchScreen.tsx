@@ -7,14 +7,17 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { chatSession } from '../chat/runtime';
 import { Button, Screen } from '../components/UI';
 import { DecisionArtwork } from '../components/DecisionArtwork';
+import { ProfileAvatar } from '../components/ProfileAvatar';
 import { modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { getMatchResultAction } from '../services/matchResult';
+import { ensureAnonymousSession } from '../services/anonymousAuth';
 import { roomErrorMessage } from '../services/roomFlow';
 import {
-  cancelDecisionRoom,
+  acknowledgeDecisionRoom,
   loadDecisionRoom,
 } from '../services/sessionService';
 import { colors } from '../theme';
@@ -22,13 +25,18 @@ import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Match'>;
 export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
-  const { item, sessionId } = route.params;
+  const {
+    item,
+    sessionId,
+    openedFromHistory = false,
+    partnerDisplayName,
+    partnerPhotoUrl,
+  } = route.params;
   const mode = modeById[item.mode];
   const action = getMatchResultAction(item);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [endingAction, setEndingAction] = useState<
-    'done' | 'choose-again' | null
-  >(null);
+  const [endingAction, setEndingAction] = useState<'done' | null>(null);
+  const [openingChat, setOpeningChat] = useState(false);
   const scale = useSharedValue(0.82);
   const opacity = useSharedValue(0);
   useEffect(() => {
@@ -40,12 +48,13 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
     try {
       const room = await loadDecisionRoom(sessionId);
       if (room.status === 'cancelled' || room.status === 'expired') {
-        navigation.popToTop();
+        if (openedFromHistory) navigation.goBack();
+        else navigation.popToTop();
       }
     } catch {
       // A later Realtime event or recovery poll will retry transient failures.
     }
-  }, [navigation, sessionId]);
+  }, [navigation, openedFromHistory, sessionId]);
 
   useRoomSync({
     sessionId,
@@ -53,19 +62,47 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
     refresh: followClosure,
   });
 
-  const closeRoom = async (next: 'done' | 'choose-again') => {
+  const dismissResult = async () => {
     if (endingAction) return;
-    setEndingAction(next);
+    setEndingAction('done');
     setActionError(null);
     try {
-      await cancelDecisionRoom(sessionId);
+      await acknowledgeDecisionRoom(sessionId);
       navigation.popToTop();
-      if (next === 'choose-again') {
-        navigation.navigate('ModeSelect');
-      }
     } catch (cause) {
       setActionError(roomErrorMessage(cause));
       setEndingAction(null);
+    }
+  };
+
+  const openPrivateChat = async () => {
+    if (openingChat) return;
+    setOpeningChat(true);
+    setActionError(null);
+    try {
+      if (chatSession.active) {
+        if (chatSession.active.decisionSessionId !== sessionId) {
+          throw new Error(
+            'End your current private chat before starting one for this match.',
+          );
+        }
+      } else {
+        await chatSession.reconcileOrphanedRemoteChat();
+        const authenticated = await ensureAnonymousSession();
+        await chatSession.openDecision(
+          authenticated.user.id,
+          sessionId,
+          partnerDisplayName ?? undefined,
+        );
+      }
+      navigation.navigate('ChatRoom');
+    } catch (cause) {
+      setActionError(
+        cause instanceof Error
+          ? cause.message
+          : 'The private chat could not be opened.',
+      );
+      setOpeningChat(false);
     }
   };
   const reveal = useAnimatedStyle(() => ({
@@ -78,6 +115,19 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         <Text style={styles.eyebrow}>DECISION MADE</Text>
         <Text style={styles.title}>You found your match.</Text>
         <Text style={styles.subtitle}>{mode.matchSubtitle}</Text>
+        {partnerDisplayName ? (
+          <View style={styles.partner}>
+            <ProfileAvatar
+              displayName={partnerDisplayName}
+              photoUrl={partnerPhotoUrl}
+              size="small"
+            />
+            <View>
+              <Text style={styles.partnerLabel}>CHOSE WITH</Text>
+              <Text style={styles.partnerName}>{partnerDisplayName}</Text>
+            </View>
+          </View>
+        ) : null}
       </View>
       <Animated.View style={[styles.posterWrap, reveal]}>
         <DecisionArtwork item={item} style={styles.poster} />
@@ -99,9 +149,20 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         </View>
       </View>
       <View style={styles.actions}>
+        <Button
+          label={
+            chatSession.active?.decisionSessionId === sessionId
+              ? 'Continue private chat'
+              : 'Start private chat'
+          }
+          loading={openingChat}
+          disabled={endingAction !== null}
+          onPress={openPrivateChat}
+        />
         {action ? (
           <Button
             label={action.label}
+            variant="secondary"
             onPress={async () => {
               setActionError(null);
               try {
@@ -113,20 +174,17 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
           />
         ) : null}
         {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-        <Button
-          label="Choose again"
-          variant="secondary"
-          loading={endingAction === 'choose-again'}
-          disabled={endingAction !== null}
-          onPress={() => closeRoom('choose-again')}
-        />
-        <Button
-          label="Done"
-          variant="quiet"
-          loading={endingAction === 'done'}
-          disabled={endingAction !== null}
-          onPress={() => closeRoom('done')}
-        />
+        {openedFromHistory ? (
+          <Button label="Go back" variant="quiet" onPress={navigation.goBack} />
+        ) : (
+          <Button
+            label="Done"
+            variant="quiet"
+            loading={endingAction === 'done'}
+            disabled={endingAction !== null || openingChat}
+            onPress={dismissResult}
+          />
+        )}
       </View>
     </Screen>
   );
@@ -149,6 +207,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subtitle: { color: colors.muted, marginTop: 3 },
+  partner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+  },
+  partnerLabel: {
+    color: colors.faint,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  partnerName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 2,
+  },
   posterWrap: { width: 214, height: 294, marginTop: 20 },
   poster: { width: '100%', height: '100%', minHeight: 0 },
   badge: {

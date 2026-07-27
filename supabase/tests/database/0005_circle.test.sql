@@ -1,5 +1,5 @@
 begin;
-select plan(23);
+select plan(25);
 
 select has_table('public', 'profiles', 'profiles table exists');
 select has_table('public', 'connections', 'connections table exists');
@@ -46,6 +46,21 @@ select is(
 );
 
 set local request.jwt.claim.sub = '50000000-0000-0000-0000-000000000002';
+select is(
+  (
+    select count(*)
+    from public.user_notifications
+    where kind = 'connection_request'
+      and payload->>'connection_id' = (select id from first_connection)::text
+  ),
+  1::bigint,
+  'connection request is persisted in the recipient notification inbox'
+);
+select is(
+  public.unread_notification_count(),
+  1,
+  'connection request increments the recipient unread count'
+);
 select public.respond_connection((select id from first_connection), true);
 select is(
   (select status from public.connections where id = (select id from first_connection)),

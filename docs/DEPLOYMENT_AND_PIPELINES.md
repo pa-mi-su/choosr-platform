@@ -51,12 +51,12 @@ production.
 
 ## GitHub Actions
 
-| Workflow              | Trigger                                    | Effect                                                           |
-| --------------------- | ------------------------------------------ | ---------------------------------------------------------------- |
-| `ci.yml`              | PR or push involving an environment branch | Formatting, lint, types, Jest, pgTAP, schema lint, Android build |
-| `ios-ci.yml`          | iOS/application PR changes or manual       | Unsigned production simulator build                              |
-| `supabase-deploy.yml` | Push to `uat` or `main`                    | Guarded UAT/production migrations and Edge Functions             |
-| `mobile-build.yml`    | Push to `uat` or `main`                    | UAT tester distribution or production store-candidate upload     |
+| Workflow              | Trigger                                 | Effect                                                           |
+| --------------------- | --------------------------------------- | ---------------------------------------------------------------- |
+| `ci.yml`              | PR, promoted branch push, or manual run | Formatting, lint, types, Jest, pgTAP, schema lint, Android build |
+| `ios-ci.yml`          | iOS/application PR changes or manual    | Unsigned production simulator build                              |
+| `supabase-deploy.yml` | Push to `dev`, `uat`, or `main`         | Guarded environment migrations and Edge Functions                |
+| `mobile-build.yml`    | Push to `dev`, `uat`, or `main`         | Signed environment artifact and optional distribution/upload     |
 
 Deployment workflows are intentionally fail-closed. They do not deploy or build signed
 artifacts until the matching GitHub environment sets the enable variable to `true`.
@@ -91,25 +91,26 @@ Create `dev`, `uat`, and `prod` GitHub environments. Configure these independent
 
 ### Secrets
 
-| Secret                                         | Purpose                                                   |
-| ---------------------------------------------- | --------------------------------------------------------- |
-| `SUPABASE_ACCESS_TOKEN`                        | CLI authentication; scope and rotate deliberately         |
-| `SUPABASE_DB_PASSWORD`                         | Database migration connection                             |
-| `GEOAPIFY_API_KEY`                             | Geoapify server key for ZIP-based Activity and Food decks |
-| `FIREBASE_SERVICE_ACCOUNT_BASE64`              | Firebase Admin JSON for push delivery                     |
-| `APPLE_APNS_AUTH_KEY_BASE64`                   | Team-scoped APNs key retained for controlled setup        |
-| `FIREBASE_ANDROID_CONFIG_BASE64`               | Base64 environment `google-services.json`                 |
-| `FIREBASE_IOS_CONFIG_BASE64`                   | Base64 environment `GoogleService-Info.plist`             |
-| `FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64` | Firebase App Distribution service-account JSON            |
-| `ANDROID_UPLOAD_KEYSTORE_BASE64`               | Android upload keystore                                   |
-| `ANDROID_UPLOAD_KEYSTORE_PASSWORD`             | Keystore password                                         |
-| `ANDROID_UPLOAD_KEY_ALIAS`                     | Upload alias                                              |
-| `ANDROID_UPLOAD_KEY_PASSWORD`                  | Upload key password                                       |
-| `GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64`           | Play Publisher service-account JSON                       |
-| `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`      | Apple distribution certificate and key                    |
-| `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`        | `.p12` password                                           |
-| `IOS_PROVISIONING_PROFILE_BASE64`              | Profile matching the environment bundle ID                |
-| `APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64`     | App Store Connect `.p8` key                               |
+| Secret                                         | Purpose                                                        |
+| ---------------------------------------------- | -------------------------------------------------------------- |
+| `SUPABASE_ACCESS_TOKEN`                        | CLI authentication; scope and rotate deliberately              |
+| `SUPABASE_DB_PASSWORD`                         | Database migration connection                                  |
+| `GEOAPIFY_API_KEY`                             | Geoapify server key for location validation and Activity decks |
+| `GOOGLE_PLACES_API_KEY`                        | Google Places API (New) server key for five-card Food decks    |
+| `FIREBASE_SERVICE_ACCOUNT_BASE64`              | Firebase Admin JSON for push delivery                          |
+| `APPLE_APNS_AUTH_KEY_BASE64`                   | Team-scoped APNs key retained for controlled setup             |
+| `FIREBASE_ANDROID_CONFIG_BASE64`               | Base64 environment `google-services.json`                      |
+| `FIREBASE_IOS_CONFIG_BASE64`                   | Base64 environment `GoogleService-Info.plist`                  |
+| `FIREBASE_DISTRIBUTION_SERVICE_ACCOUNT_BASE64` | Firebase App Distribution service-account JSON                 |
+| `ANDROID_UPLOAD_KEYSTORE_BASE64`               | Android upload keystore                                        |
+| `ANDROID_UPLOAD_KEYSTORE_PASSWORD`             | Keystore password                                              |
+| `ANDROID_UPLOAD_KEY_ALIAS`                     | Upload alias                                                   |
+| `ANDROID_UPLOAD_KEY_PASSWORD`                  | Upload key password                                            |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_BASE64`           | Play Publisher service-account JSON                            |
+| `IOS_DISTRIBUTION_CERTIFICATE_P12_BASE64`      | Apple distribution certificate and key                         |
+| `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`        | `.p12` password                                                |
+| `IOS_PROVISIONING_PROFILE_BASE64`              | Profile matching the environment bundle ID                     |
+| `APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64`     | App Store Connect `.p8` key                                    |
 
 GitHub environment secrets are the source of truth for provider and notification-worker
 credentials. The Supabase workflow synchronizes configured values into the matching hosted
@@ -135,8 +136,8 @@ Perform these stages in order. Keep every deployment gate `false` until its stag
    `ios/Choosr/Firebase/dev/GoogleService-Info.plist`. These files remain ignored.
 5. Register the Apple development App ID with Push Notifications, then use automatic Xcode
    development signing for local devices.
-6. Run `npm run android:dev` and `npm run ios:dev`. The `dev` branch runs CI but never deploys
-   a hosted backend or distributes a signed release.
+6. Run `npm run android:dev` and `npm run ios:dev`. Dev deployment and signed-build workflows
+   remain fail-closed unless their GitHub environment gates are explicitly enabled.
 7. For physical devices, set `.env.dev` to the Mac's private Wi-Fi address on port `54321`;
    simulators may use `127.0.0.1`. Never use a private HTTP URL for UAT or Production.
 

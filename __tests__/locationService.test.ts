@@ -1,4 +1,7 @@
-import { parseLocationSuggestions } from '../src/services/locationService';
+import {
+  locationQueryHint,
+  parseLocationSuggestions,
+} from '../src/services/locationService';
 
 describe('location suggestions', () => {
   it('accepts a canonical city and ZIP result', () => {
@@ -29,5 +32,14 @@ describe('location suggestions', () => {
         ],
       }),
     ).toEqual([]);
+  });
+
+  it('waits for a complete numeric ZIP before searching', () => {
+    expect(locationQueryHint('328')).toBe(
+      'Enter all 5 digits of the ZIP code.',
+    );
+    expect(locationQueryHint('32801')).toBeNull();
+    expect(locationQueryHint('Or')).toBe('Enter at least 3 characters.');
+    expect(locationQueryHint('Orlando')).toBeNull();
   });
 });

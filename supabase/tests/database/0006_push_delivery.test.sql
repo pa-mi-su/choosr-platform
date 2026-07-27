@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(18);
 
 select has_extension('pg_net', 'pg_net is available for scheduled dispatch');
 select has_function(
@@ -12,6 +12,12 @@ select is(
   (select count(*) from cron.job where jobname = 'choosr-notification-dispatch'),
   1::bigint,
   'notification delivery is scheduled independently of mobile clients'
+);
+select has_trigger(
+  'public',
+  'notification_outbox',
+  'notification_outbox_dispatch_insert',
+  'new notification jobs start immediate push dispatch'
 );
 
 select has_column(
@@ -46,7 +52,21 @@ select ok(
 );
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
-values ('60000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', true, now(), now());
+values
+  ('60000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', true, now(), now()),
+  ('60000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', true, now(), now());
+
+insert into public.connections (
+  id,
+  requester_user_id,
+  addressee_user_id,
+  status
+) values (
+  '60000000-0000-0000-0000-000000000010',
+  '60000000-0000-0000-0000-000000000002',
+  '60000000-0000-0000-0000-000000000001',
+  'pending'
+);
 
 insert into public.notification_outbox (
   recipient_user_id,
@@ -56,7 +76,7 @@ insert into public.notification_outbox (
 ) values (
   '60000000-0000-0000-0000-000000000001',
   'connection_request',
-  '{}'::jsonb,
+  '{"connection_id":"60000000-0000-0000-0000-000000000010"}'::jsonb,
   'push-worker-test'
 );
 

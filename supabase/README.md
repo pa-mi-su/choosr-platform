@@ -19,6 +19,8 @@ schema changes only through the dashboard; create and test a migration here firs
 - Push endpoints are private, and notification events enter a service-role-only outbox.
 - Expiration and cleanup logic is database-owned.
 - Anonymous cleanup tracks actual room activity and preserves identities in live rooms.
+- Ephemeral Chat uses separate tables, one-use 90-second link/QR tokens, strict
+  two-member RLS, ciphertext-only message envelopes, and atomic destruction.
 
 ## Files
 
@@ -40,7 +42,10 @@ schema changes only through the dashboard; create and test a migration here firs
   permanent-user safety, and live-room protection.
 - `tests/database/0005_circle.test.sql`: Circle identity, connection, contact-link,
   room-invitation, and notification-outbox behavior.
-- `functions/build-deck`: authenticated Geoapify provider adapter for ZIP-based Eat and Do decks.
+- `functions/build-deck`: authenticated Google Places food and Geoapify activity adapter for
+  ZIP/postal-code discovery.
+- `functions/chat-session`: authenticated, request-size-bounded Chat gateway
+  that never logs request bodies or message envelopes.
 - `seed.sql`: intentionally empty because decks are session-specific.
 
 ## Local verification

@@ -1,37 +1,65 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
 
+import { distanceMiles, midpoint } from '../geo.ts';
 import { colorsFor } from '../presentation.ts';
 import { fetchWithTimeout } from '../http.ts';
 import type { DeckRequest, ProviderItem } from '../types.ts';
+import {
+  ACTIVITY_PRIMARY_TYPES,
+  EXCLUDED_ACTIVITY_TYPES,
+  isEligibleActivityPlace,
+} from './activityTypes.ts';
+import {
+  googleFoodTypeRestriction,
+  matchesGoogleCuisine,
+} from './googleCuisineFilter.ts';
+import { variedQualitySelection } from './variedSelection.ts';
+import { isPublicWebUrl } from './websitePreview.ts';
 
 const IMAGE_BUCKET = 'discovery-images';
 
-type GeoFeature = {
-  properties?: {
-    place_id?: string;
-    name?: string;
-    formatted?: string;
-    address_line1?: string;
-    categories?: string[];
-    distance?: number;
-    lat?: number;
-    lon?: number;
-    wiki_and_media?: { image?: string };
-  };
-};
-type GeoCollection = { features?: GeoFeature[] };
 type GeocodeResult = { lat?: number; lon?: number };
 
-const categoryLabel = (categories: string[] | undefined, isFood: boolean) => {
-  const leaf = categories?.find(value =>
-    isFood ? value.startsWith('catering.') : value.startsWith('entertainment.'),
-  );
-  if (!leaf) return isFood ? 'Restaurant' : 'Local activity';
-  return (
-    leaf.split('.').at(-1)?.replaceAll('_', ' ') ??
-    (isFood ? 'Restaurant' : 'Activity')
-  );
+type GooglePhoto = {
+  name?: string;
+  authorAttributions?: {
+    displayName?: string;
+    uri?: string;
+  }[];
 };
+
+type GooglePlace = {
+  id?: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  location?: { latitude?: number; longitude?: number };
+  primaryType?: string;
+  types?: string[];
+  primaryTypeDisplayName?: { text?: string };
+  photos?: GooglePhoto[];
+  googleMapsUri?: string;
+  rating?: number;
+  userRatingCount?: number;
+};
+
+type GooglePlacesResponse = { places?: GooglePlace[] };
+
+const GOOGLE_RESULT_LIMIT = 5;
+const GOOGLE_SEARCH_CANDIDATE_LIMIT = 20;
+const SEARCH_RADII_METERS = [8047, 16093, 32187] as const;
+const GOOGLE_PLACES_FIELDS = [
+  'places.id',
+  'places.displayName',
+  'places.formattedAddress',
+  'places.location',
+  'places.primaryType',
+  'places.types',
+  'places.primaryTypeDisplayName',
+  'places.photos',
+  'places.googleMapsUri',
+  'places.rating',
+  'places.userRatingCount',
+].join(',');
 
 async function coordinatesFor(request: DeckRequest, key: string) {
   if (Number.isFinite(request.latitude) && Number.isFinite(request.longitude)) {
@@ -60,193 +88,299 @@ async function coordinatesFor(request: DeckRequest, key: string) {
   return { latitude: first!.lat as number, longitude: first!.lon as number };
 }
 
-async function imageFor(
-  place: NonNullable<GeoFeature['properties']>,
-  key: string,
-): Promise<string | undefined> {
-  try {
-    const query = new URLSearchParams({
-      id: place.place_id!,
-      features: 'details',
-      apiKey: key,
-    });
-    const response = await fetchWithTimeout(
-      `https://api.geoapify.com/v2/place-details?${query}`,
-    );
-    if (response.ok) {
-      const details = (await response.json()) as GeoCollection;
-      const mediaImage =
-        details.features?.[0]?.properties?.wiki_and_media?.image;
-      if (isPublicHttpsUrl(mediaImage)) return mediaImage;
-    }
-  } catch {
-    // Artwork is optional; continue to the cached map fallback.
-  }
-  return mapImageFor(place, key);
-}
+const MAX_CACHED_IMAGE_BYTES = 2 * 1024 * 1024;
 
-function isPublicHttpsUrl(value: unknown): value is string {
-  if (typeof value !== 'string') return false;
-  try {
-    const url = new URL(value);
-    const hostname = url.hostname.toLowerCase();
-    return (
-      url.protocol === 'https:' &&
-      hostname !== 'localhost' &&
-      hostname !== '0.0.0.0' &&
-      hostname !== '127.0.0.1' &&
-      hostname !== '::1' &&
-      !hostname.endsWith('.local') &&
-      !/^10\./.test(hostname) &&
-      !/^192\.168\./.test(hostname) &&
-      !/^172\.(1[6-9]|2\d|3[01])\./.test(hostname) &&
-      !/^169\.254\./.test(hostname)
-    );
-  } catch {
-    return false;
-  }
-}
-
-async function imageObjectName(placeId: string) {
+async function hashedObjectName(seed: string, extension = 'jpg') {
   const digest = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(placeId),
+    new TextEncoder().encode(seed),
   );
   return `${Array.from(new Uint8Array(digest))
     .map(value => value.toString(16).padStart(2, '0'))
-    .join('')}.jpg`;
+    .join('')}.${extension}`;
 }
 
-async function mapImageFor(
-  place: NonNullable<GeoFeature['properties']>,
-  key: string,
-) {
+function contentTypeDetails(contentType: string | null) {
+  const normalized = contentType?.split(';')[0]?.trim().toLowerCase();
+  if (normalized === 'image/jpeg')
+    return { contentType: normalized, ext: 'jpg' };
+  if (normalized === 'image/png')
+    return { contentType: normalized, ext: 'png' };
+  if (normalized === 'image/webp')
+    return { contentType: normalized, ext: 'webp' };
+  return undefined;
+}
+
+async function cacheVenueImage(placeId: string, imageUrl: string) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (
-    !supabaseUrl ||
-    !serviceKey ||
-    !place.place_id ||
-    !Number.isFinite(place.lat) ||
-    !Number.isFinite(place.lon)
-  )
-    return undefined;
+  // Never return a Google photo URL because it contains the server API key.
+  if (!supabaseUrl || !serviceKey) return undefined;
+  if (!isPublicWebUrl(imageUrl, { httpsOnly: true })) return undefined;
 
   try {
-    const objectName = await imageObjectName(place.place_id);
+    const response = await fetchWithTimeout(
+      imageUrl,
+      {
+        redirect: 'follow',
+        headers: {
+          Accept: 'image/avif,image/webp,image/png,image/jpeg',
+          'User-Agent': 'ChoosrVenueImageCache/1.0',
+        },
+      },
+      6000,
+    );
+    if (!response.ok || !isPublicWebUrl(response.url, { httpsOnly: true }))
+      return undefined;
+    const type = contentTypeDetails(response.headers.get('content-type'));
+    if (!type) return undefined;
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_CACHED_IMAGE_BYTES
+    )
+      return undefined;
+    const bytes = await response.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength > MAX_CACHED_IMAGE_BYTES)
+      return undefined;
+
+    const objectName = `venues/${await hashedObjectName(
+      `${placeId}:${imageUrl}`,
+      type.ext,
+    )}`;
     const supabase = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { data: existing } = await supabase.storage
-      .from(IMAGE_BUCKET)
-      .list('', { limit: 1, search: objectName });
-    const publicUrl = supabase.storage
-      .from(IMAGE_BUCKET)
-      .getPublicUrl(objectName).data.publicUrl;
-    if (existing?.some(object => object.name === objectName)) return publicUrl;
-
-    const query = new URLSearchParams({
-      style: 'osm-bright',
-      width: '800',
-      height: '600',
-      format: 'jpeg',
-      center: `lonlat:${place.lon},${place.lat}`,
-      zoom: '15',
-      marker: `lonlat:${place.lon},${place.lat};type:material;color:#ff5b22;size:large`,
-      apiKey: key,
+    const bucket = supabase.storage.from(IMAGE_BUCKET);
+    const publicUrl = bucket.getPublicUrl(objectName).data.publicUrl;
+    const { data: existing } = await bucket.list('venues', {
+      limit: 1,
+      search: objectName.split('/').at(-1),
     });
-    const response = await fetchWithTimeout(
-      `https://maps.geoapify.com/v1/staticmap?${query}`,
-      {},
-      6000,
-    );
-    if (!response.ok) return undefined;
-    const bytes = await response.arrayBuffer();
-    if (!bytes.byteLength || bytes.byteLength > 2 * 1024 * 1024)
-      return undefined;
-    const { error } = await supabase.storage
-      .from(IMAGE_BUCKET)
-      .upload(objectName, bytes, {
-        contentType: 'image/jpeg',
-        cacheControl: '604800',
-        upsert: true,
-      });
+    if (existing?.some(object => `venues/${object.name}` === objectName))
+      return publicUrl;
+    const { error } = await bucket.upload(objectName, bytes, {
+      contentType: type.contentType,
+      cacheControl: '2592000',
+      upsert: true,
+    });
     return error ? undefined : publicUrl;
   } catch {
     return undefined;
   }
 }
 
+function validGooglePlace(
+  place: GooglePlace,
+  mode: 'eat' | 'do',
+): place is GooglePlace & {
+  id: string;
+  displayName: { text: string };
+  location: { latitude: number; longitude: number };
+  googleMapsUri: string;
+} {
+  const structurallyValid =
+    typeof place.id === 'string' &&
+    typeof place.displayName?.text === 'string' &&
+    Number.isFinite(place.location?.latitude) &&
+    Number.isFinite(place.location?.longitude) &&
+    typeof place.googleMapsUri === 'string' &&
+    place.googleMapsUri.startsWith('https://');
+  return (
+    structurallyValid && (mode === 'eat' || isEligibleActivityPlace(place))
+  );
+}
+
+function googlePhotoSource(photo: GooglePhoto | undefined, key: string) {
+  if (typeof photo?.name !== 'string') return undefined;
+  const query = new URLSearchParams({
+    key,
+    maxWidthPx: '1200',
+    maxHeightPx: '900',
+  });
+  return `https://places.googleapis.com/v1/${photo.name}/media?${query}`;
+}
+
+type ValidGooglePlace = GooglePlace & {
+  id: string;
+  displayName: { text: string };
+  location: { latitude: number; longitude: number };
+  googleMapsUri: string;
+};
+
+function placeScore(
+  place: ValidGooglePlace,
+  participantLocations: { latitude: number; longitude: number }[],
+) {
+  const distances = participantLocations.map(location =>
+    distanceMiles(location, place.location),
+  );
+  const fairnessPenalty =
+    distances.length > 1
+      ? Math.max(...distances) * 0.35 +
+        Math.abs(distances[0]! - distances[1]!) * 0.8
+      : distances[0]! * 0.25;
+  return (
+    (place.photos?.length ? 4 : 0) +
+    (place.rating ?? 0) * 2 +
+    Math.log10((place.userRatingCount ?? 0) + 1) * 2 -
+    fairnessPenalty
+  );
+}
+
+async function searchGooglePlaces(
+  key: string,
+  request: DeckRequest,
+  center: { latitude: number; longitude: number },
+  radius: number,
+) {
+  const response = await fetchWithTimeout(
+    'https://places.googleapis.com/v1/places:searchNearby',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': key,
+        'X-Goog-FieldMask': GOOGLE_PLACES_FIELDS,
+      },
+      body: JSON.stringify({
+        ...(request.mode === 'eat'
+          ? googleFoodTypeRestriction(request.cuisineFilter)
+          : { includedPrimaryTypes: ACTIVITY_PRIMARY_TYPES }),
+        ...(request.mode === 'eat'
+          ? {}
+          : { excludedTypes: EXCLUDED_ACTIVITY_TYPES }),
+        maxResultCount: GOOGLE_SEARCH_CANDIDATE_LIMIT,
+        rankPreference: 'POPULARITY',
+        locationRestriction: { circle: { center, radius } },
+      }),
+    },
+    5000,
+  );
+  if (!response.ok) {
+    throw new Error(`Google nearby search failed with ${response.status}.`);
+  }
+  return ((await response.json()) as GooglePlacesResponse).places ?? [];
+}
+
+async function buildGoogleNearbyDeck(
+  request: DeckRequest,
+  fallbackLocation: { latitude: number; longitude: number },
+): Promise<ProviderItem[]> {
+  const key = Deno.env.get('GOOGLE_PLACES_API_KEY');
+  if (!key) throw new Error('GOOGLE_PLACES_API_KEY is not configured.');
+  const participantLocations = request.participantLocations?.length
+    ? request.participantLocations
+    : [fallbackLocation];
+  const center = midpoint(participantLocations);
+  const radii = request.radiusMeters
+    ? [Math.min(Math.max(request.radiusMeters, 500), 50000)]
+    : SEARCH_RADII_METERS;
+  const candidatesById = new Map<string, ValidGooglePlace>();
+
+  for (const radius of radii) {
+    const candidates = await searchGooglePlaces(key, request, center, radius);
+    candidates
+      .filter(
+        place =>
+          validGooglePlace(place, request.mode) &&
+          (request.mode !== 'eat' ||
+            matchesGoogleCuisine(place, request.cuisineFilter)),
+      )
+      .forEach(place => {
+        candidatesById.set(place.id, place);
+      });
+    if (candidatesById.size >= GOOGLE_RESULT_LIMIT) break;
+  }
+
+  const places = variedQualitySelection(
+    [...candidatesById.values()].sort(
+      (left, right) =>
+        placeScore(right, participantLocations) -
+        placeScore(left, participantLocations),
+    ),
+    GOOGLE_RESULT_LIMIT,
+  );
+  const images = await Promise.all(
+    places.map(async place => {
+      const source = googlePhotoSource(place.photos?.[0], key);
+      return source
+        ? await cacheVenueImage(`google:${place.id}`, source)
+        : undefined;
+    }),
+  );
+
+  return places.map((place, index) => {
+    const [background, accent] = colorsFor(index);
+    const participantDistances = participantLocations.map(location =>
+      distanceMiles(location, place.location),
+    );
+    const distanceLabel =
+      participantDistances.length > 1
+        ? `${participantDistances[0]!.toFixed(
+            1,
+          )} / ${participantDistances[1]!.toFixed(1)} mi`
+        : `${participantDistances[0]!.toFixed(1)} mi away`;
+    const isFood = request.mode === 'eat';
+    const type =
+      place.primaryTypeDisplayName?.text ??
+      (isFood ? 'Restaurant' : 'Local activity');
+    const rating =
+      typeof place.rating === 'number'
+        ? `★ ${place.rating.toFixed(1)}${
+            typeof place.userRatingCount === 'number'
+              ? ` (${place.userRatingCount.toLocaleString('en-US')})`
+              : ''
+          }`
+        : undefined;
+    const author = place.photos?.[0]?.authorAttributions?.[0];
+    const attributionLabel = [
+      'Google Maps',
+      author?.displayName ? `Photo by ${author.displayName}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    return {
+      id: `google:${place.id}`,
+      mode: request.mode,
+      title: place.displayName.text,
+      kicker: isFood ? 'PICK FOOD' : 'PICK AN ACTIVITY',
+      meta: [type, distanceLabel, rating].filter(Boolean).join(' · '),
+      description: place.formattedAddress ?? distanceLabel,
+      background,
+      accent,
+      tags: [isFood ? 'Food' : 'Activity', type, 'Meet halfway'],
+      ...(images[index] ? { imageUrl: images[index] } : {}),
+      action: {
+        label: `Open ${place.displayName.text} in Google Maps`,
+        url: place.googleMapsUri,
+      },
+      attribution: {
+        label: attributionLabel,
+        url:
+          typeof author?.uri === 'string' && author.uri.startsWith('https://')
+            ? author.uri
+            : place.googleMapsUri,
+      },
+    };
+  });
+}
+
 export async function buildPlacesDeck(
   request: DeckRequest,
 ): Promise<ProviderItem[]> {
-  const key = Deno.env.get('GEOAPIFY_API_KEY');
-  if (!key) throw new Error('GEOAPIFY_API_KEY is not configured.');
-  const { latitude, longitude } = await coordinatesFor(request, key);
-  const isFood = request.mode === 'eat';
-  const configuredLimit = Number(Deno.env.get('DISCOVERY_RESULT_LIMIT') ?? 10);
-  const limit = Math.min(
-    Math.max(request.maxResults ?? configuredLimit, 1),
-    20,
-  );
-  const categories = isFood
-    ? 'catering.restaurant'
-    : 'entertainment,leisure.park';
-  const query = new URLSearchParams({
-    categories,
-    filter: `circle:${longitude},${latitude},${Math.min(
-      Math.max(request.radiusMeters ?? 15000, 500),
-      25000,
-    )}`,
-    bias: `proximity:${longitude},${latitude}`,
-    conditions: 'named',
-    limit: String(limit),
-    apiKey: key,
-  });
-  const response = await fetchWithTimeout(
-    `https://api.geoapify.com/v2/places?${query}`,
-  );
-  if (!response.ok)
-    throw new Error(`Nearby search failed with ${response.status}.`);
-  const payload = (await response.json()) as GeoCollection;
-  const places = (payload.features ?? [])
-    .filter(feature => {
-      const place = feature.properties;
-      return (
-        typeof place?.place_id === 'string' &&
-        typeof place.name === 'string' &&
-        Number.isFinite(place.lat) &&
-        Number.isFinite(place.lon)
-      );
-    })
-    .slice(0, limit);
-  const images = await Promise.all(
-    places.map(place => imageFor(place.properties!, key)),
-  );
-
-  return places.map((feature, index) => {
-    const place = feature.properties!;
-    const [background, accent] = colorsFor(index);
-    const distanceMiles =
-      typeof place.distance === 'number'
-        ? `${(place.distance / 1609.344).toFixed(1)} mi away`
-        : 'Nearby';
-    const label = categoryLabel(place.categories, isFood);
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-      `${place.name} ${place.formatted ?? ''}`,
-    )}`;
-    return {
-      id: `geoapify:${place.place_id}`,
-      mode: request.mode,
-      title: place.name!,
-      kicker: isFood ? 'PICK FOOD' : 'PICK AN ACTIVITY',
-      meta: `${label} · ${distanceMiles}`,
-      description: place.formatted ?? place.address_line1 ?? distanceMiles,
-      background,
-      accent,
-      tags: [isFood ? 'Food' : 'Activity', 'Nearby'],
-      ...(images[index] ? { imageUrl: images[index] } : {}),
-      action: { label: `Open ${place.name} in Maps`, url: mapsUrl },
-    };
-  });
+  const hasCoordinates =
+    Number.isFinite(request.latitude) && Number.isFinite(request.longitude);
+  const geoapifyKey = Deno.env.get('GEOAPIFY_API_KEY');
+  if (!hasCoordinates && !geoapifyKey) {
+    throw new Error('GEOAPIFY_API_KEY is not configured.');
+  }
+  const location = hasCoordinates
+    ? {
+        latitude: request.latitude as number,
+        longitude: request.longitude as number,
+      }
+    : await coordinatesFor(request, geoapifyKey!);
+  return buildGoogleNearbyDeck(request, location);
 }

@@ -14,7 +14,11 @@ jest.mock('../src/services/anonymousAuth', () => ({
 }));
 
 import {
+  acknowledgeDecisionRoom,
   cancelDecisionRoom,
+  createLocationDecisionRoom,
+  dismissAllCompletedRooms,
+  dismissCompletedRoom,
   loadRoomHistory,
   submitDecisionReliably,
 } from '../src/services/sessionService';
@@ -31,6 +35,7 @@ const queryResult = (value: unknown) => {
     limit: jest.fn(),
     maybeSingle: jest.fn(),
     single: jest.fn(),
+    abortSignal: jest.fn(),
   };
   builder.select.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
@@ -40,6 +45,7 @@ const queryResult = (value: unknown) => {
   builder.limit.mockResolvedValue(value);
   builder.maybeSingle.mockResolvedValue(value);
   builder.single.mockResolvedValue(value);
+  builder.abortSignal.mockResolvedValue(value);
   builder.then = resolve => resolve(value);
   return builder;
 };
@@ -47,54 +53,69 @@ const queryResult = (value: unknown) => {
 describe('loadRoomHistory', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockEnsureAnonymousSession.mockResolvedValue({});
+    mockEnsureAnonymousSession.mockResolvedValue({
+      user: { id: 'anonymous-user-1' },
+    });
   });
 
   it('loads active rooms and only the match from the current round', async () => {
     const session = {
-      id: 'session-1',
+      session_id: 'session-1',
       access_code: 'ABCDEFGH',
       mode: 'custom',
       status: 'active',
       round_number: 2,
       expires_at: '2026-07-23T00:00:00.000Z',
       created_at: '2026-07-22T00:00:00.000Z',
+      participant_count: 2,
+      total_choices: 4,
+      completed_choices: 2,
+      matched_item_id: 'choice-2',
+      partner_display_name: 'Alex',
+      partner_avatar_path: null,
     };
-    const sessions = queryResult({ data: [session], error: null });
-    const participants = queryResult({ count: 2, error: null });
-    const items = queryResult({ count: 4, error: null });
-    const swipes = queryResult({ count: 2, error: null });
-    const match = queryResult({
-      data: { item_id: 'choice-2' },
-      error: null,
-    });
-
-    mockFrom.mockImplementation((table: string) => {
-      if (table === 'sessions') return sessions;
-      if (table === 'participants') return participants;
-      if (table === 'session_items') return items;
-      if (table === 'swipes') return swipes;
-      if (table === 'matches') return match;
-      throw new Error(`Unexpected table: ${table}`);
-    });
+    const history = queryResult({ data: [session], error: null });
+    mockRpc.mockReturnValue(history);
 
     await expect(loadRoomHistory()).resolves.toEqual([
       expect.objectContaining({
         sessionId: 'session-1',
         roundNumber: 2,
         matchedItemId: 'choice-2',
+        partnerDisplayName: 'Alex',
+        partnerPhotoUrl: null,
       }),
     ]);
-    expect(match.eq).toHaveBeenCalledWith('session_id', 'session-1');
-    expect(match.eq).toHaveBeenCalledWith('round', 2);
-    expect(sessions.in).toHaveBeenCalledWith('status', ['waiting', 'active']);
-    expect(sessions.gt).toHaveBeenCalledWith('expires_at', expect.any(String));
+    expect(mockRpc).toHaveBeenCalledWith('list_active_room_history');
+    expect(history.abortSignal).toHaveBeenCalledWith(expect.any(AbortSignal));
   });
 
   it('returns an empty history as a successful result', async () => {
-    mockFrom.mockReturnValue(queryResult({ data: [], error: null }));
+    mockRpc.mockReturnValue(queryResult({ data: [], error: null }));
 
     await expect(loadRoomHistory()).resolves.toEqual([]);
+  });
+});
+
+describe('completed room history controls', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEnsureAnonymousSession.mockResolvedValue({
+      user: { id: 'anonymous-user-1' },
+    });
+    mockRpc.mockResolvedValue({ data: 1, error: null });
+  });
+
+  it('deletes one completed result only for the current participant', async () => {
+    await expect(dismissCompletedRoom('session-1')).resolves.toBeUndefined();
+    expect(mockRpc).toHaveBeenCalledWith('dismiss_completed_room', {
+      p_session_id: 'session-1',
+    });
+  });
+
+  it('deletes all completed results only for the current participant', async () => {
+    await expect(dismissAllCompletedRooms()).resolves.toBeUndefined();
+    expect(mockRpc).toHaveBeenCalledWith('dismiss_all_completed_rooms');
   });
 });
 
@@ -118,6 +139,69 @@ describe('cancelDecisionRoom', () => {
     mockRpc.mockResolvedValue({ error });
 
     await expect(cancelDecisionRoom('session-1')).rejects.toBe(error);
+  });
+});
+
+describe('acknowledgeDecisionRoom', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEnsureAnonymousSession.mockResolvedValue({
+      user: { id: 'anonymous-user-1' },
+    });
+  });
+
+  it('records that the current participant viewed a completed result', async () => {
+    mockRpc.mockResolvedValue({ error: null });
+
+    await expect(acknowledgeDecisionRoom('session-1')).resolves.toBeUndefined();
+
+    expect(mockRpc).toHaveBeenCalledWith('acknowledge_room_completion', {
+      p_session_id: 'session-1',
+    });
+  });
+});
+
+describe('createLocationDecisionRoom', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEnsureAnonymousSession.mockResolvedValue({});
+  });
+
+  it('creates a waiting room without exposing the location through a deck', async () => {
+    mockRpc.mockResolvedValue({
+      data: [
+        {
+          session_id: 'session-1',
+          access_code: 'ABCDEFGH',
+          invite_token: 'private-token',
+          expires_at: '2026-07-25T00:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    await expect(
+      createLocationDecisionRoom({
+        mode: 'eat',
+        latitude: 28.5383,
+        longitude: -81.3792,
+        locationLabel: 'Orlando, Florida',
+        cuisineFilter: 'mexican',
+      }),
+    ).resolves.toEqual({
+      sessionId: 'session-1',
+      accessCode: 'ABCDEFGH',
+      inviteToken: 'private-token',
+      expiresAt: '2026-07-25T00:00:00.000Z',
+    });
+    expect(mockRpc).toHaveBeenCalledWith('create_location_decision_session', {
+      p_mode: 'eat',
+      p_latitude: 28.5383,
+      p_longitude: -81.3792,
+      p_location_label: 'Orlando, Florida',
+      p_cuisine_filter: 'mexican',
+      p_region: 'US',
+    });
   });
 });
 

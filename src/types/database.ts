@@ -1,3 +1,5 @@
+import type { CuisineFilter } from '../data/cuisines';
+
 export type Json =
   | string
   | number
@@ -30,6 +32,8 @@ type SessionRow = {
   created_at: string;
   expires_at: string;
   matched_at: string | null;
+  completed_at: string | null;
+  cuisine_filter: CuisineFilter;
 };
 
 type ParticipantRow = {
@@ -51,6 +55,15 @@ type SessionItemRow = {
   created_at: string;
 };
 
+type SessionLocationRow = {
+  session_id: string;
+  participant_id: string;
+  latitude: number;
+  longitude: number;
+  location_label: string;
+  submitted_at: string;
+};
+
 type SwipeRow = {
   id: number;
   session_id: string;
@@ -61,12 +74,42 @@ type SwipeRow = {
   created_at: string;
 };
 
+type RankingSubmissionRow = {
+  session_id: string;
+  participant_id: string;
+  round: number;
+  created_at: string;
+};
+
+type ChoiceRankingRow = {
+  session_id: string;
+  participant_id: string;
+  round: number;
+  item_id: string;
+  rank: number;
+  created_at: string;
+};
+
 type MatchRow = {
   id: string;
   session_id: string;
   round: number;
   item_id: string;
   created_at: string;
+};
+
+type RoomCompletionAcknowledgementRow = {
+  session_id: string;
+  participant_id: string;
+  round: number;
+  acknowledged_at: string;
+};
+
+type RoomHistoryDismissalRow = {
+  session_id: string;
+  participant_id: string;
+  round: number;
+  dismissed_at: string;
 };
 
 type ProfileRow = {
@@ -103,7 +146,7 @@ type RoomInvitationRow = {
 type UserNotificationRow = {
   id: number;
   recipient_user_id: string;
-  kind: 'connection_request' | 'room_invitation';
+  kind: 'connection_request' | 'room_invitation' | 'chat_invitation';
   title: string;
   body: string;
   payload: Json;
@@ -111,6 +154,34 @@ type UserNotificationRow = {
   created_at: string;
   read_at: string | null;
   deleted_at: string | null;
+};
+
+type ChatRoomRow = {
+  id: string;
+  status: 'inviting' | 'active' | 'destroyed' | 'expired';
+  created_at: string;
+  activated_at: string | null;
+  expires_at: string;
+  destroyed_at: string | null;
+  destruction_reason: 'participant' | 'expired' | null;
+};
+
+type ChatParticipantRow = {
+  room_id: string;
+  user_id: string;
+  role: 'creator' | 'joiner';
+  public_key: string;
+  joined_at: string;
+};
+
+type ChatMessageRow = {
+  id: number;
+  room_id: string;
+  sender_user_id: string;
+  client_message_id: string;
+  nonce: string;
+  ciphertext: string;
+  created_at: string;
 };
 
 type Table<Row, Insert, Update> = {
@@ -126,15 +197,31 @@ export type Database = {
       sessions: Table<SessionRow, never, never>;
       participants: Table<ParticipantRow, never, never>;
       session_items: Table<SessionItemRow, never, never>;
+      session_locations: Table<SessionLocationRow, never, never>;
       swipes: Table<SwipeRow, never, never>;
       matches: Table<MatchRow, never, never>;
+      room_completion_acknowledgements: Table<
+        RoomCompletionAcknowledgementRow,
+        never,
+        never
+      >;
+      room_history_dismissals: Table<RoomHistoryDismissalRow, never, never>;
+      ranking_submissions: Table<RankingSubmissionRow, never, never>;
+      choice_rankings: Table<ChoiceRankingRow, never, never>;
       profiles: Table<ProfileRow, never, never>;
       connections: Table<ConnectionRow, never, never>;
       room_invitations: Table<RoomInvitationRow, never, never>;
       user_notifications: Table<UserNotificationRow, never, never>;
+      chat_rooms: Table<ChatRoomRow, never, never>;
+      chat_participants: Table<ChatParticipantRow, never, never>;
+      chat_messages: Table<ChatMessageRow, never, never>;
     };
     Views: Record<never, never>;
     Functions: {
+      acknowledge_room_completion: {
+        Args: { p_session_id: string };
+        Returns: undefined;
+      };
       cancel_session: {
         Args: { p_session_id: string };
         Returns: undefined;
@@ -143,6 +230,22 @@ export type Database = {
         Args: {
           p_mode: DecisionMode;
           p_items: Json;
+          p_region?: string;
+        };
+        Returns: {
+          session_id: string;
+          access_code: string;
+          invite_token: string;
+          expires_at: string;
+        }[];
+      };
+      create_location_decision_session: {
+        Args: {
+          p_mode: 'eat' | 'do';
+          p_latitude: number;
+          p_longitude: number;
+          p_location_label: string;
+          p_cuisine_filter?: CuisineFilter;
           p_region?: string;
         };
         Returns: {
@@ -220,6 +323,34 @@ export type Database = {
           expires_at: string;
         }[];
       };
+      list_active_room_history: {
+        Args: Record<never, never>;
+        Returns: {
+          session_id: string;
+          access_code: string;
+          mode: DecisionMode;
+          status: SessionStatus;
+          round_number: number;
+          expires_at: string;
+          created_at: string;
+          participant_count: number;
+          total_choices: number;
+          completed_choices: number;
+          matched_item_id: string | null;
+          partner_display_name: string | null;
+          partner_avatar_path: string | null;
+          selection_complete: boolean;
+          result_acknowledged: boolean;
+        }[];
+      };
+      dismiss_completed_room: {
+        Args: { p_session_id: string };
+        Returns: undefined;
+      };
+      dismiss_all_completed_rooms: {
+        Args: Record<never, never>;
+        Returns: number;
+      };
       respond_room_invitation: {
         Args: { p_invitation_id: string; p_accept: boolean };
         Returns: {
@@ -232,6 +363,25 @@ export type Database = {
       register_push_token: {
         Args: { p_platform: 'ios' | 'android'; p_token: string };
         Returns: undefined;
+      };
+      report_push_registration: {
+        Args: {
+          p_platform: 'ios' | 'android';
+          p_status: 'ready' | 'unavailable';
+          p_stage: string;
+          p_code: string;
+          p_app_version: string;
+          p_build_number: string;
+        };
+        Returns: undefined;
+      };
+      push_token_status: {
+        Args: { p_token: string };
+        Returns: 'active' | 'invalidated' | 'missing';
+      };
+      has_registered_push_token: {
+        Args: Record<never, never>;
+        Returns: boolean;
       };
       unread_notification_count: {
         Args: Record<never, never>;
@@ -273,10 +423,105 @@ export type Database = {
           p_direction: SwipeDirection;
         };
         Returns: {
-          outcome: 'next' | 'waiting' | 'match' | 'no-match';
+          outcome: 'next' | 'rank' | 'match' | 'no-match';
           match_id: string | null;
           matched_item_id: string | null;
         }[];
+      };
+      submit_rankings: {
+        Args: {
+          p_session_id: string;
+          p_round: number;
+          p_item_ids: string[];
+        };
+        Returns: {
+          outcome: 'waiting' | 'match' | 'no-match';
+          match_id: string | null;
+          matched_item_id: string | null;
+        }[];
+      };
+      get_own_ranking_context: {
+        Args: {
+          p_session_id: string;
+          p_round: number;
+        };
+        Returns: {
+          accepted_item_ids: string[];
+          ranked_item_ids: string[];
+          required_rank_count: number;
+          submitted: boolean;
+          deck_completed: boolean;
+        }[];
+      };
+      create_chat_invitation: {
+        Args: { p_public_key: string };
+        Returns: {
+          room_id: string;
+          invitation_token: string;
+          invitation_expires_at: string;
+          room_expires_at: string;
+        }[];
+      };
+      join_chat_invitation: {
+        Args: { p_invitation_token: string; p_public_key: string };
+        Returns: {
+          room_id: string;
+          peer_public_key: string;
+          room_expires_at: string;
+        }[];
+      };
+      get_active_chat: {
+        Args: Record<never, never>;
+        Returns: {
+          room_id: string;
+          status: 'inviting' | 'active';
+          role: 'creator' | 'joiner';
+          own_public_key: string;
+          peer_public_key: string | null;
+          room_expires_at: string;
+          decision_session_id: string | null;
+        }[];
+      };
+      open_matched_room_chat: {
+        Args: { p_session_id: string; p_public_key: string };
+        Returns: {
+          room_id: string;
+          status: 'inviting' | 'active';
+          role: 'creator' | 'joiner';
+          own_public_key: string;
+          peer_public_key: string | null;
+          room_expires_at: string;
+          decision_session_id: string;
+        }[];
+      };
+      list_pending_matched_chat_invitations: {
+        Args: Record<never, never>;
+        Returns: {
+          chat_room_id: string;
+          decision_session_id: string;
+          inviter_display_name: string;
+          inviter_avatar_path: string | null;
+          matched_item_title: string;
+          created_at: string;
+          expires_at: string;
+        }[];
+      };
+      decline_matched_chat_invitation: {
+        Args: { p_room_id: string };
+        Returns: undefined;
+      };
+      send_chat_ciphertext: {
+        Args: {
+          p_room_id: string;
+          p_client_message_id: string;
+          p_nonce: string;
+          p_ciphertext: string;
+        };
+        Returns: { message_id: number; created_at: string }[];
+      };
+      destroy_chat_room: {
+        Args: { p_room_id: string };
+        Returns: string;
       };
     };
     Enums: Record<never, never>;

@@ -1,13 +1,24 @@
+import { isCuisineFilter, type CuisineFilter } from './providers/cuisines.ts';
+
 export type DecisionMode = 'eat' | 'do';
+
+export type DiscoveryLocation = {
+  latitude: number;
+  longitude: number;
+};
 
 export type DeckRequest = {
   mode: DecisionMode;
+  sessionId?: string;
+  locationLabel?: string;
   latitude?: number;
   longitude?: number;
   postalCode?: string;
   radiusMeters?: number;
   maxResults?: number;
   region?: string;
+  participantLocations?: DiscoveryLocation[];
+  cuisineFilter?: CuisineFilter;
 };
 
 export type ProviderItem = {
@@ -22,6 +33,7 @@ export type ProviderItem = {
   tags: string[];
   imageUrl?: string;
   action?: { label: string; url: string };
+  attribution?: { label: string; url: string };
 };
 
 export class DeckRequestError extends Error {}
@@ -59,6 +71,24 @@ export function parseDeckRequest(value: unknown): DeckRequest {
   }
   const body = value as Record<string, unknown>;
   const mode = parseMode(body.mode);
+  const sessionId =
+    typeof body.sessionId === 'string' &&
+    /^[0-9a-f-]{36}$/i.test(body.sessionId)
+      ? body.sessionId
+      : undefined;
+  if (body.sessionId !== undefined && !sessionId) {
+    throw new DeckRequestError('Invalid sessionId.');
+  }
+  const locationLabel =
+    typeof body.locationLabel === 'string'
+      ? body.locationLabel.trim()
+      : undefined;
+  if (
+    locationLabel !== undefined &&
+    (locationLabel.length < 1 || locationLabel.length > 120)
+  ) {
+    throw new DeckRequestError('Invalid locationLabel.');
+  }
   const latitude = optionalNumber(body.latitude, 'latitude', -90, 90);
   const longitude = optionalNumber(body.longitude, 'longitude', -180, 180);
   const postalCode =
@@ -78,7 +108,11 @@ export function parseDeckRequest(value: unknown): DeckRequest {
     25000,
   );
   const maxResults = optionalNumber(body.maxResults, 'maxResults', 1, 20);
-  if (!postalCode && (latitude === undefined || longitude === undefined)) {
+  if (
+    !sessionId &&
+    !postalCode &&
+    (latitude === undefined || longitude === undefined)
+  ) {
     throw new DeckRequestError(
       'A valid latitude and longitude are required for local modes.',
     );
@@ -87,14 +121,25 @@ export function parseDeckRequest(value: unknown): DeckRequest {
   if (typeof region !== 'string' || !/^[A-Za-z]{2}$/.test(region)) {
     throw new DeckRequestError('Invalid region.');
   }
+  const cuisineFilter =
+    body.cuisineFilter === undefined ? 'all' : body.cuisineFilter;
+  if (!isCuisineFilter(cuisineFilter)) {
+    throw new DeckRequestError('Invalid cuisineFilter.');
+  }
+  if (mode !== 'eat' && cuisineFilter !== 'all') {
+    throw new DeckRequestError('Cuisine filters are only available for food.');
+  }
 
   return {
     mode,
     region: region.toUpperCase(),
+    ...(sessionId === undefined ? {} : { sessionId }),
+    ...(locationLabel === undefined ? {} : { locationLabel }),
     ...(latitude === undefined ? {} : { latitude }),
     ...(longitude === undefined ? {} : { longitude }),
     ...(postalCode === undefined ? {} : { postalCode }),
     ...(radiusMeters === undefined ? {} : { radiusMeters }),
     ...(maxResults === undefined ? {} : { maxResults }),
+    cuisineFilter,
   };
 }

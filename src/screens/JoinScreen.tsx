@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
+import { prepareSharedLocationDeck } from '../services/deckService';
 import { normalizeRoomCode, roomErrorMessage } from '../services/roomFlow';
 import {
   joinDecisionRoom,
@@ -34,10 +35,25 @@ export function JoinScreen({ navigation, route }: Props): React.JSX.Element {
           token ? { inviteToken: token } : { accessCode: code },
         );
         const room = await loadDecisionRoom(joined.sessionId);
-        if (room.status !== 'active' || room.participantCount !== 2) {
+        if (room.participantCount !== 2) {
           setError(
             'This device created that room. Open the invite on your partner’s device.',
           );
+          return;
+        }
+        if (room.mode === 'eat' || room.mode === 'do') {
+          const status = await prepareSharedLocationDeck({
+            sessionId: room.sessionId,
+            mode: room.mode,
+          });
+          if (status !== 'ready') throw new Error('room_not_active');
+        }
+        if (
+          room.status !== 'active' &&
+          room.mode !== 'eat' &&
+          room.mode !== 'do'
+        ) {
+          setError('This room is not ready yet. Please try again.');
           return;
         }
         await touchRoomPresence(room.sessionId);

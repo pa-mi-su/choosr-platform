@@ -23,7 +23,7 @@ export function serviceFailureMessage(
   const { message, status } = errorDetails(error);
 
   if (
-    /failed to fetch|network request failed|networkerror|load failed|enotfound|could not resolve|project.*paused/i.test(
+    /failed to fetch|network request failed|networkerror|load failed|enotfound|could not resolve|project.*paused|request_timeout|timed out/i.test(
       message,
     )
   ) {

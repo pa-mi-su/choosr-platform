@@ -1,5 +1,12 @@
 import React, { useMemo } from 'react';
-import { Dimensions, StyleSheet, Text, View } from 'react-native';
+import {
+  Dimensions,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   interpolate,
@@ -79,6 +86,18 @@ export function SwipeCard({
           <Text numberOfLines={2} style={styles.overview}>
             {item.description}
           </Text>
+          {item.attribution ? (
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`Open ${item.attribution.label}`}
+              hitSlop={8}
+              onPress={async () => {
+                await Linking.openURL(item.attribution!.url);
+              }}
+            >
+              <Text style={styles.attribution}>{item.attribution.label}</Text>
+            </Pressable>
+          ) : null}
         </View>
       </Animated.View>
     </GestureDetector>
@@ -100,6 +119,13 @@ const styles = StyleSheet.create({
   title: { flex: 1, color: colors.text, fontSize: 22, fontWeight: '900' },
   meta: { color: colors.muted, fontSize: 11, marginTop: 6 },
   overview: { color: colors.muted, fontSize: 13, lineHeight: 18, marginTop: 8 },
+  attribution: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 8,
+    textDecorationLine: 'underline',
+  },
   yes: {
     position: 'absolute',
     top: 25,

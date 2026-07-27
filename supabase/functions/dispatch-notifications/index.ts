@@ -4,6 +4,7 @@ import {
   buildServiceAccountClaims,
   readBearerAccessToken,
 } from './googleAuth.ts';
+import { normalizeFcmFailure } from './fcmError.ts';
 
 type ServiceAccount = {
   project_id: string;
@@ -14,9 +15,11 @@ type ServiceAccount = {
 type PushJob = {
   id: number;
   recipient_user_id: string;
-  kind: 'connection_request' | 'room_invitation';
+  kind: 'connection_request' | 'room_invitation' | 'chat_invitation';
   payload: Record<string, unknown>;
   attempts: number;
+  dedupe_key: string;
+  deliver_before: string;
 };
 
 type PushCopy = { title: string; body: string };
@@ -72,6 +75,20 @@ async function getGoogleAccessToken(account: ServiceAccount): Promise<string> {
 }
 
 function pushCopy(job: PushJob): PushCopy {
+  if (job.kind === 'chat_invitation') {
+    const sender =
+      typeof job.payload.sender_display_name === 'string' &&
+      job.payload.sender_display_name.trim()
+        ? job.payload.sender_display_name
+            .trim()
+            .replace(/\s+/g, ' ')
+            .slice(0, 40)
+        : 'Your Choosr partner';
+    return {
+      title: 'Private chat invitation',
+      body: `${sender} wants to start a private chat about your match.`,
+    };
+  }
   if (job.kind === 'connection_request') {
     return {
       title: 'New Choosr connection',
@@ -88,7 +105,25 @@ function pushCopy(job: PushJob): PushCopy {
 }
 
 function stringData(job: PushJob): Record<string, string> {
-  const data: Record<string, string> = { kind: job.kind, route: 'Circle' };
+  if (job.kind === 'chat_invitation') {
+    return {
+      kind: job.kind,
+      route: 'ChatHome',
+      notification_id: `job-${job.id}`,
+      ...Object.fromEntries(
+        ['chat_room_id', 'session_id', 'sender_user_id']
+          .map(key => [key, job.payload[key]])
+          .filter((entry): entry is [string, string] =>
+            Boolean(typeof entry[1] === 'string'),
+          ),
+      ),
+    };
+  }
+  const data: Record<string, string> = {
+    kind: job.kind,
+    route: job.kind === 'room_invitation' ? 'ActiveRooms' : 'Circle',
+    notification_id: `job-${job.id}`,
+  };
   for (const key of ['connection_id', 'invitation_id', 'session_id', 'mode']) {
     const value = job.payload[key];
     if (typeof value === 'string') data[key] = value;
@@ -103,6 +138,14 @@ async function sendMessage(input: {
   job: PushJob;
   unreadCount: number;
 }): Promise<{ ok: boolean; invalidToken: boolean; error?: string }> {
+  const secondsRemaining = Math.max(
+    1,
+    Math.min(
+      300,
+      Math.floor((Date.parse(input.job.deliver_before) - Date.now()) / 1000),
+    ),
+  );
+  const notificationTag = `choosr-job-${input.job.id}`;
   const response = await fetch(
     `https://fcm.googleapis.com/v1/projects/${input.account.project_id}/messages:send`,
     {
@@ -118,9 +161,25 @@ async function sendMessage(input: {
           data: stringData(input.job),
           android: {
             priority: 'high',
-            notification: { notification_count: input.unreadCount },
+            ttl: `${secondsRemaining}s`,
+            collapse_key: input.job.dedupe_key.slice(0, 64),
+            notification: {
+              channel_id: 'choosr-alerts-v2',
+              sound: 'default',
+              default_vibrate_timings: true,
+              notification_count: input.unreadCount,
+              tag: notificationTag,
+            },
           },
           apns: {
+            headers: {
+              'apns-priority': '10',
+              'apns-push-type': 'alert',
+              'apns-expiration': String(
+                Math.floor(Date.now() / 1000) + secondsRemaining,
+              ),
+              'apns-collapse-id': notificationTag.slice(0, 64),
+            },
             payload: { aps: { sound: 'default', badge: input.unreadCount } },
           },
         },
@@ -129,14 +188,11 @@ async function sendMessage(input: {
   );
   if (response.ok) return { ok: true, invalidToken: false };
 
-  const responseText = await response.text();
+  const failure = normalizeFcmFailure(response.status, await response.text());
   return {
     ok: false,
-    invalidToken:
-      response.status === 404 ||
-      responseText.includes('UNREGISTERED') ||
-      responseText.includes('INVALID_ARGUMENT'),
-    error: `FCM ${response.status}: ${responseText.slice(0, 300)}`,
+    invalidToken: failure.invalidToken,
+    error: failure.code,
   };
 }
 
@@ -170,6 +226,7 @@ Deno.serve(async request => {
         failed: 0,
         recipientsWithoutDevices: 0,
         invalidTokensRemoved: 0,
+        discarded: 0,
       });
 
     const accessToken = await getGoogleAccessToken(account);
@@ -177,7 +234,25 @@ Deno.serve(async request => {
     let failed = 0;
     let recipientsWithoutDevices = 0;
     let invalidTokensRemoved = 0;
+    let discarded = 0;
     for (const job of jobs as PushJob[]) {
+      const { data: isDeliverable, error: validityError } = await supabase.rpc(
+        'notification_job_is_deliverable',
+        { p_id: job.id },
+      );
+      if (validityError) throw validityError;
+      if (!isDeliverable || Date.parse(job.deliver_before) <= Date.now()) {
+        await supabase.rpc('discard_notification_job', {
+          p_id: job.id,
+          p_reason:
+            Date.parse(job.deliver_before) <= Date.now()
+              ? 'delivery_window_expired'
+              : 'event_no_longer_current',
+        });
+        discarded += 1;
+        continue;
+      }
+
       const { count: unreadCount, error: unreadError } = await supabase
         .from('user_notifications')
         .select('id', { count: 'exact', head: true })
@@ -185,15 +260,28 @@ Deno.serve(async request => {
         .is('read_at', null)
         .is('deleted_at', null);
       if (unreadError) throw unreadError;
-      const { data: devices, error: deviceError } = await supabase
+      const { data: knownDevices, error: deviceError } = await supabase
         .from('device_push_tokens')
-        .select('token')
+        .select('id, token, invalidated_at, last_delivery_error')
         .eq('user_id', job.recipient_user_id);
       if (deviceError) throw deviceError;
+      const devices =
+        knownDevices?.filter(device => device.invalidated_at === null) ?? [];
       if (!devices?.length) {
+        const retainedProviderErrors = [
+          ...new Set(
+            (knownDevices ?? [])
+              .map(device => device.last_delivery_error)
+              .filter((code): code is string => Boolean(code)),
+          ),
+        ];
         await supabase.rpc('fail_notification_job', {
           p_id: job.id,
-          p_error: 'Recipient has no registered device.',
+          p_error: retainedProviderErrors.length
+            ? `Recipient has no active device: ${retainedProviderErrors.join(
+                ' | ',
+              )}`
+            : 'Recipient has no registered device.',
         });
         failed += 1;
         recipientsWithoutDevices += 1;
@@ -211,16 +299,23 @@ Deno.serve(async request => {
           }),
         ),
       );
-      await Promise.all(
-        devices.map((device, index) =>
-          results[index].invalidToken
-            ? supabase
-                .from('device_push_tokens')
-                .delete()
-                .eq('token', device.token)
-            : Promise.resolve(),
-        ),
+      const attemptedAt = new Date().toISOString();
+      const deviceUpdates = await Promise.all(
+        devices.map((device, index) => {
+          const result = results[index];
+          return supabase
+            .from('device_push_tokens')
+            .update({
+              last_delivery_attempt_at: attemptedAt,
+              last_delivery_succeeded_at: result.ok ? attemptedAt : undefined,
+              last_delivery_error: result.ok ? null : result.error ?? 'UNKNOWN',
+              invalidated_at: result.invalidToken ? attemptedAt : null,
+            })
+            .eq('id', device.id);
+        }),
       );
+      const updateError = deviceUpdates.find(update => update.error)?.error;
+      if (updateError) throw updateError;
       invalidTokensRemoved += results.filter(
         result => result.invalidToken,
       ).length;
@@ -244,6 +339,7 @@ Deno.serve(async request => {
       failed,
       recipientsWithoutDevices,
       invalidTokensRemoved,
+      discarded,
     };
     return reportSummary(summary);
   } catch (error) {

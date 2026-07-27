@@ -138,14 +138,14 @@ select is(
   'cancelling a room cancels its pending invitation'
 );
 
-select is(
+select ok(
   (
-    select count(*)
+    select discarded_at is not null
+      and discard_reason = 'invitation_resolved'
     from public.notification_outbox
     where dedupe_key = 'room-closure-test'
   ),
-  0::bigint,
-  'cancelling a room removes its undelivered push job'
+  'cancelling a room terminally discards its undelivered push job'
 );
 
 select * from finish();

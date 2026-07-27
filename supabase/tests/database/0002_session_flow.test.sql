@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(23);
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
 values
@@ -102,6 +102,55 @@ select is(
   'one right swipe does not create a match'
 );
 
+do $$
+begin
+  perform *
+  from public.submit_swipe(
+    (select session_id from test_room),
+    1,
+    'arrival',
+    'right'
+  );
+end;
+$$;
+
+select is(
+  (
+    select outcome
+    from public.submit_swipe(
+      (select session_id from test_room),
+      1,
+      'spiderverse',
+      'left'
+    )
+  ),
+  'rank',
+  'finishing the full deck moves the participant to private ranking'
+);
+
+select throws_ok(
+  format(
+    'select * from public.submit_rankings(%L, 1, array[''arrival''])',
+    (select session_id from test_room)
+  ),
+  '22023',
+  'invalid_ranked_item_count',
+  'a participant must rank every accepted choice when accepting fewer than three'
+);
+
+select is(
+  (
+    select outcome
+    from public.submit_rankings(
+      (select session_id from test_room),
+      1,
+      array['past-lives', 'arrival']
+    )
+  ),
+  'waiting',
+  'the first private ranking waits for the other participant'
+);
+
 set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000001';
 
 select is(
@@ -114,13 +163,63 @@ select is(
       'right'
     )
   ),
+  'next',
+  'an early mutual Yes does not end the room'
+);
+
+do $$
+begin
+  perform *
+  from public.submit_swipe(
+    (select session_id from test_room),
+    1,
+    'arrival',
+    'right'
+  );
+end;
+$$;
+
+select is(
+  (
+    select outcome
+    from public.submit_swipe(
+      (select session_id from test_room),
+      1,
+      'spiderverse',
+      'left'
+    )
+  ),
+  'rank',
+  'the final swipe never resolves before explicit ranking'
+);
+select is(
+  (
+    select outcome
+    from public.submit_rankings(
+      (select session_id from test_room),
+      1,
+      array['arrival', 'past-lives']
+    )
+  ),
   'match',
-  'mutual right swipes create a match'
+  'the second private ranking resolves the strongest mutual choice'
 );
 select is(
   (select count(*) from public.matches),
   1::bigint,
   'exactly one match record exists'
+);
+select is(
+  (select item_id from public.matches),
+  (
+    select candidate.item_id
+    from unnest(array['arrival', 'past-lives']) candidate(item_id)
+    order by md5(
+      (select session_id from test_room)::text || ':' || candidate.item_id
+    )
+    limit 1
+  ),
+  'an exact opposite-ranking tie uses the deterministic room-specific tiebreak'
 );
 select is(
   (select status from public.sessions limit 1),
@@ -132,8 +231,8 @@ set local role authenticated;
 
 select is(
   (select count(*) from public.swipes),
-  1::bigint,
-  'host can select only their own swipe'
+  3::bigint,
+  'host can select only their own completed deck'
 );
 select is(
   (select count(*) from public.session_items),

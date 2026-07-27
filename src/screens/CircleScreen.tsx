@@ -21,10 +21,9 @@ import {
   answerRoomInvitation,
   circleErrorMessage,
   createCircleInvite,
-  loadCircle,
-  loadOwnProfile,
-  loadPendingRoomInvitations,
+  loadCircleSnapshot,
   normalizeHandle,
+  readCachedCircleSnapshot,
   requestConnection,
   removeCircleConnection,
   redeemCircleInvite,
@@ -32,14 +31,18 @@ import {
   type ChoosrProfile,
   type CirclePerson,
   type PendingRoomInvitation,
+  type CircleSnapshot,
 } from '../services/circleService';
-import { buildCircleInvite } from '../services/roomInvite';
+import {
+  buildCircleInvite,
+  buildNativeSharePayload,
+} from '../services/roomInvite';
+import { prepareSharedLocationDeck } from '../services/deckService';
 import { chooseAndUploadProfilePhoto } from '../services/profilePhotoService';
 import { logPhotoFailure } from '../services/photoUploadService';
 import {
   enablePushNotifications,
-  isPushEnabled,
-  refreshPushRegistration,
+  isPushPermissionEnabled,
 } from '../services/pushNotifications';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
@@ -54,43 +57,59 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
   const [handle, setHandle] = useState('');
   const [friendHandle, setFriendHandle] = useState('');
   const [loading, setLoading] = useState(true);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
   const connectionToken = route.params?.connectionToken;
   const redemptionStarted = useRef(false);
+  const hasSnapshotRef = useRef(false);
+
+  const applySnapshot = useCallback((snapshot: CircleSnapshot) => {
+    setProfile(snapshot.profile);
+    setPeople(snapshot.people);
+    setInvitations(snapshot.invitations);
+    if (snapshot.profile) {
+      setDisplayName(snapshot.profile.displayName);
+      setHandle(snapshot.profile.handle);
+    }
+    hasSnapshotRef.current = true;
+    setHasSnapshot(true);
+  }, []);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
     setError(null);
+    if (!hasSnapshotRef.current) {
+      setLoading(true);
+      const cached = await readCachedCircleSnapshot();
+      if (cached) {
+        applySnapshot(cached);
+        setLoading(false);
+      }
+    }
     try {
-      const ownProfile = await loadOwnProfile();
-      setProfile(ownProfile);
-      if (ownProfile) {
+      const snapshot = await loadCircleSnapshot();
+      applySnapshot(snapshot);
+      if (snapshot.profile) {
         if (connectionToken && !redemptionStarted.current) {
           redemptionStarted.current = true;
           await redeemCircleInvite(connectionToken);
+          applySnapshot(await loadCircleSnapshot());
         }
-        setDisplayName(ownProfile.displayName);
-        setHandle(ownProfile.handle);
-        const notificationsEnabled = await isPushEnabled();
-        setPushEnabled(notificationsEnabled);
-        if (notificationsEnabled) {
-          refreshPushRegistration().catch(() => undefined);
-        }
-        const [circle, pending] = await Promise.all([
-          loadCircle(),
-          loadPendingRoomInvitations(),
-        ]);
-        setPeople(circle);
-        setInvitations(pending);
+        isPushPermissionEnabled()
+          .then(setPushEnabled)
+          .catch(() => undefined);
       }
     } catch (cause) {
-      setError(circleErrorMessage(cause));
+      setError(
+        hasSnapshotRef.current
+          ? 'Connection is weak. Showing your saved Circle information.'
+          : circleErrorMessage(cause),
+      );
     } finally {
       setLoading(false);
     }
-  }, [connectionToken]);
+  }, [applySnapshot, connectionToken]);
 
   useFocusEffect(
     useCallback(() => {
@@ -138,11 +157,9 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
         inviteToken: credentials.inviteToken,
         displayName: profile.displayName,
       });
-      await Share.share({
-        title: 'Connect on Choosr',
-        message: invite.message,
-        url: invite.url,
-      });
+      await Share.share(
+        buildNativeSharePayload('Choosr · Circle invitation', invite),
+      );
     });
 
   const changeProfilePhoto = () =>
@@ -168,6 +185,13 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
     try {
       const room = await answerRoomInvitation(invitation.invitationId, true);
       if (!room) throw new Error('invitation_unavailable');
+      if (invitation.mode === 'eat' || invitation.mode === 'do') {
+        const status = await prepareSharedLocationDeck({
+          sessionId: room.sessionId,
+          mode: invitation.mode,
+        });
+        if (status !== 'ready') throw new Error('room_not_active');
+      }
       navigation.replace('Swipe', {
         sessionId: room.sessionId,
         roundNumber: room.roundNumber,
@@ -219,8 +243,17 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
           Connect once. Next time, pick a person and send the room directly.
         </Text>
 
-        {loading ? (
+        {loading && !hasSnapshot ? (
           <ActivityIndicator color={colors.primary} style={styles.loader} />
+        ) : !hasSnapshot ? (
+          <View style={styles.panel}>
+            <Text style={styles.panelTitle}>Circle is taking too long</Text>
+            <Text style={styles.panelText}>
+              Your connection may be weak. Nothing was changed—try again when
+              the signal improves.
+            </Text>
+            <Button label="Try again" onPress={refresh} />
+          </View>
         ) : !profile ? (
           <View style={styles.panel}>
             <Text style={styles.panelTitle}>Create your Choosr identity</Text>
@@ -279,7 +312,7 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
               </Pressable>
             </View>
 
-            {!pushEnabled ? (
+            {pushEnabled === false ? (
               <View style={styles.alertPanel}>
                 <View style={styles.alertCopy}>
                   <Text style={styles.alertTitle}>Don’t miss an invite</Text>

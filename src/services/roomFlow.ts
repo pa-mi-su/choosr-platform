@@ -9,18 +9,6 @@ export type RoomDestination =
   | 'no-match'
   | 'closed';
 
-export async function loadItemsWithFallback<T>(
-  loadItems: () => Promise<T[]>,
-  fallbackItems: readonly T[],
-): Promise<T[]> {
-  try {
-    const items = await loadItems();
-    return items.length ? items : [...fallbackItems];
-  } catch {
-    return [...fallbackItems];
-  }
-}
-
 export function getRoomDestination(
   status: SessionStatus,
   matchedItemId: string | null,
@@ -70,6 +58,12 @@ export function roomErrorMessage(error: unknown): string {
   }
   if (message.includes('room_not_active')) {
     return 'The room is not ready yet. Wait for your partner to join.';
+  }
+  if (
+    message.includes('close enough to meet') ||
+    message.includes('participant_locations_too_far')
+  ) {
+    return 'Choosr is designed for people close enough to meet. Choose locations within 60 miles of each other.';
   }
   if (message.includes('Failed to fetch') || message.includes('Network')) {
     return 'Choosr could not reach the server. Check your connection and retry.';

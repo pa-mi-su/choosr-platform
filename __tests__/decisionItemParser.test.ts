@@ -21,6 +21,17 @@ describe('decision item parser', () => {
     expect(parseDecisionItem(validItem)).toEqual(validItem);
   });
 
+  it('accepts HTTPS provider attribution', () => {
+    const item = {
+      ...validItem,
+      attribution: {
+        label: 'Google Maps · Photo by Example',
+        url: 'https://maps.google.com/',
+      },
+    };
+    expect(parseDecisionItem(item)).toEqual(item);
+  });
+
   it('accepts a custom photo choice with an HTTPS image', () => {
     const item = {
       id: 'custom-photo',
@@ -59,6 +70,18 @@ describe('decision item parser', () => {
         imageUrl: 'http://insecure.example/photo.jpg',
       }),
     ).toThrow('Decision item image must use HTTPS.');
+  });
+
+  it('rejects unsafe attribution schemes', () => {
+    expect(() =>
+      parseDecisionItem({
+        ...validItem,
+        attribution: {
+          label: 'Google Maps',
+          url: 'http://insecure.example',
+        },
+      }),
+    ).toThrow('Decision item attribution must use HTTPS.');
   });
 
   it('rejects invalid presentation colors', () => {

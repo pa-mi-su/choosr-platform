@@ -53,7 +53,7 @@ jobs:
           fi
 
           changed_files="$(git diff --name-only "${before}...HEAD")"
-          shared_pattern='^(src/|index\.js$|package(-lock)?\.json$|react-native\.config\.js$|babel\.config\.js$|scripts/generate-env\.mjs$|\.github/workflows/mobile-build\.yml$)'
+          shared_pattern='^(src/|App\.tsx$|index\.js$|package(-lock)?\.json$|react-native\.config\.js$|babel\.config\.js$|scripts/generate-env\.mjs$|\.github/workflows/mobile-build\.yml$)'
 
           if grep -Eq "${shared_pattern}|^android/" <<< "$changed_files"; then
             echo "android=true" >> "$GITHUB_OUTPUT"

@@ -90,7 +90,6 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const transitioning = useRef(false);
   const deckRef = useRef<DecisionItem[]>([]);
@@ -159,9 +158,14 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
         swipedItemIds,
       );
       if (nextIndex === -1) {
-        setFinished(true);
+        transitioning.current = true;
+        navigation.replace('RankChoices', {
+          sessionId,
+          roundNumber,
+          mode,
+          searchArea,
+        });
       } else {
-        setFinished(false);
         setIndex(nextIndex);
       }
     } catch (cause) {
@@ -169,7 +173,14 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [navigateForOutcome, roundNumber, sessionId]);
+  }, [
+    mode,
+    navigateForOutcome,
+    navigation,
+    roundNumber,
+    searchArea,
+    sessionId,
+  ]);
 
   useEffect(() => {
     load().catch(() => undefined);
@@ -254,12 +265,26 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
         if (!outcome) {
           throw new Error('Supabase did not return a swipe outcome.');
         }
-        if (outcome.outcome === 'match' && outcome.matched_item_id) {
+        if (outcome.outcome === 'rank') {
+          transitioning.current = true;
+          navigation.replace('RankChoices', {
+            sessionId,
+            roundNumber,
+            mode,
+            searchArea,
+          });
+        } else if (outcome.outcome === 'match' && outcome.matched_item_id) {
           navigateForOutcome('matched', outcome.matched_item_id);
         } else if (outcome.outcome === 'no-match') {
           navigateForOutcome('completed', null);
-        } else if (outcome.outcome === 'waiting' || index === deck.length - 1) {
-          setFinished(true);
+        } else if (index >= deck.length - 1) {
+          transitioning.current = true;
+          navigation.replace('RankChoices', {
+            sessionId,
+            roundNumber,
+            mode,
+            searchArea,
+          });
         } else {
           setIndex(current => current + 1);
         }
@@ -273,8 +298,11 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
       deck.length,
       index,
       item,
+      mode,
       navigateForOutcome,
+      navigation,
       roundNumber,
+      searchArea,
       sessionId,
       submitting,
     ],
@@ -309,31 +337,6 @@ export function SwipeScreen({ navigation, route }: Props): React.JSX.Element {
           <Text style={styles.error}>{error}</Text>
           <Button label="Retry" onPress={load} />
         </View>
-      </Screen>
-    );
-  }
-
-  if (finished || !item) {
-    return (
-      <Screen testID="swipe-finished-screen" style={styles.waitingScreen}>
-        <SwipeHeader
-          busy={cancelling}
-          onCancel={confirmCancelRoom}
-          onLeave={leaveRoom}
-        />
-        <View style={styles.finishedContent}>
-          <View style={styles.waitingIcon}>
-            <Text style={styles.waitingIconText}>✓</Text>
-          </View>
-          <Text style={styles.eyebrow}>YOUR CHOICES ARE IN</Text>
-          <Text style={styles.finishedTitle}>Waiting for your partner.</Text>
-          <Text style={styles.finishedCopy}>
-            We’ll reveal the first option you both accepted. Their choices
-            remain private.
-          </Text>
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-        </View>
-        <Text style={styles.private}>This screen updates automatically</Text>
       </Screen>
     );
   }
