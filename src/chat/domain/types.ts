@@ -34,6 +34,17 @@ export type ActiveChatState = {
   publicKey: string;
   peerPublicKey?: string;
   decisionSessionId?: string;
+  peerDisplayName?: string;
+};
+
+export type PendingDecisionChatInvitation = {
+  roomId: string;
+  decisionSessionId: string;
+  inviterDisplayName: string;
+  inviterPhotoUrl: string | null;
+  matchedItemTitle: string;
+  createdAt: string;
+  expiresAt: string;
 };
 
 export type TemporaryKeyPair = {

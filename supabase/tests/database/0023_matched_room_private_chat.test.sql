@@ -1,5 +1,5 @@
 begin;
-select plan(9);
+select plan(23);
 
 select has_column(
   'public',
@@ -12,6 +12,18 @@ select has_function(
   'open_matched_room_chat',
   array['uuid', 'text'],
   'matched participants share one direct-chat entry point'
+);
+select has_function(
+  'public',
+  'list_pending_matched_chat_invitations',
+  array[]::text[],
+  'matched chat invitations have a durable recipient inbox'
+);
+select has_function(
+  'public',
+  'decline_matched_chat_invitation',
+  array['uuid'],
+  'matched chat invitations can be declined'
 );
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
@@ -47,6 +59,10 @@ set status = 'matched',
     completed_at = now()
 where id = (select session_id from matched_room);
 
+insert into public.matches (session_id, round, item_id)
+select session_id, 1, 'tacos'
+from matched_room;
+
 set local request.jwt.claim.sub = 'a3000000-0000-0000-0000-000000000001';
 create temporary table creator_chat as
 select *
@@ -65,8 +81,45 @@ select is(
   (select session_id from matched_room),
   'the chat remains bound to the matched decision room'
 );
+select is(
+  (
+    select kind
+    from public.notification_outbox
+    where payload->>'chat_room_id' = (select room_id::text from creator_chat)
+  ),
+  'chat_invitation',
+  'creating the matched chat queues one chat invitation'
+);
+select is(
+  (
+    select recipient_user_id
+    from public.notification_outbox
+    where payload->>'chat_room_id' = (select room_id::text from creator_chat)
+  ),
+  'a3000000-0000-0000-0000-000000000002'::uuid,
+  'the invitation belongs to the other matched participant'
+);
+select is(
+  (
+    select count(*)
+    from public.user_notifications
+    where kind = 'chat_invitation'
+      and deleted_at is null
+  ),
+  1::bigint,
+  'the recipient receives one durable in-app notification'
+);
 
 set local request.jwt.claim.sub = 'a3000000-0000-0000-0000-000000000002';
+select is(
+  (
+    select matched_item_title
+    from public.list_pending_matched_chat_invitations()
+    where chat_room_id = (select room_id from creator_chat)
+  ),
+  'Tacos',
+  'the private chat screen identifies the shared result'
+);
 create temporary table joiner_chat as
 select *
 from public.open_matched_room_chat(
@@ -93,6 +146,34 @@ select is(
   2::bigint,
   'the direct chat contains exactly the matched pair'
 );
+select is(
+  (
+    select count(*)
+    from public.list_pending_matched_chat_invitations()
+  ),
+  0::bigint,
+  'acceptance atomically removes the pending chat invitation'
+);
+select is(
+  (
+    select count(*)
+    from public.user_notifications
+    where kind = 'chat_invitation'
+      and deleted_at is null
+  ),
+  0::bigint,
+  'acceptance removes the invitation from the notification inbox'
+);
+select is(
+  (
+    select count(*)
+    from public.notification_outbox
+    where kind = 'chat_invitation'
+      and discarded_at is not null
+  ),
+  1::bigint,
+  'acceptance cancels an undelivered invitation push'
+);
 
 set local request.jwt.claim.sub = 'a3000000-0000-0000-0000-000000000003';
 select throws_ok(
@@ -104,6 +185,80 @@ select throws_ok(
   '42501',
   'matched_room_chat_unavailable',
   'a non-participant cannot enter the matched private chat'
+);
+
+set local request.jwt.claim.sub = 'a3000000-0000-0000-0000-000000000002';
+select public.destroy_chat_room((select room_id from creator_chat));
+
+set local request.jwt.claim.sub = 'a3000000-0000-0000-0000-000000000001';
+create temporary table declined_match as
+select *
+from public.create_decision_session(
+  'custom',
+  '[
+    {"id":"coffee","mode":"custom","title":"Coffee","kicker":"PICK","meta":"Tonight","description":"Drinks","background":"#20344A","accent":"#F0B7A4","tags":["Drinks"]},
+    {"id":"tea","mode":"custom","title":"Tea","kicker":"PICK","meta":"Tonight","description":"Drinks","background":"#39464C","accent":"#E9D9BE","tags":["Drinks"]}
+  ]'::jsonb,
+  'US'
+);
+
+set local request.jwt.claim.sub = 'a3000000-0000-0000-0000-000000000002';
+select lives_ok(
+  format(
+    'select * from public.join_session(%L, null)',
+    (select access_code from declined_match)
+  ),
+  'the invited participant joins a second matched room'
+);
+
+update public.sessions
+set status = 'matched',
+    completed_at = now()
+where id = (select session_id from declined_match);
+
+set local request.jwt.claim.sub = 'a3000000-0000-0000-0000-000000000001';
+create temporary table declined_chat as
+select *
+from public.open_matched_room_chat(
+  (select session_id from declined_match),
+  'DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD='
+);
+
+set local request.jwt.claim.sub = 'a3000000-0000-0000-0000-000000000002';
+select lives_ok(
+  format(
+    'select public.decline_matched_chat_invitation(%L)',
+    (select room_id from declined_chat)
+  ),
+  'the matched participant can decline the private chat'
+);
+select is(
+  (
+    select status
+    from public.chat_rooms
+    where id = (select room_id from declined_chat)
+  ),
+  'destroyed',
+  'declining destroys the waiting encrypted room'
+);
+select is(
+  (
+    select count(*)
+    from public.user_notifications
+    where payload->>'chat_room_id' = (select room_id::text from declined_chat)
+      and deleted_at is null
+  ),
+  0::bigint,
+  'declining removes the durable private chat invitation'
+);
+select is(
+  (
+    select count(*)
+    from public.chat_active_memberships
+    where room_id = (select room_id from declined_chat)
+  ),
+  0::bigint,
+  'declining releases the initiator active-chat slot'
 );
 
 select * from finish();

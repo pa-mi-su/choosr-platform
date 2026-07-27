@@ -14,6 +14,7 @@ class FakeGateway implements ChatGateway {
   envelopes: ChatEnvelope[] = [];
   destroyFailure = false;
   destroyed: string[] = [];
+  declined: string[] = [];
 
   async createInvitation(publicKey: string) {
     this.active = {
@@ -58,6 +59,24 @@ class FakeGateway implements ChatGateway {
 
   async getActiveChat() {
     return this.active;
+  }
+
+  async listPendingDecisionInvitations() {
+    return [
+      {
+        roomId: '40000000-0000-4000-8000-000000000002',
+        decisionSessionId: '50000000-0000-4000-8000-000000000001',
+        inviterDisplayName: 'Pat',
+        inviterPhotoUrl: null,
+        matchedItemTitle: 'Tacos',
+        createdAt: '2026-07-24T12:00:00.000Z',
+        expiresAt: '2026-07-25T12:00:00.000Z',
+      },
+    ];
+  }
+
+  async declineDecisionInvitation(roomId: string) {
+    this.declined.push(roomId);
   }
 
   async listMessages() {
@@ -109,6 +128,22 @@ describe('ChatSession lifecycle', () => {
       status: 'inviting',
       decisionSessionId: 'matched-session',
     });
+  });
+
+  test('matched-room invitations are listed and declined through the chat gateway', async () => {
+    const gateway = new FakeGateway();
+    const session = new ChatSession(gateway);
+
+    await expect(session.listPendingDecisionInvitations()).resolves.toEqual([
+      expect.objectContaining({
+        inviterDisplayName: 'Pat',
+        matchedItemTitle: 'Tacos',
+      }),
+    ]);
+    await session.declineDecisionInvitation(
+      '40000000-0000-4000-8000-000000000002',
+    );
+    expect(gateway.declined).toEqual(['40000000-0000-4000-8000-000000000002']);
   });
 
   test('local content and keys are purged immediately when offline destruction is queued', async () => {

@@ -2,6 +2,7 @@ import type {
   ActiveChatState,
   ChatEnvelope,
   ChatInvitation,
+  PendingDecisionChatInvitation,
 } from '../domain/types';
 
 export interface ChatGateway {
@@ -14,6 +15,8 @@ export interface ChatGateway {
     sessionId: string,
     publicKey: string,
   ): Promise<ActiveChatState>;
+  listPendingDecisionInvitations(): Promise<PendingDecisionChatInvitation[]>;
+  declineDecisionInvitation(roomId: string): Promise<void>;
   getActiveChat(): Promise<ActiveChatState | undefined>;
   listMessages(roomId: string): Promise<ChatEnvelope[]>;
   sendCiphertext(

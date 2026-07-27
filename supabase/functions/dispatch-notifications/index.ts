@@ -15,7 +15,11 @@ type ServiceAccount = {
 type PushJob = {
   id: number;
   recipient_user_id: string;
-  kind: 'connection_request' | 'room_invitation' | 'chat_message';
+  kind:
+    | 'connection_request'
+    | 'room_invitation'
+    | 'chat_invitation'
+    | 'chat_message';
   payload: Record<string, unknown>;
   attempts: number;
   dedupe_key: string;
@@ -75,6 +79,20 @@ async function getGoogleAccessToken(account: ServiceAccount): Promise<string> {
 }
 
 function pushCopy(job: PushJob): PushCopy {
+  if (job.kind === 'chat_invitation') {
+    const sender =
+      typeof job.payload.sender_display_name === 'string' &&
+      job.payload.sender_display_name.trim()
+        ? job.payload.sender_display_name
+            .trim()
+            .replace(/\s+/g, ' ')
+            .slice(0, 40)
+        : 'Your Choosr partner';
+    return {
+      title: 'Private chat invitation',
+      body: `${sender} wants to start a private chat about your match.`,
+    };
+  }
   if (job.kind === 'chat_message') {
     return {
       title: 'New private Choosr message',
@@ -97,11 +115,18 @@ function pushCopy(job: PushJob): PushCopy {
 }
 
 function stringData(job: PushJob): Record<string, string> {
-  if (job.kind === 'chat_message') {
+  if (job.kind === 'chat_message' || job.kind === 'chat_invitation') {
     return {
-      kind: 'chat_message',
+      kind: job.kind,
       route: 'ChatHome',
       notification_id: `job-${job.id}`,
+      ...Object.fromEntries(
+        ['chat_room_id', 'session_id', 'sender_user_id']
+          .map(key => [key, job.payload[key]])
+          .filter((entry): entry is [string, string] =>
+            Boolean(typeof entry[1] === 'string'),
+          ),
+      ),
     };
   }
   const data: Record<string, string> = {

@@ -75,6 +75,14 @@ Deno.serve(async request => {
           p_public_key: body.publicKey as string,
         });
         break;
+      case 'listDecisionInvites':
+        result = await client.rpc('list_pending_matched_chat_invitations');
+        break;
+      case 'declineDecisionInvite':
+        result = await client.rpc('decline_matched_chat_invitation', {
+          p_room_id: body.roomId as string,
+        });
+        break;
       case 'status':
         result = await client.rpc('get_active_chat');
         break;

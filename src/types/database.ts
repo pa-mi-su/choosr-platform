@@ -146,7 +146,11 @@ type RoomInvitationRow = {
 type UserNotificationRow = {
   id: number;
   recipient_user_id: string;
-  kind: 'connection_request' | 'room_invitation' | 'chat_message';
+  kind:
+    | 'connection_request'
+    | 'room_invitation'
+    | 'chat_invitation'
+    | 'chat_message';
   title: string;
   body: string;
   payload: Json;
@@ -480,6 +484,22 @@ export type Database = {
           room_expires_at: string;
           decision_session_id: string;
         }[];
+      };
+      list_pending_matched_chat_invitations: {
+        Args: Record<never, never>;
+        Returns: {
+          chat_room_id: string;
+          decision_session_id: string;
+          inviter_display_name: string;
+          inviter_avatar_path: string | null;
+          matched_item_title: string;
+          created_at: string;
+          expires_at: string;
+        }[];
+      };
+      decline_matched_chat_invitation: {
+        Args: { p_room_id: string };
+        Returns: undefined;
       };
       send_chat_ciphertext: {
         Args: {

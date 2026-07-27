@@ -138,7 +138,11 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
     }
 
     await markRead(item);
-    navigation.navigate(item.kind === 'chat_message' ? 'ChatHome' : 'Circle');
+    navigation.navigate(
+      item.kind === 'chat_message' || item.kind === 'chat_invitation'
+        ? 'ChatHome'
+        : 'Circle',
+    );
   };
 
   useFocusEffect(
@@ -280,7 +284,8 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
                     <Text style={styles.iconText}>
                       {item.kind === 'room_invitation'
                         ? '✓'
-                        : item.kind === 'chat_message'
+                        : item.kind === 'chat_message' ||
+                          item.kind === 'chat_invitation'
                         ? '◈'
                         : '●●'}
                     </Text>

@@ -16,6 +16,7 @@ import {
   type ActiveChatState,
   type ChatInvitation,
   type LocalChatMessage,
+  type PendingDecisionChatInvitation,
   type TemporaryKeyPair,
 } from '../domain/types';
 import type { ChatGateway } from './ChatGateway';
@@ -132,7 +133,11 @@ export class ChatSession {
     }
   }
 
-  async openDecision(ownUserId: string, sessionId: string): Promise<void> {
+  async openDecision(
+    ownUserId: string,
+    sessionId: string,
+    peerDisplayName?: string,
+  ): Promise<void> {
     if (this.runtime) {
       throw new ChatError(
         'active_chat_exists',
@@ -149,7 +154,7 @@ export class ChatSession {
         ownUserId,
         keyPair,
         messages: [],
-        active,
+        active: { ...active, peerDisplayName },
         ...(active.peerPublicKey
           ? {
               sharedKey: deriveSharedKey(
@@ -166,6 +171,16 @@ export class ChatSession {
     }
   }
 
+  async listPendingDecisionInvitations(): Promise<
+    PendingDecisionChatInvitation[]
+  > {
+    return this.gateway.listPendingDecisionInvitations();
+  }
+
+  async declineDecisionInvitation(roomId: string): Promise<void> {
+    await this.gateway.declineDecisionInvitation(roomId);
+  }
+
   async refreshStatus(): Promise<'inviting' | 'active' | 'destroyed'> {
     const runtime = this.runtime;
     if (!runtime) return 'destroyed';
@@ -174,7 +189,10 @@ export class ChatSession {
       this.destroyLocal();
       return 'destroyed';
     }
-    runtime.active = remote;
+    runtime.active = {
+      ...remote,
+      peerDisplayName: runtime.active.peerDisplayName,
+    };
     if (remote.status === 'active') runtime.invitation = undefined;
     if (
       remote.status === 'active' &&

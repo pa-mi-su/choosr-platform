@@ -89,7 +89,11 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
       } else {
         await chatSession.reconcileOrphanedRemoteChat();
         const authenticated = await ensureAnonymousSession();
-        await chatSession.openDecision(authenticated.user.id, sessionId);
+        await chatSession.openDecision(
+          authenticated.user.id,
+          sessionId,
+          partnerDisplayName ?? undefined,
+        );
       }
       navigation.navigate('ChatRoom');
     } catch (cause) {
