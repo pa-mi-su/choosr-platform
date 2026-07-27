@@ -7,7 +7,7 @@ import { modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
 import {
-  cancelDecisionRoom,
+  acknowledgeDecisionRoom,
   loadDecisionRoom,
   loadDecisionDeck,
   startDecisionRound,
@@ -78,7 +78,7 @@ export function NoMatchScreen({ navigation, route }: Props): React.JSX.Element {
     setEnding(true);
     setError(null);
     try {
-      await cancelDecisionRoom(sessionId);
+      await acknowledgeDecisionRoom(sessionId);
       navigation.popToTop();
     } catch (cause) {
       setError(roomErrorMessage(cause));

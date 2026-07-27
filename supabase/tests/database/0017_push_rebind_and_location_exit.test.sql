@@ -80,7 +80,7 @@ select is(
     where id = (select session_id from location_exit_room)
   ),
   'waiting',
-  'accepted location room waits for the invitee location'
+  'accepted location room waits for creator-location deck preparation'
 );
 select is(
   (
@@ -98,7 +98,7 @@ select is(
     where session_id = (select session_id from location_exit_room)
   ),
   1::bigint,
-  'only the host location exists before the invitee submits'
+  'only the creator location is stored for the room'
 );
 
 select lives_ok(

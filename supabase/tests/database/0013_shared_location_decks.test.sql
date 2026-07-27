@@ -1,5 +1,5 @@
 begin;
-select plan(14);
+select plan(17);
 
 select has_table(
   'public',
@@ -20,6 +20,11 @@ select has_function(
   'public',
   'finalize_location_session',
   array['uuid', 'jsonb']
+);
+select has_function(
+  'public',
+  'get_location_deck_context',
+  array['uuid', 'uuid']
 );
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
@@ -42,12 +47,12 @@ from public.create_location_decision_session(
 select is(
   (select status from public.sessions where id = (select session_id from location_room)),
   'waiting',
-  'a location room waits for its second participant and location'
+  'a location room waits for its second participant'
 );
 select is(
   (select count(*) from public.session_items where session_id = (select session_id from location_room)),
   0::bigint,
-  'the deck is not generated from only the host location'
+  'the deck is prepared after the invited participant joins'
 );
 select is(
   (select count(*) from public.session_locations where session_id = (select session_id from location_room)),
@@ -63,29 +68,37 @@ from public.join_session((select access_code from location_room), null);
 select is(
   (select status from public.sessions where id = (select session_id from location_room)),
   'waiting',
-  'joining does not activate a room before both locations exist'
+  'joining waits briefly while the host-selected deck is prepared'
 );
 
 select is(
   (
     select count(*)
-    from public.record_session_location(
+    from public.get_location_deck_context(
       (select session_id from location_room),
-      'd0000000-0000-0000-0000-000000000002',
-      28.2919,
-      -81.4076,
-      'Kissimmee, Florida'
+      'd0000000-0000-0000-0000-000000000002'
     )
   ),
-  2::bigint,
-  'the service receives both coordinates only after both participants submit'
+  1::bigint,
+  'the deck worker receives one creator-owned location'
+);
+select is(
+  (
+    select location_label
+    from public.get_location_deck_context(
+      (select session_id from location_room),
+      'd0000000-0000-0000-0000-000000000002'
+    )
+  ),
+  'Orlando, Florida',
+  'the invited participant reuses the creator location'
 );
 
 select public.finalize_location_session(
   (select session_id from location_room),
   '[
-    {"id":"google:one","mode":"do","title":"Museum","kicker":"PICK AN ACTIVITY","meta":"Museum · 8 mi","description":"Midpoint choice","background":"#20344A","accent":"#F0B7A4","tags":["Activity"]},
-    {"id":"google:two","mode":"do","title":"Bowling","kicker":"PICK AN ACTIVITY","meta":"Bowling · 9 mi","description":"Midpoint choice","background":"#39464C","accent":"#E9D9BE","tags":["Activity"]}
+    {"id":"google:one","mode":"do","title":"Museum","kicker":"PICK AN ACTIVITY","meta":"Museum · 8 mi","description":"Creator location choice","background":"#20344A","accent":"#F0B7A4","tags":["Activity"]},
+    {"id":"google:two","mode":"do","title":"Bowling","kicker":"PICK AN ACTIVITY","meta":"Bowling · 9 mi","description":"Creator location choice","background":"#39464C","accent":"#E9D9BE","tags":["Activity"]}
   ]'::jsonb
 );
 
@@ -108,6 +121,17 @@ select is(
   ),
   0::bigint,
   'ephemeral coordinates are erased as soon as the deck is finalized'
+);
+select lives_ok(
+  format(
+    'select public.finalize_location_session(%L, %L::jsonb)',
+    (select session_id from location_room),
+    '[
+      {"id":"google:one","mode":"do","title":"Museum","kicker":"PICK AN ACTIVITY","meta":"Museum · 8 mi","description":"Creator location choice","background":"#20344A","accent":"#F0B7A4","tags":["Activity"]},
+      {"id":"google:two","mode":"do","title":"Bowling","kicker":"PICK AN ACTIVITY","meta":"Bowling · 9 mi","description":"Creator location choice","background":"#39464C","accent":"#E9D9BE","tags":["Activity"]}
+    ]'
+  ),
+  'concurrent deck finalization is idempotent after creator coordinates are erased'
 );
 
 set local request.jwt.claim.sub = 'd0000000-0000-0000-0000-000000000001';
@@ -141,9 +165,9 @@ select throws_ok(
     $query$,
     (select session_id from distant_room)
   ),
-  '22023',
-  'participant_locations_too_far',
-  'a second location over 60 miles away is rejected'
+  '42501',
+  'location_submission_not_allowed',
+  'the invited participant cannot replace the creator location'
 );
 
 select is(
@@ -153,7 +177,7 @@ select is(
     where session_id = (select session_id from distant_room)
   ),
   1::bigint,
-  'the rejected distant participant location is not stored'
+  'only the creator location remains stored'
 );
 
 select * from finish();

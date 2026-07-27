@@ -14,6 +14,7 @@ jest.mock('../src/services/anonymousAuth', () => ({
 }));
 
 import {
+  acknowledgeDecisionRoom,
   cancelDecisionRoom,
   createLocationDecisionRoom,
   loadRoomHistory,
@@ -110,6 +111,25 @@ describe('cancelDecisionRoom', () => {
     mockRpc.mockResolvedValue({ error });
 
     await expect(cancelDecisionRoom('session-1')).rejects.toBe(error);
+  });
+});
+
+describe('acknowledgeDecisionRoom', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockEnsureAnonymousSession.mockResolvedValue({
+      user: { id: 'anonymous-user-1' },
+    });
+  });
+
+  it('dismisses a completed result only for the current participant', async () => {
+    mockRpc.mockResolvedValue({ error: null });
+
+    await expect(acknowledgeDecisionRoom('session-1')).resolves.toBeUndefined();
+
+    expect(mockRpc).toHaveBeenCalledWith('acknowledge_room_completion', {
+      p_session_id: 'session-1',
+    });
   });
 });
 

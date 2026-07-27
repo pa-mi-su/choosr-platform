@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Share, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
@@ -12,7 +12,6 @@ import {
   inviteCirclePerson,
 } from '../services/circleService';
 import {
-  cancelDecisionRoom,
   createDecisionRoom,
   createLocationDecisionRoom,
   loadDecisionRoom,
@@ -106,6 +105,21 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
     createRoom().catch(() => undefined);
   }, [createRoom]);
 
+  const backToMain = useCallback(() => {
+    navigation.replace('ChooseHome');
+  }, [navigation]);
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        backToMain();
+        return true;
+      },
+    );
+    return () => subscription.remove();
+  }, [backToMain]);
+
   const refreshRoom = useCallback(async () => {
     if (!sessionId) {
       return;
@@ -164,18 +178,11 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
       url: invite.url,
     }).catch(() => undefined);
   };
-  const cancel = async () => {
-    if (room) {
-      await cancelDecisionRoom(room.sessionId).catch(() => undefined);
-    }
-    navigation.popToTop();
-  };
-
   return (
     <Screen testID="waiting-screen" style={styles.screen}>
       <View style={styles.top}>
         <Brand compact />
-        <Button label="Cancel" variant="quiet" onPress={cancel} />
+        <Button label="Back" variant="quiet" onPress={backToMain} />
       </View>
       <View style={styles.content}>
         <View style={styles.people}>
@@ -194,7 +201,7 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
             : ready
             ? 'PARTNER JOINED'
             : partnerJoined
-            ? 'PARTNER CHOOSING LOCATION'
+            ? 'BUILDING YOUR CHOICES'
             : circleInviteSent
             ? 'INVITATION SENT'
             : 'ROOM CREATED'}

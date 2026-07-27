@@ -3,6 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
+import { prepareSharedLocationDeck } from '../services/deckService';
 import { normalizeRoomCode, roomErrorMessage } from '../services/roomFlow';
 import {
   joinDecisionRoom,
@@ -41,14 +42,17 @@ export function JoinScreen({ navigation, route }: Props): React.JSX.Element {
           return;
         }
         if (room.mode === 'eat' || room.mode === 'do') {
-          navigation.replace('LocalSetup', {
-            mode: room.mode,
+          const status = await prepareSharedLocationDeck({
             sessionId: room.sessionId,
-            roundNumber: room.roundNumber,
+            mode: room.mode,
           });
-          return;
+          if (status !== 'ready') throw new Error('room_not_active');
         }
-        if (room.status !== 'active') {
+        if (
+          room.status !== 'active' &&
+          room.mode !== 'eat' &&
+          room.mode !== 'do'
+        ) {
           setError('This room is not ready yet. Please try again.');
           return;
         }

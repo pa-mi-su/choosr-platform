@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import notifee, {
   AndroidImportance,
   EventType,
@@ -6,8 +5,6 @@ import notifee, {
 } from '@notifee/react-native';
 import {
   AuthorizationStatus,
-  deleteToken,
-  getAPNSToken,
   getInitialNotification,
   getMessaging,
   getToken,
@@ -17,7 +14,6 @@ import {
   onTokenRefresh,
   registerDeviceForRemoteMessages,
   requestPermission,
-  unregisterDeviceForRemoteMessages,
   type RemoteMessage,
 } from '@react-native-firebase/messaging';
 import {
@@ -31,13 +27,9 @@ import { supabase } from '../lib/supabase';
 import { ensureAnonymousSession } from './anonymousAuth';
 import { registerAndroidPushInstallation } from './androidPushRegistration';
 
-const PUSH_ROTATION_VERSION_KEY = 'choosr.push.rotation.version';
-const IOS_PUSH_BINDING_VERSION = '4';
 const ANDROID_NOTIFICATION_PERMISSION =
   'android.permission.POST_NOTIFICATIONS' as Permission;
 const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
-const IOS_APNS_RETRY_DELAYS_MS = [0, 250, 750, 1500, 3000, 5000] as const;
-const IOS_APNS_RESET_DELAY_MS = 250;
 const TOKEN_SYNC_RETRY_DELAYS_MS = [0, 500, 1500] as const;
 const PUSH_CHANNEL_ID = 'choosr-invitations';
 
@@ -133,42 +125,13 @@ const diagnosticCode = (error: unknown): string => {
 };
 
 const logPushFailure = (context: string, error: unknown): void => {
-  if (__DEV__) {
-    console.warn(`[push:${context}] ${diagnosticCode(error)}`);
-  }
+  // Keep the message free of tokens and user data so registration failures
+  // remain visible in production device logs without exposing credentials.
+  console.warn(`[push:${context}] ${diagnosticCode(error)}`);
 };
 
 const wait = (milliseconds: number) =>
   new Promise<void>(resolve => setTimeout(resolve, milliseconds));
-
-async function waitForIosApnsToken(): Promise<void> {
-  const messaging = getMessaging();
-  for (const delayMilliseconds of IOS_APNS_RETRY_DELAYS_MS) {
-    if (delayMilliseconds) await wait(delayMilliseconds);
-    if (await getAPNSToken(messaging)) return;
-  }
-  const error = new Error('APNs token is not ready.');
-  error.name = 'push/apns-token-unavailable';
-  throw error;
-}
-
-async function ensureIosApnsToken(): Promise<void> {
-  const messaging = getMessaging();
-  await registerDeviceForRemoteMessages(messaging);
-  try {
-    await waitForIosApnsToken();
-  } catch (error) {
-    if (diagnosticCode(error) !== 'push/apns-token-unavailable') throw error;
-
-    // UIApplication can retain a stale "registered" state while Firebase has
-    // no APNs token for this installation. Reset only after a bounded wait
-    // proves that state is unusable, then make one fresh registration attempt.
-    await unregisterDeviceForRemoteMessages(messaging);
-    await wait(IOS_APNS_RESET_DELAY_MS);
-    await registerDeviceForRemoteMessages(messaging);
-    await waitForIosApnsToken();
-  }
-}
 
 async function performTokenSynchronization(): Promise<void> {
   if (Platform.OS === 'android') {
@@ -177,22 +140,11 @@ async function performTokenSynchronization(): Promise<void> {
   }
 
   const messaging = getMessaging();
-  // Apple recommends calling registerForRemoteNotifications on every launch.
-  // The operation is idempotent and is the source of truth: a cached
-  // "registered" flag can survive even when this installation has no usable
-  // APNs token.
-  await ensureIosApnsToken();
-  const rotationVersion = await AsyncStorage.getItem(PUSH_ROTATION_VERSION_KEY);
-  if (rotationVersion !== IOS_PUSH_BINDING_VERSION) {
-    // A previously valid FCM installation can remain accepted by Google while
-    // losing its usable APNs association. Record the rotation separately so a
-    // transient backend failure cannot cause repeated token deletion.
-    await deleteToken(messaging);
-    await AsyncStorage.setItem(
-      PUSH_ROTATION_VERSION_KEY,
-      IOS_PUSH_BINDING_VERSION,
-    );
-  }
+  // Registration is idempotent. Never delete the current FCM installation as
+  // part of recovery: if obtaining its replacement fails, the server loses the
+  // only endpoint it could still deliver to. Firebase owns the APNs binding and
+  // getToken surfaces readiness failures for the retry loop below.
+  await registerDeviceForRemoteMessages(messaging);
   await registerToken(await getToken(messaging));
 }
 

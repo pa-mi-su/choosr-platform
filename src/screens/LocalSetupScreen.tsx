@@ -1,8 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,18 +9,14 @@ import {
   View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useFocusEffect } from '@react-navigation/native';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
-import { prepareSharedLocationDeck } from '../services/deckService';
 import {
   locationQueryHint,
   searchLocations,
   type LocationSuggestion,
 } from '../services/locationService';
-import { roomErrorMessage } from '../services/roomFlow';
-import { cancelDecisionRoom } from '../services/sessionService';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -38,55 +32,8 @@ export function LocalSetupScreen({
   const [selectedLocation, setSelectedLocation] =
     useState<LocationSuggestion | null>(null);
   const [searching, setSearching] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [leaving, setLeaving] = useState(false);
   const [lookupMessage, setLookupMessage] = useState<string | null>(null);
   const mode = modeById[route.params.mode];
-
-  const leave = useCallback(() => {
-    const sessionId = route.params.sessionId;
-    if (!sessionId) {
-      navigation.goBack();
-      return;
-    }
-    if (leaving) return;
-
-    Alert.alert(
-      'Leave this room?',
-      'You already joined this room. Leaving now ends it for both people so nobody is left waiting.',
-      [
-        { text: 'Stay here', style: 'cancel' },
-        {
-          text: 'Leave room',
-          style: 'destructive',
-          onPress: () => {
-            setLeaving(true);
-            setError(null);
-            cancelDecisionRoom(sessionId)
-              .then(() => navigation.replace('ActiveRooms'))
-              .catch(cause => {
-                setError(roomErrorMessage(cause));
-                setLeaving(false);
-              });
-          },
-        },
-      ],
-    );
-  }, [leaving, navigation, route.params.sessionId]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const subscription = BackHandler.addEventListener(
-        'hardwareBackPress',
-        () => {
-          if (!route.params.sessionId) return false;
-          leave();
-          return true;
-        },
-      );
-      return () => subscription.remove();
-    }, [leave, route.params.sessionId]),
-  );
 
   useEffect(() => {
     const query = searchArea.trim();
@@ -148,33 +95,6 @@ export function LocalSetupScreen({
       return;
     }
     setError(null);
-    if (route.params.sessionId) {
-      setSubmitting(true);
-      try {
-        const status = await prepareSharedLocationDeck({
-          sessionId: route.params.sessionId,
-          mode: mode.id as 'eat' | 'do',
-          latitude: selectedLocation.latitude,
-          longitude: selectedLocation.longitude,
-          locationLabel: selectedLocation.label,
-        });
-        if (status !== 'ready') {
-          throw new Error(
-            'Your partner’s location has not arrived yet. Please retry.',
-          );
-        }
-        navigation.replace('Swipe', {
-          sessionId: route.params.sessionId,
-          roundNumber: route.params.roundNumber ?? 1,
-          mode: mode.id,
-        });
-      } catch (cause) {
-        setError(roomErrorMessage(cause));
-      } finally {
-        setSubmitting(false);
-      }
-      return;
-    }
     navigation.navigate('Waiting', {
       mode: mode.id,
       ...(route.params.connectionId
@@ -193,12 +113,7 @@ export function LocalSetupScreen({
     <Screen testID="local-setup-screen" style={styles.screen}>
       <View style={styles.top}>
         <Brand compact />
-        <Button
-          label="Back"
-          variant="quiet"
-          loading={leaving}
-          onPress={leave}
-        />
+        <Button label="Back" variant="quiet" onPress={navigation.goBack} />
       </View>
       <ScrollView
         contentContainerStyle={styles.content}
@@ -213,8 +128,8 @@ export function LocalSetupScreen({
         <Text style={styles.title}>Where should we look?</Text>
         <Text style={styles.subtitle}>
           Enter a city or ZIP/postal code, then select the validated location.
-          Choosr will build five strong choices fairly located between both
-          people.
+          Choosr will build five strong choices around your selected area for
+          both people.
         </Text>
         <TextInput
           testID="search-area-input"
@@ -285,8 +200,7 @@ export function LocalSetupScreen({
       </ScrollView>
       <Button
         label="Continue"
-        disabled={!selectedLocation || searching || submitting || leaving}
-        loading={submitting}
+        disabled={!selectedLocation || searching}
         onPress={() => {
           continueToRoom().catch(() => undefined);
         }}
