@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Button, Screen } from '../components/UI';
 import { DecisionArtwork } from '../components/DecisionArtwork';
+import { ProfileAvatar } from '../components/ProfileAvatar';
 import { modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { getMatchResultAction } from '../services/matchResult';
@@ -22,7 +23,13 @@ import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Match'>;
 export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
-  const { item, sessionId } = route.params;
+  const {
+    item,
+    sessionId,
+    openedFromHistory = false,
+    partnerDisplayName,
+    partnerPhotoUrl,
+  } = route.params;
   const mode = modeById[item.mode];
   const action = getMatchResultAction(item);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -40,12 +47,13 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
     try {
       const room = await loadDecisionRoom(sessionId);
       if (room.status === 'cancelled' || room.status === 'expired') {
-        navigation.popToTop();
+        if (openedFromHistory) navigation.goBack();
+        else navigation.popToTop();
       }
     } catch {
       // A later Realtime event or recovery poll will retry transient failures.
     }
-  }, [navigation, sessionId]);
+  }, [navigation, openedFromHistory, sessionId]);
 
   useRoomSync({
     sessionId,
@@ -78,6 +86,19 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         <Text style={styles.eyebrow}>DECISION MADE</Text>
         <Text style={styles.title}>You found your match.</Text>
         <Text style={styles.subtitle}>{mode.matchSubtitle}</Text>
+        {partnerDisplayName ? (
+          <View style={styles.partner}>
+            <ProfileAvatar
+              displayName={partnerDisplayName}
+              photoUrl={partnerPhotoUrl}
+              size="small"
+            />
+            <View>
+              <Text style={styles.partnerLabel}>CHOSE WITH</Text>
+              <Text style={styles.partnerName}>{partnerDisplayName}</Text>
+            </View>
+          </View>
+        ) : null}
       </View>
       <Animated.View style={[styles.posterWrap, reveal]}>
         <DecisionArtwork item={item} style={styles.poster} />
@@ -113,20 +134,26 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
           />
         ) : null}
         {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-        <Button
-          label="Choose again"
-          variant="secondary"
-          loading={endingAction === 'choose-again'}
-          disabled={endingAction !== null}
-          onPress={() => dismissResult('choose-again')}
-        />
-        <Button
-          label="Done"
-          variant="quiet"
-          loading={endingAction === 'done'}
-          disabled={endingAction !== null}
-          onPress={() => dismissResult('done')}
-        />
+        {openedFromHistory ? (
+          <Button label="Go back" variant="quiet" onPress={navigation.goBack} />
+        ) : (
+          <>
+            <Button
+              label="Choose again"
+              variant="secondary"
+              loading={endingAction === 'choose-again'}
+              disabled={endingAction !== null}
+              onPress={() => dismissResult('choose-again')}
+            />
+            <Button
+              label="Done"
+              variant="quiet"
+              loading={endingAction === 'done'}
+              disabled={endingAction !== null}
+              onPress={() => dismissResult('done')}
+            />
+          </>
+        )}
       </View>
     </Screen>
   );
@@ -149,6 +176,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   subtitle: { color: colors.muted, marginTop: 3 },
+  partner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+  },
+  partnerLabel: {
+    color: colors.faint,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  partnerName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '900',
+    marginTop: 2,
+  },
   posterWrap: { width: 214, height: 294, marginTop: 20 },
   poster: { width: '100%', height: '100%', minHeight: 0 },
   badge: {

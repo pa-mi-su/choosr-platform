@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { Alert } from 'react-native';
 
 const mockLoadRoomHistory = jest.fn();
 const mockReadCachedRoomHistory = jest.fn();
@@ -10,6 +11,8 @@ const mockAnswerRoomInvitation = jest.fn();
 const mockDismissRoomInvitation = jest.fn();
 const mockPrepareSharedLocationDeck = jest.fn();
 const mockLoadDecisionDeck = jest.fn();
+const mockDismissCompletedRoom = jest.fn();
+const mockDismissAllCompletedRooms = jest.fn();
 
 jest.mock('@react-navigation/native', () => {
   const ReactModule = jest.requireActual<typeof React>('react');
@@ -21,6 +24,10 @@ jest.mock('@react-navigation/native', () => {
   };
 });
 jest.mock('../src/services/sessionService', () => ({
+  dismissAllCompletedRooms: (...args: unknown[]) =>
+    mockDismissAllCompletedRooms(...args),
+  dismissCompletedRoom: (...args: unknown[]) =>
+    mockDismissCompletedRoom(...args),
   loadDecisionDeck: (...args: unknown[]) => mockLoadDecisionDeck(...args),
   loadRoomHistory: (...args: unknown[]) => mockLoadRoomHistory(...args),
   readCachedRoomHistory: (...args: unknown[]) =>
@@ -75,6 +82,8 @@ describe('Active Rooms invitations', () => {
     mockDismissRoomInvitation.mockResolvedValue(undefined);
     mockPrepareSharedLocationDeck.mockResolvedValue('ready');
     mockLoadDecisionDeck.mockResolvedValue([]);
+    mockDismissCompletedRoom.mockResolvedValue(undefined);
+    mockDismissAllCompletedRooms.mockResolvedValue(undefined);
   });
 
   test('keeps a pending invite discoverable independently of the inbox', async () => {
@@ -274,6 +283,8 @@ describe('Active Rooms invitations', () => {
         totalChoices: 5,
         completedChoices: 3,
         matchedItemId: 'choice-1',
+        partnerDisplayName: 'Alex',
+        partnerPhotoUrl: 'https://example.com/alex.jpg',
       },
     ]);
     mockLoadPendingRoomInvitations.mockResolvedValue([]);
@@ -308,8 +319,122 @@ describe('Active Rooms invitations', () => {
     expect(navigate).toHaveBeenCalledWith('Match', {
       sessionId: 'matched-session',
       item: matchedItem,
+      openedFromHistory: true,
+      partnerDisplayName: 'Alex',
+      partnerPhotoUrl: 'https://example.com/alex.jpg',
     });
 
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  test('deletes one completed pick only after confirmation', async () => {
+    mockLoadRoomHistory.mockResolvedValue([
+      {
+        sessionId: 'matched-session',
+        accessCode: '',
+        mode: 'do',
+        status: 'matched',
+        roundNumber: 1,
+        expiresAt: '2026-07-28T12:00:00.000Z',
+        participantCount: 2,
+        createdAt: '2026-07-27T12:00:00.000Z',
+        totalChoices: 5,
+        completedChoices: 5,
+        matchedItemId: 'choice-1',
+        partnerDisplayName: 'Alex',
+        partnerPhotoUrl: null,
+      },
+    ]);
+    mockLoadPendingRoomInvitations.mockResolvedValue([]);
+    jest.spyOn(Alert, 'alert').mockImplementation((title, message, buttons) => {
+      buttons?.find(button => button.text === 'Delete')?.onPress?.();
+    });
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ActiveRoomsScreen
+            navigation={
+              {
+                goBack: jest.fn(),
+                navigate: jest.fn(),
+                replace: jest.fn(),
+              } as never
+            }
+            route={{ key: 'rooms', name: 'ActiveRooms' } as never}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      renderer.root
+        .findByProps({
+          accessibilityLabel: 'Delete Pick an activity completed pick',
+        })
+        .props.onPress();
+    });
+
+    expect(mockDismissCompletedRoom).toHaveBeenCalledWith('matched-session');
+    expect(
+      renderer.root.findAllByProps({ children: 'COMPLETED' }),
+    ).toHaveLength(0);
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  test('clears all completed picks without affecting active rooms', async () => {
+    mockLoadRoomHistory.mockResolvedValue([
+      {
+        sessionId: 'completed-session',
+        accessCode: '',
+        mode: 'do',
+        status: 'completed',
+        roundNumber: 1,
+        expiresAt: '2026-07-28T12:00:00.000Z',
+        participantCount: 2,
+        createdAt: '2026-07-27T12:00:00.000Z',
+        totalChoices: 5,
+        completedChoices: 5,
+        matchedItemId: null,
+        partnerDisplayName: 'Jordan',
+        partnerPhotoUrl: null,
+      },
+    ]);
+    mockLoadPendingRoomInvitations.mockResolvedValue([]);
+    jest.spyOn(Alert, 'alert').mockImplementation((title, message, buttons) => {
+      buttons?.find(button => button.text === 'Delete all')?.onPress?.();
+    });
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ActiveRoomsScreen
+            navigation={
+              {
+                goBack: jest.fn(),
+                navigate: jest.fn(),
+                replace: jest.fn(),
+              } as never
+            }
+            route={{ key: 'rooms', name: 'ActiveRooms' } as never}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      renderer.root
+        .findByProps({ accessibilityLabel: 'Delete all completed picks' })
+        .props.onPress();
+    });
+
+    expect(mockDismissAllCompletedRooms).toHaveBeenCalledTimes(1);
+    expect(
+      renderer.root.findAllByProps({ children: 'COMPLETED' }),
+    ).toHaveLength(0);
+    expect(renderer.root.findByProps({ children: 'ACTIVE' })).toBeDefined();
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
 });

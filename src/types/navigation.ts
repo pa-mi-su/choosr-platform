@@ -47,6 +47,20 @@ export type RootStackParamList = {
     mode: DecisionMode;
     searchArea?: string;
   };
-  Match: { sessionId: string; item: DecisionItem; searchArea?: string };
-  NoMatch: { sessionId: string; mode: DecisionMode; searchArea?: string };
+  Match: {
+    sessionId: string;
+    item: DecisionItem;
+    searchArea?: string;
+    openedFromHistory?: boolean;
+    partnerDisplayName?: string | null;
+    partnerPhotoUrl?: string | null;
+  };
+  NoMatch: {
+    sessionId: string;
+    mode: DecisionMode;
+    searchArea?: string;
+    openedFromHistory?: boolean;
+    partnerDisplayName?: string | null;
+    partnerPhotoUrl?: string | null;
+  };
 };

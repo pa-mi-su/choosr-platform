@@ -67,4 +67,56 @@ describe('completed room ownership', () => {
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
+
+  test('historical result identifies the partner and goes back to the list', async () => {
+    const goBack = jest.fn();
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <MatchScreen
+            navigation={{ goBack, popToTop: jest.fn() } as never}
+            route={{
+              key: 'match-history',
+              name: 'Match',
+              params: {
+                sessionId: 'matched-session',
+                openedFromHistory: true,
+                partnerDisplayName: 'Alex',
+                partnerPhotoUrl: null,
+                item: {
+                  id: 'choice-1',
+                  mode: 'do',
+                  title: 'Bowling',
+                  kicker: 'PICK AN ACTIVITY',
+                  meta: 'Nearby',
+                  description: 'A shared result',
+                  background: '#20344A',
+                  accent: '#F0B7A4',
+                  tags: ['Activity'],
+                },
+              },
+            }}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    expect(renderer.root.findByProps({ children: 'CHOSE WITH' })).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'Alex' })).toBeDefined();
+    expect(
+      renderer.root.findAllByProps({ accessibilityLabel: 'Done' }),
+    ).toHaveLength(0);
+
+    await ReactTestRenderer.act(async () => {
+      renderer.root
+        .findByProps({ accessibilityLabel: 'Go back' })
+        .props.onPress();
+    });
+
+    expect(goBack).toHaveBeenCalledTimes(1);
+    expect(mockAcknowledgeDecisionRoom).not.toHaveBeenCalled();
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
 });

@@ -30,6 +30,7 @@ type SessionRow = {
   created_at: string;
   expires_at: string;
   matched_at: string | null;
+  completed_at: string | null;
 };
 
 type ParticipantRow = {
@@ -99,6 +100,13 @@ type RoomCompletionAcknowledgementRow = {
   participant_id: string;
   round: number;
   acknowledged_at: string;
+};
+
+type RoomHistoryDismissalRow = {
+  session_id: string;
+  participant_id: string;
+  round: number;
+  dismissed_at: string;
 };
 
 type ProfileRow = {
@@ -194,6 +202,7 @@ export type Database = {
         never,
         never
       >;
+      room_history_dismissals: Table<RoomHistoryDismissalRow, never, never>;
       ranking_submissions: Table<RankingSubmissionRow, never, never>;
       choice_rankings: Table<ChoiceRankingRow, never, never>;
       profiles: Table<ProfileRow, never, never>;
@@ -324,7 +333,17 @@ export type Database = {
           total_choices: number;
           completed_choices: number;
           matched_item_id: string | null;
+          partner_display_name: string | null;
+          partner_avatar_path: string | null;
         }[];
+      };
+      dismiss_completed_room: {
+        Args: { p_session_id: string };
+        Returns: undefined;
+      };
+      dismiss_all_completed_rooms: {
+        Args: Record<never, never>;
+        Returns: number;
       };
       respond_room_invitation: {
         Args: { p_invitation_id: string; p_accept: boolean };
