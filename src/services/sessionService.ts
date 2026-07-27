@@ -419,47 +419,29 @@ export async function loadOwnSwipeItemIds(
   return new Set(data.map(row => row.item_id));
 }
 
-export async function loadOwnAcceptedItemIds(
+export async function loadOwnRankingContext(
   sessionId: string,
   round: number,
-): Promise<Set<string>> {
-  const { data, error } = await supabase
-    .from('swipes')
-    .select('item_id')
-    .eq('session_id', sessionId)
-    .eq('round', round)
-    .eq('direction', 'right');
-  if (error) {
-    throw error;
-  }
-  return new Set(data.map(row => row.item_id));
-}
-
-export async function loadOwnRankingSubmission(
-  sessionId: string,
-  round: number,
-): Promise<{ submitted: boolean; itemIds: string[] }> {
-  const [submission, rankings] = await Promise.all([
-    supabase
-      .from('ranking_submissions')
-      .select('participant_id')
-      .eq('session_id', sessionId)
-      .eq('round', round)
-      .maybeSingle(),
-    supabase
-      .from('choice_rankings')
-      .select('item_id, rank')
-      .eq('session_id', sessionId)
-      .eq('round', round)
-      .order('rank'),
-  ]);
-  const error = submission.error ?? rankings.error;
-  if (error) {
-    throw error;
+): Promise<{
+  acceptedItemIds: string[];
+  rankedItemIds: string[];
+  requiredRankCount: number;
+  submitted: boolean;
+}> {
+  const { data, error } = await supabase.rpc('get_own_ranking_context', {
+    p_session_id: sessionId,
+    p_round: round,
+  });
+  if (error) throw error;
+  const context = data[0];
+  if (!context || !context.deck_completed) {
+    throw new Error('deck_not_completed');
   }
   return {
-    submitted: Boolean(submission.data),
-    itemIds: (rankings.data ?? []).map(row => row.item_id),
+    acceptedItemIds: context.accepted_item_ids,
+    rankedItemIds: context.ranked_item_ids,
+    requiredRankCount: context.required_rank_count,
+    submitted: context.submitted,
   };
 }
 

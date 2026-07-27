@@ -9,6 +9,19 @@ describe('decision modes', () => {
     expect(decisionModes.map(mode => mode.id)).toEqual(['do', 'eat', 'custom']);
   });
 
+  it('uses playful, meal-neutral result copy for activities and food', () => {
+    expect(
+      Object.fromEntries(
+        decisionModes.map(mode => [mode.id, mode.matchSubtitle]),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        do: 'Your next adventure is set.',
+        eat: 'The cravings have spoken.',
+      }),
+    );
+  });
+
   it.each(['eat', 'do'] as const)(
     '%s has a valid shared preview deck',
     mode => {

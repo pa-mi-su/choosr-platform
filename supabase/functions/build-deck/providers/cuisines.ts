@@ -2,6 +2,8 @@ export const cuisineGoogleTypes = {
   all: ['restaurant'],
   american: [
     'american_restaurant',
+    'cajun_restaurant',
+    'californian_restaurant',
     'soul_food_restaurant',
     'southwestern_us_restaurant',
     'steak_house',
@@ -18,12 +20,19 @@ export const cuisineGoogleTypes = {
     'cantonese_restaurant',
     'dim_sum_restaurant',
     'chinese_noodle_restaurant',
+    'dumpling_restaurant',
+    'hot_pot_restaurant',
+    'taiwanese_restaurant',
   ],
   japanese: [
     'japanese_restaurant',
     'japanese_izakaya_restaurant',
     'japanese_curry_restaurant',
     'ramen_restaurant',
+    'sushi_restaurant',
+    'tonkatsu_restaurant',
+    'yakiniku_restaurant',
+    'yakitori_restaurant',
   ],
   indian: [
     'indian_restaurant',
@@ -34,10 +43,18 @@ export const cuisineGoogleTypes = {
   mediterranean: [
     'mediterranean_restaurant',
     'greek_restaurant',
+    'gyro_restaurant',
+    'israeli_restaurant',
     'lebanese_restaurant',
     'middle_eastern_restaurant',
+    'moroccan_restaurant',
+    'turkish_restaurant',
   ],
-  seafood: ['seafood_restaurant'],
+  seafood: [
+    'seafood_restaurant',
+    'fish_and_chips_restaurant',
+    'oyster_bar_restaurant',
+  ],
   pizza: ['pizza_restaurant'],
   burgers: ['hamburger_restaurant'],
   breakfast: [
@@ -47,7 +64,11 @@ export const cuisineGoogleTypes = {
     'bagel_shop',
   ],
   sushi: ['sushi_restaurant'],
-  barbecue: ['barbecue_restaurant'],
+  barbecue: [
+    'barbecue_restaurant',
+    'korean_barbecue_restaurant',
+    'mongolian_barbecue_restaurant',
+  ],
   vegetarian: ['vegetarian_restaurant', 'vegan_restaurant'],
 } as const;
 

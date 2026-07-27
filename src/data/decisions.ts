@@ -17,7 +17,7 @@ export const decisionModes: DecisionModeDefinition[] = [
     title: 'Pick an activity',
     description: 'Find real things to do near a ZIP or postal code.',
     prompt: 'Would you do this?',
-    matchSubtitle: 'You have a plan.',
+    matchSubtitle: 'Your next adventure is set.',
   },
   {
     id: 'eat',
@@ -26,7 +26,7 @@ export const decisionModes: DecisionModeDefinition[] = [
     title: 'Pick food',
     description: 'Choose from real restaurants nearby.',
     prompt: 'Would you eat here?',
-    matchSubtitle: 'Dinner is decided.',
+    matchSubtitle: 'The cravings have spoken.',
   },
   {
     id: 'custom',
