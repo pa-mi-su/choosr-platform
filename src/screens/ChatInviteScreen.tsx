@@ -11,6 +11,7 @@ import type { ChatInvitation } from '../chat/domain/types';
 import { chatSession } from '../chat/runtime';
 import { BackToChoosrButton, Button, Screen } from '../components/UI';
 import { ensureAnonymousSession } from '../services/anonymousAuth';
+import { buildNativeSharePayload } from '../services/roomInvite';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
@@ -104,7 +105,9 @@ export function ChatInviteScreen({
     setSharing(true);
     try {
       const content = buildPrivateChatShareMessage(invitation);
-      await Share.share({ message: content.message, url: content.url });
+      await Share.share(
+        buildNativeSharePayload('Join my private Choosr chat', content),
+      );
     } catch {
       Alert.alert(
         'Invitation not shared',

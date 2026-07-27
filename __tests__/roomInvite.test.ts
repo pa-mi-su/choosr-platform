@@ -1,4 +1,8 @@
-import { buildCircleInvite, buildRoomInvite } from '../src/services/roomInvite';
+import {
+  buildCircleInvite,
+  buildNativeSharePayload,
+  buildRoomInvite,
+} from '../src/services/roomInvite';
 
 describe('buildRoomInvite', () => {
   it('includes a token link and a manual-code fallback', () => {
@@ -32,6 +36,28 @@ describe('buildCircleInvite', () => {
     });
 
     expect(invite.url).toBe('choosr://connect/circle-token');
-    expect(invite.message).toContain('Pat invited you');
+    expect(invite.message).toBe(
+      'Pat invited you to join their Choosr Circle.\n\n' +
+        'Connect and start choosing together:\n' +
+        'choosr://connect/circle-token',
+    );
+    expect(
+      invite.message.match(/choosr:\/\/connect\/circle-token/g),
+    ).toHaveLength(1);
+  });
+
+  it('gives native sharing one branded message instead of a duplicate URL', () => {
+    const invite = buildCircleInvite({
+      inviteToken: 'circle-token',
+      displayName: 'Pat',
+    });
+
+    expect(buildNativeSharePayload('Connect on Choosr', invite)).toEqual({
+      title: 'Connect on Choosr',
+      message: invite.message,
+    });
+    expect(
+      buildNativeSharePayload('Connect on Choosr', invite),
+    ).not.toHaveProperty('url');
   });
 });
