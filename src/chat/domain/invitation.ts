@@ -62,7 +62,9 @@ export function buildPrivateChatShareMessage(
   return {
     url,
     message:
-      `Join my private Choosr Chat. This invitation works once and expires in two minutes.\n\n${url}\n\n` +
+      `CHOOSR · PRIVATE CHAT\n\n` +
+      `Join my end-to-end encrypted private Choosr Chat.\n\n${url}\n\n` +
+      `For your privacy, this invitation works once and expires in 90 seconds.\n` +
       'If Choosr is not installed, install it first and ask me for a fresh invitation.',
   };
 }

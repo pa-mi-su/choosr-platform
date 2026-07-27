@@ -157,7 +157,9 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
         inviteToken: credentials.inviteToken,
         displayName: profile.displayName,
       });
-      await Share.share(buildNativeSharePayload('Connect on Choosr', invite));
+      await Share.share(
+        buildNativeSharePayload('Choosr · Circle invitation', invite),
+      );
     });
 
   const changeProfilePhoto = () =>

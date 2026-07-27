@@ -106,7 +106,7 @@ export function ChatInviteScreen({
     try {
       const content = buildPrivateChatShareMessage(invitation);
       await Share.share(
-        buildNativeSharePayload('Join my private Choosr chat', content),
+        buildNativeSharePayload('Choosr · Private chat', content),
       );
     } catch {
       Alert.alert(

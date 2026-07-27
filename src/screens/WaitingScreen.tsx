@@ -178,9 +178,9 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
         ? { decisionPrompt: route.params.customPrompt }
         : {}),
     });
-    Share.share(buildNativeSharePayload('Join my Choosr room', invite)).catch(
-      () => undefined,
-    );
+    Share.share(
+      buildNativeSharePayload('Choosr · Room invitation', invite),
+    ).catch(() => undefined);
   };
   return (
     <Screen testID="waiting-screen" style={styles.screen}>

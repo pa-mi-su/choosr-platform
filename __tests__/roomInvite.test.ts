@@ -3,6 +3,7 @@ import {
   buildNativeSharePayload,
   buildRoomInvite,
 } from '../src/services/roomInvite';
+import { buildPrivateChatShareMessage } from '../src/chat/domain/invitation';
 
 describe('buildRoomInvite', () => {
   it('includes a token link and a manual-code fallback', () => {
@@ -37,8 +38,9 @@ describe('buildCircleInvite', () => {
 
     expect(invite.url).toBe('choosr://connect/circle-token');
     expect(invite.message).toBe(
-      'Pat invited you to join their Choosr Circle.\n\n' +
-        'Connect and start choosing together:\n' +
+      'CHOOSR · CIRCLE INVITATION\n\n' +
+        'Pat wants to connect with you.\n\n' +
+        'Join their Choosr Circle and start choosing together:\n' +
         'choosr://connect/circle-token',
     );
     expect(
@@ -52,12 +54,55 @@ describe('buildCircleInvite', () => {
       displayName: 'Pat',
     });
 
-    expect(buildNativeSharePayload('Connect on Choosr', invite)).toEqual({
-      title: 'Connect on Choosr',
+    expect(
+      buildNativeSharePayload('Choosr · Circle invitation', invite),
+    ).toEqual({
+      title: 'Choosr · Circle invitation',
       message: invite.message,
     });
     expect(
-      buildNativeSharePayload('Connect on Choosr', invite),
+      buildNativeSharePayload('Choosr · Circle invitation', invite),
     ).not.toHaveProperty('url');
+  });
+});
+
+describe('cross-platform Choosr sharing', () => {
+  it('keeps Circle, decision-room, and private-chat invitations distinct', () => {
+    const circle = buildNativeSharePayload(
+      'Choosr · Circle invitation',
+      buildCircleInvite({
+        inviteToken: 'circle-token',
+        displayName: 'Pat',
+      }),
+    );
+    const room = buildNativeSharePayload(
+      'Choosr · Room invitation',
+      buildRoomInvite({
+        inviteToken: 'room-token',
+        accessCode: 'ABCD2345',
+        decisionPrompt: 'pick dinner',
+      }),
+    );
+    const chat = buildNativeSharePayload(
+      'Choosr · Private chat',
+      buildPrivateChatShareMessage({
+        token: 'a'.repeat(64),
+        creatorPublicKey: `${'A'.repeat(43)}=`,
+      }),
+    );
+
+    expect(new Set([circle.title, room.title, chat.title]).size).toBe(3);
+    expect(new Set([circle.message, room.message, chat.message]).size).toBe(3);
+    expect(circle.message).toContain('Choosr Circle');
+    expect(room.message).toContain('ROOM INVITATION');
+    expect(room.message).toContain('ABCD2345');
+    expect(chat.message).toContain('private Choosr Chat');
+    expect(chat.message).toContain('works once');
+    expect(chat.message).toContain('90 seconds');
+
+    for (const payload of [circle, room, chat]) {
+      expect(payload).not.toHaveProperty('url');
+      expect(payload.message.match(/choosr:\/\//g)).toHaveLength(1);
+    }
   });
 });

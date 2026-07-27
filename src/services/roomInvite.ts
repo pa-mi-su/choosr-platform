@@ -28,7 +28,11 @@ export function buildRoomInvite(input: {
 
   return {
     url,
-    message: `Join my Choosr room to ${input.decisionPrompt}.\n\nTap to join: ${url}\n\nOr open Choosr and enter code: ${input.accessCode}`,
+    message:
+      `CHOOSR · ROOM INVITATION\n\n` +
+      `Let's ${input.decisionPrompt}.\n\n` +
+      `Open the room:\n${url}\n\n` +
+      `Or enter room code: ${input.accessCode}`,
   };
 }
 
@@ -44,7 +48,8 @@ export function buildCircleInvite(input: {
   return {
     url,
     message:
-      `${input.displayName} invited you to join their Choosr Circle.\n\n` +
-      `Connect and start choosing together:\n${url}`,
+      `CHOOSR · CIRCLE INVITATION\n\n` +
+      `${input.displayName} wants to connect with you.\n\n` +
+      `Join their Choosr Circle and start choosing together:\n${url}`,
   };
 }
