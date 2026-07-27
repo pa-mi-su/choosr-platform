@@ -13,6 +13,7 @@ const mockPrepareSharedLocationDeck = jest.fn();
 const mockLoadDecisionDeck = jest.fn();
 const mockDismissCompletedRoom = jest.fn();
 const mockDismissAllCompletedRooms = jest.fn();
+const mockAcknowledgeDecisionRoom = jest.fn();
 
 jest.mock('@react-navigation/native', () => {
   const ReactModule = jest.requireActual<typeof React>('react');
@@ -24,6 +25,8 @@ jest.mock('@react-navigation/native', () => {
   };
 });
 jest.mock('../src/services/sessionService', () => ({
+  acknowledgeDecisionRoom: (...args: unknown[]) =>
+    mockAcknowledgeDecisionRoom(...args),
   dismissAllCompletedRooms: (...args: unknown[]) =>
     mockDismissAllCompletedRooms(...args),
   dismissCompletedRoom: (...args: unknown[]) =>
@@ -84,6 +87,7 @@ describe('Active Rooms invitations', () => {
     mockLoadDecisionDeck.mockResolvedValue([]);
     mockDismissCompletedRoom.mockResolvedValue(undefined);
     mockDismissAllCompletedRooms.mockResolvedValue(undefined);
+    mockAcknowledgeDecisionRoom.mockResolvedValue(undefined);
   });
 
   test('keeps a pending invite discoverable independently of the inbox', async () => {
@@ -102,9 +106,7 @@ describe('Active Rooms invitations', () => {
       );
     });
 
-    expect(
-      renderer.root.findByProps({ children: 'ROOM INVITE' }),
-    ).toBeDefined();
+    expect(renderer.root.findByProps({ children: 'INVITED' })).toBeDefined();
     expect(
       renderer.root.findByProps({ accessibilityLabel: 'Join' }),
     ).toBeDefined();
@@ -149,9 +151,9 @@ describe('Active Rooms invitations', () => {
     });
 
     expect(mockDismissRoomInvitation).toHaveBeenCalledWith('invite-1');
-    expect(
-      renderer.root.findAllByProps({ children: 'ROOM INVITE' }),
-    ).toHaveLength(0);
+    expect(renderer.root.findAllByProps({ children: 'INVITED' })).toHaveLength(
+      0,
+    );
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
@@ -204,6 +206,54 @@ describe('Active Rooms invitations', () => {
     expect(navigate).toHaveBeenCalledWith('RoomStatus', {
       sessionId: 'waiting-session',
     });
+
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  test('keeps unfinished ranking work in Needs you', async () => {
+    mockLoadRoomHistory.mockResolvedValue([
+      {
+        sessionId: 'ranking-session',
+        accessCode: '',
+        mode: 'do',
+        status: 'active',
+        roundNumber: 1,
+        expiresAt: '2026-07-28T12:00:00.000Z',
+        participantCount: 2,
+        createdAt: '2026-07-27T12:00:00.000Z',
+        totalChoices: 5,
+        completedChoices: 5,
+        matchedItemId: null,
+        partnerDisplayName: 'Alex',
+        partnerPhotoUrl: null,
+        selectionComplete: false,
+        resultAcknowledged: false,
+      },
+    ]);
+    mockLoadPendingRoomInvitations.mockResolvedValue([]);
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ActiveRoomsScreen
+            navigation={
+              {
+                goBack: jest.fn(),
+                navigate: jest.fn(),
+                replace: jest.fn(),
+              } as never
+            }
+            route={{ key: 'rooms', name: 'ActiveRooms' } as never}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    expect(renderer.root.findByProps({ children: 'NEEDS YOU' })).toBeDefined();
+    expect(
+      renderer.root.findByProps({ children: 'Finish ranking your picks' }),
+    ).toBeDefined();
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
@@ -308,6 +358,11 @@ describe('Active Rooms invitations', () => {
     expect(renderer.root.findByProps({ children: 'COMPLETED' })).toBeDefined();
     await ReactTestRenderer.act(async () => {
       renderer.root
+        .findByProps({ accessibilityLabel: 'completed rooms' })
+        .props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      renderer.root
         .findByProps({
           accessibilityLabel:
             'Pick an activity. Decision complete. View result.',
@@ -323,6 +378,72 @@ describe('Active Rooms invitations', () => {
       partnerDisplayName: 'Alex',
       partnerPhotoUrl: 'https://example.com/alex.jpg',
     });
+
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  test('puts an unviewed result in Needs you and acknowledges it when opened', async () => {
+    const matchedItem = {
+      id: 'choice-1',
+      mode: 'eat' as const,
+      title: 'Tacos',
+      kicker: 'PICK FOOD',
+      meta: 'Nearby',
+      description: 'A shared result',
+      background: '#20344A',
+      accent: '#F0B7A4',
+      tags: ['Food'],
+    };
+    mockLoadRoomHistory.mockResolvedValue([
+      {
+        sessionId: 'new-result',
+        accessCode: '',
+        mode: 'eat',
+        status: 'matched',
+        roundNumber: 1,
+        expiresAt: '2026-07-28T12:00:00.000Z',
+        participantCount: 2,
+        createdAt: '2026-07-27T12:00:00.000Z',
+        totalChoices: 5,
+        completedChoices: 5,
+        matchedItemId: 'choice-1',
+        partnerDisplayName: 'Alex',
+        partnerPhotoUrl: null,
+        resultAcknowledged: false,
+      },
+    ]);
+    mockLoadPendingRoomInvitations.mockResolvedValue([]);
+    mockLoadDecisionDeck.mockResolvedValue([matchedItem]);
+    const navigate = jest.fn();
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ActiveRoomsScreen
+            navigation={
+              { goBack: jest.fn(), navigate, replace: jest.fn() } as never
+            }
+            route={{ key: 'rooms', name: 'ActiveRooms' } as never}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    expect(renderer.root.findByProps({ children: 'NEEDS YOU' })).toBeDefined();
+    await ReactTestRenderer.act(async () => {
+      renderer.root
+        .findByProps({
+          accessibilityLabel: 'Pick food. Decision complete. View result.',
+        })
+        .props.onPress();
+    });
+
+    expect(mockAcknowledgeDecisionRoom).toHaveBeenCalledWith('new-result');
+    expect(navigate).toHaveBeenCalledWith(
+      'Match',
+      expect.objectContaining({ sessionId: 'new-result', item: matchedItem }),
+    );
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
@@ -370,6 +491,11 @@ describe('Active Rooms invitations', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer.root
+        .findByProps({ accessibilityLabel: 'completed rooms' })
+        .props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      renderer.root
         .findByProps({
           accessibilityLabel: 'Delete Pick an activity completed pick',
         })
@@ -378,8 +504,8 @@ describe('Active Rooms invitations', () => {
 
     expect(mockDismissCompletedRoom).toHaveBeenCalledWith('matched-session');
     expect(
-      renderer.root.findAllByProps({ children: 'COMPLETED' }),
-    ).toHaveLength(0);
+      renderer.root.findByProps({ children: 'No completed picks' }),
+    ).toBeDefined();
     await ReactTestRenderer.act(async () => renderer.unmount());
   });
 
@@ -426,14 +552,19 @@ describe('Active Rooms invitations', () => {
 
     await ReactTestRenderer.act(async () => {
       renderer.root
+        .findByProps({ accessibilityLabel: 'completed rooms' })
+        .props.onPress();
+    });
+    await ReactTestRenderer.act(async () => {
+      renderer.root
         .findByProps({ accessibilityLabel: 'Delete all completed picks' })
         .props.onPress();
     });
 
     expect(mockDismissAllCompletedRooms).toHaveBeenCalledTimes(1);
     expect(
-      renderer.root.findAllByProps({ children: 'COMPLETED' }),
-    ).toHaveLength(0);
+      renderer.root.findByProps({ children: 'No completed picks' }),
+    ).toBeDefined();
     expect(renderer.root.findByProps({ children: 'ACTIVE' })).toBeDefined();
     await ReactTestRenderer.act(async () => renderer.unmount());
   });

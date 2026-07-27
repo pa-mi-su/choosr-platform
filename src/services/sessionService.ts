@@ -45,6 +45,8 @@ export type RoomHistoryItem = DecisionRoom & {
   matchedItemId: string | null;
   partnerDisplayName: string | null;
   partnerPhotoUrl: string | null;
+  selectionComplete: boolean;
+  resultAcknowledged: boolean;
 };
 
 const ROOM_HISTORY_CACHE_KEY = '@choosr/active-room-history/v2';
@@ -257,6 +259,8 @@ export async function loadRoomHistory(): Promise<RoomHistoryItem[]> {
     matchedItemId: session.matched_item_id,
     partnerDisplayName: session.partner_display_name,
     partnerPhotoUrl: profilePhotoUrl(session.partner_avatar_path),
+    selectionComplete: session.selection_complete,
+    resultAcknowledged: session.result_acknowledged,
   }));
   // Access codes are short-lived invitation credentials, so they are omitted
   // from unencrypted device snapshots and restored only by a live refresh.

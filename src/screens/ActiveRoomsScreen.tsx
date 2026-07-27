@@ -8,6 +8,8 @@ import {
   StyleSheet,
   Text,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -25,6 +27,7 @@ import {
   type PendingRoomInvitation,
 } from '../services/circleService';
 import {
+  acknowledgeDecisionRoom,
   dismissAllCompletedRooms,
   dismissCompletedRoom,
   loadDecisionDeck,
@@ -38,18 +41,102 @@ import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ActiveRooms'>;
-type ActiveRoomRow =
-  | {
-      kind: 'section';
-      id: string;
-      title: string;
-      canClearCompleted?: boolean;
-    }
-  | { kind: 'empty-active'; id: string }
+type RoomsTab = 'active' | 'completed';
+type RoomRow =
+  | { kind: 'section'; id: string; title: string; count?: number }
+  | { kind: 'tabs'; id: string }
+  | { kind: 'empty'; id: string; tab: RoomsTab }
   | { kind: 'invitation'; id: string; invitation: PendingRoomInvitation }
-  | { kind: 'room'; id: string; room: RoomHistoryItem };
+  | { kind: 'room'; id: string; room: RoomHistoryItem; needsAction: boolean };
+
+let preservedTab: RoomsTab = 'active';
+const preservedOffsets: Record<RoomsTab, number> = {
+  active: 0,
+  completed: 0,
+};
+
+function completed(room: RoomHistoryItem): boolean {
+  return room.status === 'matched' || room.status === 'completed';
+}
+
+function needsAction(room: RoomHistoryItem): boolean {
+  if (completed(room)) return room.resultAcknowledged === false;
+  if (
+    room.status === 'waiting' &&
+    room.participantCount === 2 &&
+    (room.mode === 'eat' || room.mode === 'do')
+  ) {
+    return true;
+  }
+  return room.status === 'active' && room.selectionComplete === false;
+}
+
+function relativeTime(value: string): string {
+  const milliseconds = Math.max(0, Date.now() - Date.parse(value));
+  const minutes = Math.floor(milliseconds / 60_000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 24 ? `${hours}h ago` : 'Yesterday';
+}
+
+function partnerName(room: RoomHistoryItem): string {
+  return room.partnerDisplayName ?? 'Your room';
+}
+
+function groupedByPerson(rooms: RoomHistoryItem[]): RoomHistoryItem[] {
+  const newestByPerson = new Map<string, number>();
+  rooms.forEach(room => {
+    const person = partnerName(room);
+    newestByPerson.set(
+      person,
+      Math.max(newestByPerson.get(person) ?? 0, Date.parse(room.createdAt)),
+    );
+  });
+  return [...rooms].sort((left, right) => {
+    const groupRecency =
+      (newestByPerson.get(partnerName(right)) ?? 0) -
+      (newestByPerson.get(partnerName(left)) ?? 0);
+    if (groupRecency) return groupRecency;
+    const personOrder = partnerName(left).localeCompare(partnerName(right));
+    if (personOrder) return personOrder;
+    return Date.parse(right.createdAt) - Date.parse(left.createdAt);
+  });
+}
+
+function statusCopy(room: RoomHistoryItem): string {
+  if (room.status === 'matched') {
+    return room.resultAcknowledged ? 'Matched' : 'Result ready';
+  }
+  if (room.status === 'completed') {
+    return room.resultAcknowledged ? 'No match' : 'Result ready';
+  }
+  if (room.status === 'waiting') {
+    return room.participantCount === 2
+      ? 'Choices are ready'
+      : 'Waiting for someone';
+  }
+  const remaining = Math.max(0, room.totalChoices - room.completedChoices);
+  if (!remaining) {
+    if (room.selectionComplete === false) return 'Finish ranking your picks';
+    return room.partnerDisplayName
+      ? `Waiting for ${room.partnerDisplayName}`
+      : 'Waiting for partner';
+  }
+  return `${remaining} ${remaining === 1 ? 'choice' : 'choices'} remaining`;
+}
+
+function primaryAction(room: RoomHistoryItem): string {
+  if (completed(room)) return 'View result';
+  if (room.status === 'active') return 'Continue';
+  return room.participantCount === 2 &&
+    (room.mode === 'eat' || room.mode === 'do')
+    ? 'Prepare choices'
+    : 'View status';
+}
 
 export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
+  const [tab, setTab] = useState<RoomsTab>(preservedTab);
   const [rooms, setRooms] = useState<RoomHistoryItem[]>([]);
   const [invitations, setInvitations] = useState<PendingRoomInvitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,6 +250,16 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
         });
         return;
       }
+      if (!room.resultAcknowledged) {
+        await acknowledgeDecisionRoom(room.sessionId);
+        setRooms(current =>
+          current.map(history =>
+            history.sessionId === room.sessionId
+              ? { ...history, resultAcknowledged: true }
+              : history,
+          ),
+        );
+      }
       if (room.status === 'matched' && room.matchedItemId) {
         const deck = await loadDecisionDeck(room.sessionId, room.roundNumber);
         const item = deck.find(choice => choice.id === room.matchedItemId);
@@ -176,15 +273,13 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
         });
         return;
       }
-      if (room.status === 'completed') {
-        navigation.navigate('NoMatch', {
-          sessionId: room.sessionId,
-          mode: room.mode,
-          openedFromHistory: true,
-          partnerDisplayName: room.partnerDisplayName,
-          partnerPhotoUrl: room.partnerPhotoUrl,
-        });
-      }
+      navigation.navigate('NoMatch', {
+        sessionId: room.sessionId,
+        mode: room.mode,
+        openedFromHistory: true,
+        partnerDisplayName: room.partnerDisplayName,
+        partnerPhotoUrl: room.partnerPhotoUrl,
+      });
     } catch {
       setError('That room result could not be loaded. Pull down to retry.');
     } finally {
@@ -194,8 +289,8 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
 
   const deleteCompletedRoom = (room: RoomHistoryItem) => {
     Alert.alert(
-      'Delete completed pick?',
-      'This removes it from your history only. The other person keeps their copy.',
+      'Manage completed pick',
+      `${partnerName(room)} · ${modeById[room.mode].title}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -204,23 +299,22 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
           onPress: () => {
             if (deletingRoomId || clearingCompleted) return;
             setDeletingRoomId(room.sessionId);
-            setError(null);
             dismissCompletedRoom(room.sessionId)
-              .then(() => {
+              .then(() =>
                 setRooms(current =>
                   current.filter(
                     history => history.sessionId !== room.sessionId,
                   ),
-                );
-              })
-              .catch(cause => {
+                ),
+              )
+              .catch(cause =>
                 setError(
                   serviceFailureMessage(
                     cause,
                     'That completed pick could not be deleted.',
                   ),
-                );
-              })
+                ),
+              )
               .finally(() => setDeletingRoomId(null));
           },
         },
@@ -231,7 +325,7 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   const deleteAllCompletedRooms = () => {
     Alert.alert(
       'Delete all completed picks?',
-      'This clears your completed history only. It does not remove results for anyone else.',
+      'This clears your history only. The other people keep their results.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -240,24 +334,18 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
           onPress: () => {
             if (deletingRoomId || clearingCompleted) return;
             setClearingCompleted(true);
-            setError(null);
             dismissAllCompletedRooms()
-              .then(() => {
-                setRooms(current =>
-                  current.filter(
-                    room =>
-                      room.status !== 'matched' && room.status !== 'completed',
-                  ),
-                );
-              })
-              .catch(cause => {
+              .then(() =>
+                setRooms(current => current.filter(room => !completed(room))),
+              )
+              .catch(cause =>
                 setError(
                   serviceFailureMessage(
                     cause,
                     'Completed picks could not be deleted.',
                   ),
-                );
-              })
+                ),
+              )
               .finally(() => setClearingCompleted(false));
           },
         },
@@ -298,9 +386,6 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   const dismissInvitation = async (invitation: PendingRoomInvitation) => {
     if (joiningInvitationId || dismissingInvitationId) return;
     setDismissingInvitationId(invitation.invitationId);
-    setError(null);
-    // Remove immediately so a stale, already-cancelled invitation never traps
-    // the recipient on a card that can only fail when opened.
     setInvitations(current =>
       current.filter(
         pending => pending.invitationId !== invitation.invitationId,
@@ -316,65 +401,85 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     }
   };
 
-  const activeRooms = rooms.filter(
-    room => room.status === 'waiting' || room.status === 'active',
+  const actionableRooms = rooms.filter(needsAction);
+  const activeRooms = groupedByPerson(
+    rooms.filter(
+      room =>
+        (room.status === 'waiting' || room.status === 'active') &&
+        !needsAction(room),
+    ),
   );
-  const completedRooms = rooms.filter(
-    room => room.status === 'matched' || room.status === 'completed',
+  const completedRooms = groupedByPerson(
+    rooms.filter(room => completed(room) && !needsAction(room)),
   );
-  const rows: ActiveRoomRow[] = !hasSnapshot
+  const needsCount = invitations.length + actionableRooms.length;
+  const tabRooms = tab === 'active' ? activeRooms : completedRooms;
+  const rows: RoomRow[] = !hasSnapshot
     ? []
     : [
-        { kind: 'section' as const, id: 'section:active', title: 'ACTIVE' },
-        ...invitations.map(invitation => ({
-          kind: 'invitation' as const,
-          id: `invitation:${invitation.invitationId}`,
-          invitation,
-        })),
-        ...activeRooms.map(room => ({
-          kind: 'room' as const,
-          id: `room:${room.sessionId}`,
-          room,
-        })),
-        ...(activeRooms.length === 0 && invitations.length === 0
-          ? [{ kind: 'empty-active' as const, id: 'empty:active' }]
-          : []),
-        ...(completedRooms.length
+        ...(needsCount
           ? [
               {
                 kind: 'section' as const,
-                id: 'section:completed',
-                title: 'COMPLETED',
-                canClearCompleted: true,
+                id: 'section:needs',
+                title: 'NEEDS YOU',
+                count: needsCount,
               },
-              ...completedRooms.map(room => ({
+              ...invitations.map(invitation => ({
+                kind: 'invitation' as const,
+                id: `invitation:${invitation.invitationId}`,
+                invitation,
+              })),
+              ...actionableRooms.map(room => ({
                 kind: 'room' as const,
-                id: `room:${room.sessionId}`,
+                id: `needs:${room.sessionId}`,
                 room,
+                needsAction: true,
               })),
             ]
           : []),
+        { kind: 'tabs' as const, id: 'tabs' },
+        ...(tabRooms.length
+          ? tabRooms.map(room => ({
+              kind: 'room' as const,
+              id: `${tab}:${room.sessionId}`,
+              room,
+              needsAction: false,
+            }))
+          : [{ kind: 'empty' as const, id: `empty:${tab}`, tab }]),
       ];
+
+  const changeTab = (next: RoomsTab) => {
+    preservedTab = next;
+    setTab(next);
+  };
+  const rememberOffset = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    preservedOffsets[tab] = event.nativeEvent.contentOffset.y;
+  };
 
   return (
     <Screen testID="active-rooms-screen" style={styles.screen}>
       <View style={styles.top}>
         <Brand compact />
+        <View style={styles.headerCount}>
+          <Text style={styles.headerCountText}>{needsCount} NEED YOU</Text>
+        </View>
         <Button label="Close" variant="quiet" onPress={navigation.goBack} />
       </View>
-      <Text style={styles.eyebrow}>YOUR ROOMS</Text>
-      <Text style={styles.title}>Active rooms and completed picks.</Text>
-      <Text style={styles.historyNote}>
-        Completed results stay available here for 24 hours.
-      </Text>
+      <Text style={styles.eyebrow}>ROOMS</Text>
+      <Text style={styles.title}>What needs your attention.</Text>
       {loading && !hasSnapshot ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
       ) : (
         <FlatList
+          key={`rooms:${tab}`}
           data={rows}
           keyExtractor={item => item.id}
+          contentOffset={{ x: 0, y: preservedOffsets[tab] }}
+          onScroll={rememberOffset}
+          scrollEventThrottle={80}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
@@ -398,32 +503,63 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
               return (
                 <View style={styles.sectionRow}>
                   <Text style={styles.sectionTitle}>{item.title}</Text>
-                  {item.canClearCompleted ? (
+                  {item.count ? (
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countText}>{item.count}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            }
+            if (item.kind === 'tabs') {
+              return (
+                <View style={styles.tabs}>
+                  {(['active', 'completed'] as const).map(option => (
+                    <Pressable
+                      key={option}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: tab === option }}
+                      accessibilityLabel={`${option} rooms`}
+                      onPress={() => changeTab(option)}
+                      style={[styles.tab, tab === option && styles.tabSelected]}
+                    >
+                      <Text
+                        style={[
+                          styles.tabText,
+                          tab === option && styles.tabTextSelected,
+                        ]}
+                      >
+                        {option.toUpperCase()}
+                      </Text>
+                    </Pressable>
+                  ))}
+                  {tab === 'completed' && completedRooms.length ? (
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Delete all completed picks"
-                      disabled={clearingCompleted || deletingRoomId !== null}
                       onPress={deleteAllCompletedRooms}
-                      style={({ pressed }) => [
-                        styles.deleteAll,
-                        pressed && styles.pressed,
-                      ]}
+                      style={styles.manage}
                     >
-                      <Text style={styles.deleteAllText}>
-                        {clearingCompleted ? 'DELETING…' : 'DELETE ALL'}
+                      <Text style={styles.manageText}>
+                        {clearingCompleted ? 'CLEARING…' : 'MANAGE'}
                       </Text>
                     </Pressable>
                   ) : null}
                 </View>
               );
             }
-            if (item.kind === 'empty-active') {
+            if (item.kind === 'empty') {
               return (
                 <View style={styles.emptyCard}>
-                  <Text style={styles.emptyTitle}>No rooms or invites</Text>
+                  <Text style={styles.emptyTitle}>
+                    {item.tab === 'active'
+                      ? 'Nothing waiting in the background'
+                      : 'No completed picks'}
+                  </Text>
                   <Text style={styles.emptyText}>
-                    Invitations and rooms you start or join will appear here.
-                    Unfinished rooms can be resumed later.
+                    {item.tab === 'active'
+                      ? 'New invitations and rooms requiring action will appear above.'
+                      : 'Completed results remain available here for 24 hours.'}
                   </Text>
                 </View>
               );
@@ -431,16 +567,20 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
             if (item.kind === 'invitation') {
               const invitation = item.invitation;
               return (
-                <View style={[styles.card, styles.invitationCard]}>
-                  <Text style={styles.icon}>
-                    {modeById[invitation.mode].icon}
-                  </Text>
+                <View style={[styles.card, styles.needsCard]}>
+                  <ProfileAvatar
+                    displayName={invitation.senderDisplayName}
+                    size="small"
+                    style={styles.avatar}
+                  />
                   <View style={styles.copy}>
-                    <Text style={styles.invitationLabel}>ROOM INVITE</Text>
-                    <Text style={styles.cardTitle}>
-                      {invitation.senderDisplayName} wants to choose
-                    </Text>
-                    <Text style={styles.cardMeta}>
+                    <View style={styles.cardTopLine}>
+                      <Text style={styles.person}>
+                        {invitation.senderDisplayName}
+                      </Text>
+                      <Text style={styles.statusBadge}>INVITED</Text>
+                    </View>
+                    <Text style={styles.activity}>
                       {modeById[invitation.mode].title}
                     </Text>
                   </View>
@@ -457,34 +597,21 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                     <Button
                       label="Dismiss"
                       variant="quiet"
-                      loading={
-                        dismissingInvitationId === invitation.invitationId
-                      }
                       disabled={
                         joiningInvitationId !== null ||
                         dismissingInvitationId !== null
                       }
-                      onPress={() => {
-                        dismissInvitation(invitation).catch(() => undefined);
-                      }}
+                      onPress={() =>
+                        dismissInvitation(invitation).catch(() => undefined)
+                      }
                     />
                   </View>
                 </View>
               );
             }
             const room = item.room;
-            const resumable = room.status === 'active';
-            const completed =
-              room.status === 'matched' || room.status === 'completed';
-            const viewable =
-              room.status === 'waiting' || resumable || completed;
             return (
-              <View
-                style={[
-                  styles.card,
-                  room.status === 'waiting' && styles.waitingCard,
-                ]}
-              >
+              <View style={[styles.card, item.needsAction && styles.needsCard]}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`${modeById[room.mode].title}. ${
@@ -493,80 +620,52 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                         (room.mode === 'eat' || room.mode === 'do')
                         ? 'Partner joined. Prepare choices.'
                         : 'Waiting for a partner. View room status.'
-                      : resumable
+                      : room.status === 'active'
                       ? 'Continue choosing.'
                       : room.status === 'matched'
                       ? 'Decision complete. View result.'
-                      : room.status === 'completed'
-                      ? 'Round complete. View result.'
-                      : room.status
+                      : 'Round complete. View result.'
                   }`}
-                  disabled={!viewable || openingRoomId !== null}
-                  onPress={() => {
-                    open(room).catch(() => undefined);
-                  }}
+                  disabled={openingRoomId !== null}
+                  onPress={() => open(room).catch(() => undefined)}
                   style={({ pressed }) => [
                     styles.roomOpen,
                     pressed && styles.pressed,
                   ]}
                 >
-                  {completed && room.partnerDisplayName ? (
-                    <ProfileAvatar
-                      displayName={room.partnerDisplayName}
-                      photoUrl={room.partnerPhotoUrl}
-                      size="small"
-                      style={styles.historyAvatar}
-                    />
-                  ) : (
-                    <Text style={styles.icon}>{modeById[room.mode].icon}</Text>
-                  )}
+                  <ProfileAvatar
+                    displayName={partnerName(room)}
+                    photoUrl={room.partnerPhotoUrl}
+                    size="small"
+                    style={styles.avatar}
+                  />
                   <View style={styles.copy}>
-                    <Text style={styles.cardTitle}>
-                      {modeById[room.mode].title}
-                    </Text>
-                    <Text style={styles.cardMeta}>
-                      {completed && room.partnerDisplayName
-                        ? `With ${room.partnerDisplayName} · ${
-                            room.status === 'matched'
-                              ? 'result ready'
-                              : 'no match'
-                          }`
-                        : room.status === 'waiting'
-                        ? room.participantCount === 2 &&
-                          (room.mode === 'eat' || room.mode === 'do')
-                          ? 'Partner joined · ready to build choices'
-                          : room.accessCode
-                          ? `Waiting for a partner · ${room.accessCode}`
-                          : 'Waiting for a partner · reconnect to share'
-                        : resumable
-                        ? `${Math.min(
-                            room.completedChoices,
-                            room.totalChoices,
-                          )} of ${room.totalChoices} choices finished`
-                        : room.status === 'matched'
-                        ? 'Your shared result is ready'
-                        : room.status === 'completed'
-                        ? 'No match this round'
-                        : room.status.replace('-', ' ')}
-                    </Text>
-                  </View>
-                  {viewable ? (
-                    <View style={styles.roomAction}>
-                      <Text style={styles.roomActionLabel}>
-                        {resumable
-                          ? 'Continue'
-                          : completed
-                          ? 'View result'
-                          : room.participantCount === 2 &&
-                            (room.mode === 'eat' || room.mode === 'do')
-                          ? 'Prepare choices'
-                          : 'View status'}
+                    <View style={styles.cardTopLine}>
+                      <Text style={styles.person}>{partnerName(room)}</Text>
+                      <Text style={styles.statusBadge}>
+                        {statusCopy(room).toUpperCase()}
                       </Text>
-                      <Text style={styles.roomActionArrow}>›</Text>
                     </View>
-                  ) : null}
+                    <Text style={styles.activity}>
+                      {modeById[room.mode].title}
+                      {completed(room)
+                        ? ` · ${relativeTime(room.createdAt)}`
+                        : ''}
+                    </Text>
+                    {!completed(room) ? (
+                      <Text style={styles.roomStatus}>{statusCopy(room)}</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.primaryAction}>
+                    <Text style={styles.primaryActionText}>
+                      {openingRoomId === room.sessionId
+                        ? 'OPENING…'
+                        : primaryAction(room)}
+                    </Text>
+                    <Text style={styles.arrow}>›</Text>
+                  </View>
                 </Pressable>
-                {completed ? (
+                {completed(room) ? (
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Delete ${
@@ -574,14 +673,9 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                     } completed pick`}
                     disabled={deletingRoomId !== null || clearingCompleted}
                     onPress={() => deleteCompletedRoom(room)}
-                    style={({ pressed }) => [
-                      styles.deleteRoom,
-                      pressed && styles.pressed,
-                    ]}
+                    style={styles.more}
                   >
-                    <Text style={styles.deleteRoomText}>
-                      {deletingRoomId === room.sessionId ? '…' : 'DELETE'}
-                    </Text>
+                    <Text style={styles.moreText}>•••</Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -600,136 +694,152 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  headerCount: {
+    backgroundColor: colors.raised,
+    borderRadius: 99,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  headerCountText: {
+    color: colors.primary,
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.8,
+  },
   eyebrow: {
     color: colors.primary,
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 2,
-    marginTop: 28,
+    marginTop: 24,
   },
   title: {
     color: colors.text,
-    fontSize: 34,
-    lineHeight: 38,
+    fontSize: 30,
+    lineHeight: 35,
     fontWeight: '900',
-    letterSpacing: -1.3,
-    marginTop: 7,
+    letterSpacing: -1.1,
+    marginTop: 5,
   },
-  historyNote: {
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 8,
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  list: { paddingTop: 18, paddingBottom: 32, gap: 9 },
+  sectionRow: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
   },
   sectionTitle: {
     color: colors.faint,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 1.6,
-    marginTop: 12,
-    marginBottom: 2,
   },
-  sectionRow: {
-    minHeight: 34,
+  countBadge: {
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+  },
+  countText: {
+    color: colors.background,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  tabs: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    marginTop: 13,
   },
-  deleteAll: {
-    minHeight: 34,
+  tab: {
+    minHeight: 42,
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    marginTop: 7,
+    paddingHorizontal: 15,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
-  deleteAllText: {
-    color: colors.danger,
-    fontSize: 9,
+  tabSelected: { borderBottomColor: colors.primary },
+  tabText: {
+    color: colors.faint,
+    fontSize: 10,
     fontWeight: '900',
-    letterSpacing: 1,
+    letterSpacing: 1.1,
   },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  list: { paddingTop: 20, paddingBottom: 30, gap: 9 },
+  tabTextSelected: { color: colors.text },
+  manage: { marginLeft: 'auto', padding: 10 },
+  manageText: { color: colors.muted, fontSize: 9, fontWeight: '900' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 18,
-    padding: 15,
+    borderRadius: 17,
+    padding: 13,
   },
-  invitationCard: {
+  needsCard: {
     borderColor: colors.primary,
     backgroundColor: colors.raised,
-  },
-  waitingCard: {
-    borderColor: '#765421',
-    backgroundColor: '#171F2E',
   },
   roomOpen: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
   },
-  historyAvatar: { marginRight: 12 },
-  invitationLabel: {
+  avatar: { marginRight: 11 },
+  copy: { flex: 1 },
+  cardTopLine: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  person: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '900',
+    flexShrink: 1,
+  },
+  activity: { color: colors.muted, fontSize: 11, marginTop: 3 },
+  roomStatus: { color: colors.faint, fontSize: 10, marginTop: 4 },
+  statusBadge: {
+    color: colors.primary,
+    fontSize: 7,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+  },
+  primaryAction: { alignItems: 'flex-end', marginLeft: 8 },
+  primaryActionText: {
     color: colors.primary,
     fontSize: 9,
     fontWeight: '900',
-    letterSpacing: 1.2,
-    marginBottom: 3,
   },
-  invitationActions: {
-    width: 92,
-    gap: 2,
-  },
-  pressed: { opacity: 0.72 },
-  icon: { fontSize: 25, marginRight: 12 },
-  copy: { flex: 1 },
-  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '900' },
-  cardMeta: { color: colors.muted, fontSize: 11, marginTop: 4 },
-  roomAction: { alignItems: 'flex-end', marginLeft: 8 },
-  roomActionLabel: {
-    color: colors.primary,
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '900',
-  },
-  roomActionArrow: {
-    color: colors.primary,
-    fontSize: 23,
-    lineHeight: 23,
-    fontWeight: '600',
-  },
-  deleteRoom: {
-    width: 52,
-    height: 44,
-    alignItems: 'center',
+  arrow: { color: colors.primary, fontSize: 22, lineHeight: 23 },
+  invitationActions: { width: 86, gap: 1 },
+  more: {
+    alignSelf: 'stretch',
     justifyContent: 'center',
-    marginLeft: 4,
-    borderRadius: 14,
-    backgroundColor: colors.raised,
+    paddingLeft: 10,
   },
-  deleteRoomText: {
-    color: colors.danger,
-    fontSize: 8,
-    lineHeight: 12,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-  },
-  error: { color: colors.danger, fontSize: 12, textAlign: 'center' },
+  moreText: { color: colors.muted, fontSize: 15, letterSpacing: 1 },
+  pressed: { opacity: 0.72 },
   emptyCard: {
-    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 18,
+    borderStyle: 'dashed',
+    borderRadius: 17,
     padding: 18,
   },
-  emptyTitle: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  emptyTitle: { color: colors.text, fontSize: 14, fontWeight: '900' },
   emptyText: {
     color: colors.muted,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 6,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 5,
+  },
+  error: {
+    color: colors.danger,
+    fontSize: 11,
+    lineHeight: 17,
+    marginBottom: 8,
   },
 });

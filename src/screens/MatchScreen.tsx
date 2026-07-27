@@ -7,12 +7,14 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
+import { chatSession } from '../chat/runtime';
 import { Button, Screen } from '../components/UI';
 import { DecisionArtwork } from '../components/DecisionArtwork';
 import { ProfileAvatar } from '../components/ProfileAvatar';
 import { modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { getMatchResultAction } from '../services/matchResult';
+import { ensureAnonymousSession } from '../services/anonymousAuth';
 import { roomErrorMessage } from '../services/roomFlow';
 import {
   acknowledgeDecisionRoom,
@@ -33,9 +35,8 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
   const mode = modeById[item.mode];
   const action = getMatchResultAction(item);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [endingAction, setEndingAction] = useState<
-    'done' | 'choose-again' | null
-  >(null);
+  const [endingAction, setEndingAction] = useState<'done' | null>(null);
+  const [openingChat, setOpeningChat] = useState(false);
   const scale = useSharedValue(0.82);
   const opacity = useSharedValue(0);
   useEffect(() => {
@@ -61,19 +62,43 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
     refresh: followClosure,
   });
 
-  const dismissResult = async (next: 'done' | 'choose-again') => {
+  const dismissResult = async () => {
     if (endingAction) return;
-    setEndingAction(next);
+    setEndingAction('done');
     setActionError(null);
     try {
       await acknowledgeDecisionRoom(sessionId);
       navigation.popToTop();
-      if (next === 'choose-again') {
-        navigation.navigate('ModeSelect');
-      }
     } catch (cause) {
       setActionError(roomErrorMessage(cause));
       setEndingAction(null);
+    }
+  };
+
+  const openPrivateChat = async () => {
+    if (openingChat) return;
+    setOpeningChat(true);
+    setActionError(null);
+    try {
+      if (chatSession.active) {
+        if (chatSession.active.decisionSessionId !== sessionId) {
+          throw new Error(
+            'End your current private chat before starting one for this match.',
+          );
+        }
+      } else {
+        await chatSession.reconcileOrphanedRemoteChat();
+        const authenticated = await ensureAnonymousSession();
+        await chatSession.openDecision(authenticated.user.id, sessionId);
+      }
+      navigation.navigate('ChatRoom');
+    } catch (cause) {
+      setActionError(
+        cause instanceof Error
+          ? cause.message
+          : 'The private chat could not be opened.',
+      );
+      setOpeningChat(false);
     }
   };
   const reveal = useAnimatedStyle(() => ({
@@ -120,9 +145,20 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         </View>
       </View>
       <View style={styles.actions}>
+        <Button
+          label={
+            chatSession.active?.decisionSessionId === sessionId
+              ? 'Continue private chat'
+              : 'Start private chat'
+          }
+          loading={openingChat}
+          disabled={endingAction !== null}
+          onPress={openPrivateChat}
+        />
         {action ? (
           <Button
             label={action.label}
+            variant="secondary"
             onPress={async () => {
               setActionError(null);
               try {
@@ -137,22 +173,13 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
         {openedFromHistory ? (
           <Button label="Go back" variant="quiet" onPress={navigation.goBack} />
         ) : (
-          <>
-            <Button
-              label="Choose again"
-              variant="secondary"
-              loading={endingAction === 'choose-again'}
-              disabled={endingAction !== null}
-              onPress={() => dismissResult('choose-again')}
-            />
-            <Button
-              label="Done"
-              variant="quiet"
-              loading={endingAction === 'done'}
-              disabled={endingAction !== null}
-              onPress={() => dismissResult('done')}
-            />
-          </>
+          <Button
+            label="Done"
+            variant="quiet"
+            loading={endingAction === 'done'}
+            disabled={endingAction !== null || openingChat}
+            onPress={dismissResult}
+          />
         )}
       </View>
     </Screen>

@@ -69,6 +69,12 @@ Deno.serve(async request => {
           p_public_key: body.publicKey as string,
         });
         break;
+      case 'openDecision':
+        result = await client.rpc('open_matched_room_chat', {
+          p_session_id: body.sessionId as string,
+          p_public_key: body.publicKey as string,
+        });
+        break;
       case 'status':
         result = await client.rpc('get_active_chat');
         break;
@@ -89,7 +95,7 @@ Deno.serve(async request => {
 
     if (result.error) {
       const message = result.error.message;
-      if (/authentication|required|not_available/i.test(message)) {
+      if (/authentication|required|not_available|unavailable/i.test(message)) {
         return response({ error: 'Chat is not available.' }, 403);
       }
       if (/rate_limit/i.test(message)) {

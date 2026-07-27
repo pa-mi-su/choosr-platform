@@ -339,6 +339,8 @@ export type Database = {
           matched_item_id: string | null;
           partner_display_name: string | null;
           partner_avatar_path: string | null;
+          selection_complete: boolean;
+          result_acknowledged: boolean;
         }[];
       };
       dismiss_completed_room: {
@@ -464,6 +466,19 @@ export type Database = {
           own_public_key: string;
           peer_public_key: string | null;
           room_expires_at: string;
+          decision_session_id: string | null;
+        }[];
+      };
+      open_matched_room_chat: {
+        Args: { p_session_id: string; p_public_key: string };
+        Returns: {
+          room_id: string;
+          status: 'inviting' | 'active';
+          role: 'creator' | 'joiner';
+          own_public_key: string;
+          peer_public_key: string | null;
+          room_expires_at: string;
+          decision_session_id: string;
         }[];
       };
       send_chat_ciphertext: {

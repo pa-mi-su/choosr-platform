@@ -33,6 +33,7 @@ export type ActiveChatState = {
   expiresAt: string;
   publicKey: string;
   peerPublicKey?: string;
+  decisionSessionId?: string;
 };
 
 export type TemporaryKeyPair = {

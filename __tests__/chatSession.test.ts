@@ -44,6 +44,18 @@ class FakeGateway implements ChatGateway {
     };
   }
 
+  async openDecisionChat(sessionId: string, publicKey: string) {
+    this.active = {
+      roomId: '40000000-0000-4000-8000-000000000001',
+      role: 'creator' as const,
+      status: 'inviting' as const,
+      expiresAt: '2026-07-25T12:00:00.000Z',
+      publicKey,
+      decisionSessionId: sessionId,
+    };
+    return this.active;
+  }
+
   async getActiveChat() {
     return this.active;
   }
@@ -85,6 +97,18 @@ describe('ChatSession lifecycle', () => {
     };
     expect(await session.refreshStatus()).toBe('active');
     expect(session.active?.peerPublicKey).toBeDefined();
+  });
+
+  test('a matched room opens the same memory-only encrypted chat runtime', async () => {
+    const gateway = new FakeGateway();
+    const session = new ChatSession(gateway);
+
+    await session.openDecision('creator', 'matched-session');
+
+    expect(session.active).toMatchObject({
+      status: 'inviting',
+      decisionSessionId: 'matched-session',
+    });
   });
 
   test('local content and keys are purged immediately when offline destruction is queued', async () => {
