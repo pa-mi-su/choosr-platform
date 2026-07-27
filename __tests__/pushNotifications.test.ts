@@ -1,13 +1,12 @@
 import notifee, { EventType } from '@notifee/react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   deleteToken,
   getAPNSToken,
+  getToken,
   hasPermission,
   onMessage,
   registerDeviceForRemoteMessages,
   requestPermission,
-  unregisterDeviceForRemoteMessages,
 } from '@react-native-firebase/messaging';
 
 const mockRpc = jest.fn<
@@ -63,14 +62,12 @@ import {
 describe('push notification reliability', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
-    await AsyncStorage.clear();
     mockRpc.mockImplementation(name =>
       Promise.resolve({
         data: name === 'has_registered_push_token' ? true : undefined,
         error: null,
       }),
     );
-    (getAPNSToken as jest.Mock).mockResolvedValue('test-apns-token');
     (hasPermission as jest.Mock).mockResolvedValue(1);
     (requestPermission as jest.Mock).mockResolvedValue(1);
     (notifee.getNotificationSettings as jest.Mock).mockResolvedValue({
@@ -178,19 +175,16 @@ describe('push notification reliability', () => {
     unsubscribe();
   });
 
-  test('waits for the iOS APNs token before registering the FCM token', async () => {
-    (getAPNSToken as jest.Mock)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce('ready-apns-token');
-
+  test('registers the current Firebase token without destructive rotation', async () => {
     await expect(refreshPushRegistration()).resolves.toEqual({
       permission: 'enabled',
       delivery: 'ready',
     });
 
     expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(1);
-    expect(getAPNSToken).toHaveBeenCalledTimes(2);
-    expect(deleteToken).toHaveBeenCalledTimes(1);
+    expect(getToken).toHaveBeenCalledTimes(1);
+    expect(getAPNSToken).not.toHaveBeenCalled();
+    expect(deleteToken).not.toHaveBeenCalled();
     expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
       p_platform: 'ios',
       p_token: 'test-firebase-token-long-enough',
@@ -201,7 +195,8 @@ describe('push notification reliability', () => {
       delivery: 'ready',
     });
     expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(2);
-    expect(deleteToken).toHaveBeenCalledTimes(1);
+    expect(getToken).toHaveBeenCalledTimes(2);
+    expect(deleteToken).not.toHaveBeenCalled();
   });
 
   test('always asks iOS to register for remote messages instead of trusting cached native state', async () => {
@@ -218,21 +213,20 @@ describe('push notification reliability', () => {
     });
   });
 
-  test('repairs a stale native registration when iOS never supplies an APNs token', async () => {
+  test('retries Firebase registration without deleting the existing installation', async () => {
     const timeoutSpy = jest
       .spyOn(globalThis, 'setTimeout')
       .mockImplementation((callback: (...args: never[]) => void) => {
         callback();
         return 0 as unknown as ReturnType<typeof setTimeout>;
       });
-    (getAPNSToken as jest.Mock)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce('recovered-apns-token');
+    (getToken as jest.Mock)
+      .mockRejectedValueOnce(
+        Object.assign(new Error('APNs not ready'), {
+          code: 'messaging/unknown',
+        }),
+      )
+      .mockResolvedValueOnce('recovered-firebase-token-long-enough');
 
     try {
       await expect(refreshPushRegistration()).resolves.toEqual({
@@ -240,18 +234,18 @@ describe('push notification reliability', () => {
         delivery: 'ready',
       });
 
-      expect(unregisterDeviceForRemoteMessages).toHaveBeenCalledTimes(1);
       expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(2);
+      expect(deleteToken).not.toHaveBeenCalled();
       expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
         p_platform: 'ios',
-        p_token: 'test-firebase-token-long-enough',
+        p_token: 'recovered-firebase-token-long-enough',
       });
     } finally {
       timeoutSpy.mockRestore();
     }
   });
 
-  test('retries a missing server endpoint without repeatedly deleting the iOS token', async () => {
+  test('retries a missing server endpoint without deleting the iOS token', async () => {
     let healthChecks = 0;
     mockRpc.mockImplementation(name =>
       Promise.resolve({
@@ -268,7 +262,7 @@ describe('push notification reliability', () => {
       delivery: 'ready',
     });
 
-    expect(deleteToken).toHaveBeenCalledTimes(1);
+    expect(deleteToken).not.toHaveBeenCalled();
     expect(
       mockRpc.mock.calls.filter(([name]) => name === 'register_push_token'),
     ).toHaveLength(2);
