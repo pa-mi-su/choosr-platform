@@ -52,7 +52,21 @@ select ok(
 );
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
-values ('60000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', true, now(), now());
+values
+  ('60000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', true, now(), now()),
+  ('60000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', true, now(), now());
+
+insert into public.connections (
+  id,
+  requester_user_id,
+  addressee_user_id,
+  status
+) values (
+  '60000000-0000-0000-0000-000000000010',
+  '60000000-0000-0000-0000-000000000002',
+  '60000000-0000-0000-0000-000000000001',
+  'pending'
+);
 
 insert into public.notification_outbox (
   recipient_user_id,
@@ -62,7 +76,7 @@ insert into public.notification_outbox (
 ) values (
   '60000000-0000-0000-0000-000000000001',
   'connection_request',
-  '{}'::jsonb,
+  '{"connection_id":"60000000-0000-0000-0000-000000000010"}'::jsonb,
   'push-worker-test'
 );
 

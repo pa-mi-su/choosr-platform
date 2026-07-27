@@ -1,5 +1,5 @@
 begin;
-select plan(10);
+select plan(13);
 
 select has_table(
   'public',
@@ -125,23 +125,23 @@ select public.acknowledge_room_completion(
 );
 select is(
   (select count(*) from public.list_active_room_history()),
-  1::bigint,
-  'Done dismisses the matched result only for the current participant'
+  2::bigint,
+  'Done keeps the matched result in the current participant 24-hour history'
 );
 
 set local request.jwt.claim.sub = 'e0000000-0000-0000-0000-000000000002';
 select is(
   (select count(*) from public.list_active_room_history()),
   2::bigint,
-  'the other participant still sees both completed rooms'
+  'the other participant independently sees both completed rooms'
 );
 select public.acknowledge_room_completion(
   'e1000000-0000-0000-0000-000000000001'
 );
 select is(
   (select count(*) from public.list_active_room_history()),
-  1::bigint,
-  'the other participant can independently press Done'
+  2::bigint,
+  'the other participant pressing Done also preserves 24-hour history'
 );
 select is(
   (
@@ -159,8 +159,38 @@ select public.acknowledge_room_completion(
 );
 select is(
   (select count(*) from public.list_active_room_history()),
-  0::bigint,
-  'each terminal room can be dismissed independently'
+  2::bigint,
+  'all acknowledged terminal rooms remain available for 24 hours'
+);
+
+select ok(
+  (
+    select completed_at is not null
+    from public.sessions
+    where id = 'e1000000-0000-0000-0000-000000000001'
+  ),
+  'terminal transitions receive an authoritative completion timestamp'
+);
+
+update public.sessions
+set completed_at = now() - interval '25 hours'
+where id = 'e1000000-0000-0000-0000-000000000001';
+
+select is(
+  (select count(*) from public.list_active_room_history()),
+  1::bigint,
+  'a completed result leaves history exactly after its 24-hour window'
+);
+
+select public.cleanup_expired_sessions();
+select is(
+  (
+    select status
+    from public.sessions
+    where id = 'e1000000-0000-0000-0000-000000000001'
+  ),
+  'expired',
+  'retention cleanup expires terminal rooms only after history closes'
 );
 
 select * from finish();

@@ -17,6 +17,7 @@ import { prepareSharedLocationDeck } from '../services/deckService';
 import {
   answerRoomInvitation,
   circleErrorMessage,
+  dismissRoomInvitation,
   loadPendingRoomInvitations,
   readCachedCircleSnapshot,
   type PendingRoomInvitation,
@@ -27,6 +28,7 @@ import {
   readCachedRoomHistory,
   type RoomHistoryItem,
 } from '../services/sessionService';
+import { subscribeToNotificationState } from '../services/notificationService';
 import { serviceFailureMessage } from '../services/serviceError';
 import { colors } from '../theme';
 import type { RootStackParamList } from '../types/navigation';
@@ -47,6 +49,9 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   const [joiningInvitationId, setJoiningInvitationId] = useState<string | null>(
     null,
   );
+  const [dismissingInvitationId, setDismissingInvitationId] = useState<
+    string | null
+  >(null);
   const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const hasSnapshotRef = useRef(false);
@@ -107,6 +112,10 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   useFocusEffect(
     useCallback(() => {
       load().catch(() => undefined);
+      const subscription = subscribeToNotificationState(() => {
+        load().catch(() => undefined);
+      });
+      return () => subscription.remove();
     }, [load]),
   );
 
@@ -164,7 +173,7 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   };
 
   const openInvitation = async (invitation: PendingRoomInvitation) => {
-    if (joiningInvitationId) return;
+    if (joiningInvitationId || dismissingInvitationId) return;
     setJoiningInvitationId(invitation.invitationId);
     setError(null);
     try {
@@ -190,6 +199,27 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     } catch (cause) {
       setError(circleErrorMessage(cause));
       setJoiningInvitationId(null);
+    }
+  };
+
+  const dismissInvitation = async (invitation: PendingRoomInvitation) => {
+    if (joiningInvitationId || dismissingInvitationId) return;
+    setDismissingInvitationId(invitation.invitationId);
+    setError(null);
+    // Remove immediately so a stale, already-cancelled invitation never traps
+    // the recipient on a card that can only fail when opened.
+    setInvitations(current =>
+      current.filter(
+        pending => pending.invitationId !== invitation.invitationId,
+      ),
+    );
+    try {
+      await dismissRoomInvitation(invitation.invitationId);
+    } catch (cause) {
+      setError(circleErrorMessage(cause));
+      await load();
+    } finally {
+      setDismissingInvitationId(null);
     }
   };
 
@@ -240,6 +270,9 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
       </View>
       <Text style={styles.eyebrow}>YOUR ROOMS</Text>
       <Text style={styles.title}>Active rooms and completed picks.</Text>
+      <Text style={styles.historyNote}>
+        Completed results stay available here for 24 hours.
+      </Text>
       {loading && !hasSnapshot ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
@@ -297,12 +330,29 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                       {modeById[invitation.mode].title}
                     </Text>
                   </View>
-                  <View style={styles.joinButton}>
+                  <View style={styles.invitationActions}>
                     <Button
                       label="Join"
                       loading={joiningInvitationId === invitation.invitationId}
-                      disabled={joiningInvitationId !== null}
+                      disabled={
+                        joiningInvitationId !== null ||
+                        dismissingInvitationId !== null
+                      }
                       onPress={() => openInvitation(invitation)}
+                    />
+                    <Button
+                      label="Dismiss"
+                      variant="quiet"
+                      loading={
+                        dismissingInvitationId === invitation.invitationId
+                      }
+                      disabled={
+                        joiningInvitationId !== null ||
+                        dismissingInvitationId !== null
+                      }
+                      onPress={() => {
+                        dismissInvitation(invitation).catch(() => undefined);
+                      }}
                     />
                   </View>
                 </View>
@@ -412,6 +462,12 @@ const styles = StyleSheet.create({
     letterSpacing: -1.3,
     marginTop: 7,
   },
+  historyNote: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
   sectionTitle: {
     color: colors.faint,
     fontSize: 9,
@@ -446,8 +502,9 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     marginBottom: 3,
   },
-  joinButton: {
-    width: 82,
+  invitationActions: {
+    width: 92,
+    gap: 2,
   },
   pressed: { opacity: 0.72 },
   icon: { fontSize: 25, marginRight: 12 },

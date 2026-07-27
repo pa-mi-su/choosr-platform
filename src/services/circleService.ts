@@ -59,7 +59,31 @@ export async function readCachedCircleSnapshot(): Promise<CircleSnapshot | null>
     ),
   ]);
   if (!stored || stored.userId !== data.session?.user.id) return null;
-  return stored.snapshot;
+  const now = Date.now();
+  return {
+    ...stored.snapshot,
+    invitations: stored.snapshot.invitations.filter(
+      invitation => Date.parse(invitation.expiresAt) > now,
+    ),
+  };
+}
+
+async function updateCachedRoomInvitations(
+  userId: string,
+  update: (current: PendingRoomInvitation[]) => PendingRoomInvitation[],
+): Promise<void> {
+  const stored = await readOfflineSnapshot<StoredCircleSnapshot>(
+    CIRCLE_CACHE_KEY,
+    CIRCLE_CACHE_MAX_AGE_MS,
+  );
+  if (!stored || stored.userId !== userId) return;
+  await writeOfflineSnapshot<StoredCircleSnapshot>(CIRCLE_CACHE_KEY, {
+    ...stored,
+    snapshot: {
+      ...stored.snapshot,
+      invitations: update(stored.snapshot.invitations),
+    },
+  });
 }
 
 export async function loadCircleSnapshot(): Promise<CircleSnapshot> {
@@ -231,7 +255,7 @@ export async function inviteCirclePerson(
 export async function loadPendingRoomInvitations(): Promise<
   PendingRoomInvitation[]
 > {
-  await ensureAnonymousSession();
+  const authenticatedSession = await ensureAnonymousSession();
   const { data, error } = await withSupabaseReadRetry(
     signal => supabase.rpc('list_pending_room_invitations').abortSignal(signal),
     {
@@ -243,7 +267,7 @@ export async function loadPendingRoomInvitations(): Promise<
   if (error) {
     throw error;
   }
-  return data.map(invitation => ({
+  const invitations = data.map(invitation => ({
     invitationId: invitation.invitation_id,
     sessionId: invitation.session_id,
     senderDisplayName: invitation.sender_display_name,
@@ -251,6 +275,11 @@ export async function loadPendingRoomInvitations(): Promise<
     mode: invitation.mode,
     expiresAt: invitation.expires_at,
   }));
+  await updateCachedRoomInvitations(
+    authenticatedSession.user.id,
+    () => invitations,
+  );
+  return invitations;
 }
 
 export async function answerRoomInvitation(
@@ -268,10 +297,35 @@ export async function answerRoomInvitation(
   if (error) {
     throw error;
   }
+  const { data: authData } = await supabase.auth.getSession();
+  if (authData.session?.user.id) {
+    await updateCachedRoomInvitations(authData.session.user.id, current =>
+      current.filter(invitation => invitation.invitationId !== invitationId),
+    );
+  }
   const room = data[0];
   return room
     ? { sessionId: room.session_id, roundNumber: room.round_number }
     : null;
+}
+
+export async function dismissRoomInvitation(
+  invitationId: string,
+): Promise<void> {
+  const authenticatedSession = await ensureAnonymousSession();
+  try {
+    const { error } = await supabase.rpc('respond_room_invitation', {
+      p_invitation_id: invitationId,
+      p_accept: false,
+    });
+    if (error && !error.message.includes('invitation_unavailable')) {
+      throw error;
+    }
+  } finally {
+    await updateCachedRoomInvitations(authenticatedSession.user.id, current =>
+      current.filter(invitation => invitation.invitationId !== invitationId),
+    );
+  }
 }
 
 export function normalizeHandle(value: string): string {
