@@ -30,16 +30,17 @@ describe('notification dispatch contract', () => {
     expect(source).toContain("'delivery_window_expired'");
   });
 
-  test('keeps private chat push copy generic', () => {
-    expect(source).toContain("title: 'New private Choosr message'");
-    expect(source).toContain("body: 'Open Choosr to view it privately.'");
-  });
-
   test('sends matched-chat invitations to the private chat inbox', () => {
     expect(source).toContain("job.kind === 'chat_invitation'");
     expect(source).toContain("title: 'Private chat invitation'");
     expect(source).toContain('wants to start a private chat about your match.');
     expect(source).toContain("route: 'ChatHome'");
+  });
+
+  test('never dispatches a push for an individual private message', () => {
+    expect(source).not.toContain("job.kind === 'chat_message'");
+    expect(source).not.toContain("kind: 'chat_message'");
+    expect(source).not.toContain("'New private Choosr message'");
   });
 
   test('retains invalid endpoint diagnostics instead of deleting the token', () => {
