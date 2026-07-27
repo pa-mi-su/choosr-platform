@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
@@ -30,6 +30,9 @@ function remainingLifetime(expiresAt: string | undefined): string {
 }
 
 export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
+  const mountedRef = useRef(false);
+  const leavingRef = useRef(false);
+  const synchronizationRef = useRef<Promise<void> | null>(null);
   const [messages, setMessages] = useState<readonly LocalChatMessage[]>(
     chatSession.messages,
   );
@@ -51,6 +54,8 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
 
   const returnHome = useCallback(
     (remote = false) => {
+      if (leavingRef.current) return;
+      leavingRef.current = true;
       if (remote) {
         Alert.alert(
           'Chat destroyed',
@@ -62,31 +67,51 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
     [navigation],
   );
 
-  const synchronize = useCallback(async () => {
-    try {
-      const status = await chatSession.refreshStatus();
-      if (status === 'destroyed') {
-        returnHome(true);
-        return;
+  const synchronize = useCallback((): Promise<void> => {
+    if (leavingRef.current) return Promise.resolve();
+    if (synchronizationRef.current) return synchronizationRef.current;
+
+    const operation = (async () => {
+      try {
+        const status = await chatSession.refreshStatus();
+        if (!mountedRef.current || leavingRef.current) return;
+        if (status === 'destroyed') {
+          returnHome(true);
+          return;
+        }
+        const refreshedMessages = await chatSession.refreshMessages();
+        if (!mountedRef.current || leavingRef.current) return;
+        setChatStatus(status);
+        setConnection(
+          status === 'active'
+            ? 'End-to-end encrypted'
+            : 'Encrypted · Waiting to connect',
+        );
+        setMessages([...refreshedMessages]);
+        setSafetyNumber(chatSession.safetyNumber);
+        setLifetime(remainingLifetime(chatSession.active?.expiresAt));
+      } catch {
+        if (mountedRef.current && !leavingRef.current) {
+          setConnection('Encrypted · Reconnecting');
+        }
       }
-      setChatStatus(status);
-      setConnection(
-        status === 'active'
-          ? 'End-to-end encrypted'
-          : 'Encrypted · Waiting to connect',
-      );
-      setMessages([...(await chatSession.refreshMessages())]);
-      setSafetyNumber(chatSession.safetyNumber);
-      setLifetime(remainingLifetime(chatSession.active?.expiresAt));
-    } catch {
-      setConnection('Encrypted · Reconnecting');
-    }
+    })().finally(() => {
+      if (synchronizationRef.current === operation) {
+        synchronizationRef.current = null;
+      }
+    });
+    synchronizationRef.current = operation;
+    return operation;
   }, [returnHome]);
 
   useEffect(() => {
+    mountedRef.current = true;
+    leavingRef.current = false;
     if (!chatSession.active) {
       returnHome();
-      return;
+      return () => {
+        mountedRef.current = false;
+      };
     }
     synchronize().catch(() => undefined);
     const subscription = chatSession.subscribe(() => {
@@ -99,9 +124,10 @@ export function ChatRoomScreen({ navigation }: Props): React.JSX.Element {
       if (state === 'active') synchronize().catch(() => undefined);
     });
     return () => {
+      mountedRef.current = false;
       clearInterval(poll);
       appState.remove();
-      subscription.unsubscribe();
+      Promise.resolve(subscription.unsubscribe()).catch(() => undefined);
     };
   }, [returnHome, synchronize]);
 

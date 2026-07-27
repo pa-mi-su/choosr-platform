@@ -169,18 +169,14 @@ select is(
   'one ciphertext envelope is stored'
 );
 select is(
-  (select payload from public.notification_outbox where kind = 'chat_message'),
-  '{}'::jsonb,
-  'chat push payload contains no message preview or room identifier'
+  (select count(*) from public.notification_outbox),
+  0::bigint,
+  'an encrypted message does not create a push notification'
 );
 select is(
-  (
-    select title || '|' || body
-    from public.user_notifications
-    where kind = 'chat_message'
-  ),
-  'New private Choosr message|Open Choosr to view it privately.',
-  'durable notification copy is generic'
+  (select count(*) from public.user_notifications),
+  0::bigint,
+  'an encrypted message does not create an inbox notification'
 );
 select lives_ok(
   format(

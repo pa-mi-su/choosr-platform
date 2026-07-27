@@ -15,11 +15,7 @@ type ServiceAccount = {
 type PushJob = {
   id: number;
   recipient_user_id: string;
-  kind:
-    | 'connection_request'
-    | 'room_invitation'
-    | 'chat_invitation'
-    | 'chat_message';
+  kind: 'connection_request' | 'room_invitation' | 'chat_invitation';
   payload: Record<string, unknown>;
   attempts: number;
   dedupe_key: string;
@@ -93,12 +89,6 @@ function pushCopy(job: PushJob): PushCopy {
       body: `${sender} wants to start a private chat about your match.`,
     };
   }
-  if (job.kind === 'chat_message') {
-    return {
-      title: 'New private Choosr message',
-      body: 'Open Choosr to view it privately.',
-    };
-  }
   if (job.kind === 'connection_request') {
     return {
       title: 'New Choosr connection',
@@ -115,7 +105,7 @@ function pushCopy(job: PushJob): PushCopy {
 }
 
 function stringData(job: PushJob): Record<string, string> {
-  if (job.kind === 'chat_message' || job.kind === 'chat_invitation') {
+  if (job.kind === 'chat_invitation') {
     return {
       kind: job.kind,
       route: 'ChatHome',

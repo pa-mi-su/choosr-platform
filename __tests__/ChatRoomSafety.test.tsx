@@ -2,6 +2,9 @@ import React from 'react';
 import ReactTestRenderer from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+let mockRealtimeChange: (() => void) | undefined;
+const mockUnsubscribe = jest.fn().mockRejectedValue(new Error('offline'));
+
 jest.mock('../src/chat/runtime', () => ({
   chatSession: {
     active: {
@@ -16,7 +19,10 @@ jest.mock('../src/chat/runtime', () => ({
     safetyNumber: '1234 5678 9012',
     refreshStatus: jest.fn().mockResolvedValue('active'),
     refreshMessages: jest.fn().mockResolvedValue([]),
-    subscribe: jest.fn(() => ({ unsubscribe: jest.fn() })),
+    subscribe: jest.fn((onChange: () => void) => {
+      mockRealtimeChange = onChange;
+      return { unsubscribe: mockUnsubscribe };
+    }),
     send: jest.fn(),
     destroy: jest.fn(),
   },
@@ -78,6 +84,8 @@ test('messaging is immediately encrypted and comparison details are optional', a
   expect(popTo).toHaveBeenCalledWith('ChatHome');
 
   await ReactTestRenderer.act(() => renderer?.unmount());
+  await Promise.resolve();
+  expect(mockUnsubscribe).toHaveBeenCalled();
 });
 
 test('a waiting matched chat has no composer until the other person accepts', async () => {
@@ -124,5 +132,49 @@ test('a waiting matched chat has no composer until the other person accepts', as
   await ReactTestRenderer.act(() => renderer?.unmount());
   runtime.active.status = 'active';
   delete runtime.active.peerDisplayName;
+  runtime.refreshStatus.mockResolvedValue('active');
+});
+
+test('serializes concurrent realtime refreshes and exits a destroyed chat once', async () => {
+  const runtime = jest.requireMock('../src/chat/runtime').chatSession;
+  runtime.refreshStatus.mockClear();
+  mockRealtimeChange = undefined;
+  let resolveStatus!: (status: 'destroyed') => void;
+  runtime.refreshStatus.mockImplementation(
+    () =>
+      new Promise(resolve => {
+        resolveStatus = resolve;
+      }),
+  );
+  const replace = jest.fn();
+  let renderer: ReactTestRenderer.ReactTestRenderer | undefined;
+
+  await ReactTestRenderer.act(async () => {
+    renderer = ReactTestRenderer.create(
+      <SafeAreaProvider
+        initialMetrics={{
+          frame: { x: 0, y: 0, width: 390, height: 844 },
+          insets: { top: 47, right: 0, bottom: 34, left: 0 },
+        }}
+      >
+        <ChatRoomScreen
+          navigation={{ popTo: jest.fn(), replace } as never}
+          route={{ key: 'destroyed-chat', name: 'ChatRoom' } as never}
+        />
+      </SafeAreaProvider>,
+    );
+  });
+
+  await ReactTestRenderer.act(async () => {
+    mockRealtimeChange?.();
+    mockRealtimeChange?.();
+    expect(runtime.refreshStatus).toHaveBeenCalledTimes(1);
+    resolveStatus('destroyed');
+    await Promise.resolve();
+  });
+
+  expect(replace).toHaveBeenCalledTimes(1);
+  expect(replace).toHaveBeenCalledWith('ChatHome');
+  await ReactTestRenderer.act(() => renderer?.unmount());
   runtime.refreshStatus.mockResolvedValue('active');
 });

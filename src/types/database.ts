@@ -146,11 +146,7 @@ type RoomInvitationRow = {
 type UserNotificationRow = {
   id: number;
   recipient_user_id: string;
-  kind:
-    | 'connection_request'
-    | 'room_invitation'
-    | 'chat_invitation'
-    | 'chat_message';
+  kind: 'connection_request' | 'room_invitation' | 'chat_invitation';
   title: string;
   body: string;
   payload: Json;
