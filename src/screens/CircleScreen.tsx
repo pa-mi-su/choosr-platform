@@ -34,6 +34,7 @@ import {
   type CircleSnapshot,
 } from '../services/circleService';
 import { buildCircleInvite } from '../services/roomInvite';
+import { prepareSharedLocationDeck } from '../services/deckService';
 import { chooseAndUploadProfilePhoto } from '../services/profilePhotoService';
 import { logPhotoFailure } from '../services/photoUploadService';
 import {
@@ -184,12 +185,11 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
       const room = await answerRoomInvitation(invitation.invitationId, true);
       if (!room) throw new Error('invitation_unavailable');
       if (invitation.mode === 'eat' || invitation.mode === 'do') {
-        navigation.replace('LocalSetup', {
-          mode: invitation.mode,
+        const status = await prepareSharedLocationDeck({
           sessionId: room.sessionId,
-          roundNumber: room.roundNumber,
+          mode: invitation.mode,
         });
-        return;
+        if (status !== 'ready') throw new Error('room_not_active');
       }
       navigation.replace('Swipe', {
         sessionId: room.sessionId,

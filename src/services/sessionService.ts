@@ -66,7 +66,7 @@ export async function readCachedRoomHistory(): Promise<
   const now = Date.now();
   return rooms.filter(
     room =>
-      (room.status === 'waiting' || room.status === 'active') &&
+      ['waiting', 'active', 'matched', 'completed'].includes(room.status) &&
       Date.parse(room.expiresAt) > now,
   );
 }
@@ -480,6 +480,28 @@ export async function cancelDecisionRoom(sessionId: string): Promise<void> {
   });
   if (error) {
     throw error;
+  }
+}
+
+export async function acknowledgeDecisionRoom(
+  sessionId: string,
+): Promise<void> {
+  const authenticatedSession = await ensureAnonymousSession();
+  const { error } = await supabase.rpc('acknowledge_room_completion', {
+    p_session_id: sessionId,
+  });
+  if (error) {
+    throw error;
+  }
+  const snapshot = await readOfflineSnapshot<RoomHistorySnapshot>(
+    ROOM_HISTORY_CACHE_KEY,
+    ROOM_HISTORY_CACHE_MAX_AGE_MS,
+  );
+  if (snapshot?.userId === authenticatedSession.user.id) {
+    await writeOfflineSnapshot(ROOM_HISTORY_CACHE_KEY, {
+      ...snapshot,
+      rooms: snapshot.rooms.filter(room => room.sessionId !== sessionId),
+    });
   }
 }
 

@@ -94,6 +94,13 @@ type MatchRow = {
   created_at: string;
 };
 
+type RoomCompletionAcknowledgementRow = {
+  session_id: string;
+  participant_id: string;
+  round: number;
+  acknowledged_at: string;
+};
+
 type ProfileRow = {
   user_id: string;
   display_name: string;
@@ -182,6 +189,11 @@ export type Database = {
       session_locations: Table<SessionLocationRow, never, never>;
       swipes: Table<SwipeRow, never, never>;
       matches: Table<MatchRow, never, never>;
+      room_completion_acknowledgements: Table<
+        RoomCompletionAcknowledgementRow,
+        never,
+        never
+      >;
       ranking_submissions: Table<RankingSubmissionRow, never, never>;
       choice_rankings: Table<ChoiceRankingRow, never, never>;
       profiles: Table<ProfileRow, never, never>;
@@ -194,6 +206,10 @@ export type Database = {
     };
     Views: Record<never, never>;
     Functions: {
+      acknowledge_room_completion: {
+        Args: { p_session_id: string };
+        Returns: undefined;
+      };
       cancel_session: {
         Args: { p_session_id: string };
         Returns: undefined;

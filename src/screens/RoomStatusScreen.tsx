@@ -13,6 +13,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
+import { prepareSharedLocationDeck } from '../services/deckService';
 import { roomErrorMessage } from '../services/roomFlow';
 import {
   cancelDecisionRoom,
@@ -39,6 +40,7 @@ export function RoomStatusScreen({
   const [room, setRoom] = useState<DecisionRoom | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -83,6 +85,29 @@ export function RoomStatusScreen({
         },
       ],
     );
+  };
+
+  const prepareChoices = async () => {
+    if (!room || preparing || (room.mode !== 'eat' && room.mode !== 'do')) {
+      return;
+    }
+    setPreparing(true);
+    setError(null);
+    try {
+      const status = await prepareSharedLocationDeck({
+        sessionId: room.sessionId,
+        mode: room.mode,
+      });
+      if (status !== 'ready') throw new Error('room_not_active');
+      navigation.replace('Swipe', {
+        sessionId: room.sessionId,
+        roundNumber: room.roundNumber,
+        mode: room.mode,
+      });
+    } catch (cause) {
+      setError(roomErrorMessage(cause));
+      setPreparing(false);
+    }
   };
 
   const active = room?.status === 'active';
@@ -144,7 +169,7 @@ export function RoomStatusScreen({
               {active
                 ? 'Both people are here. Continue whenever you’re ready.'
                 : partnerJoined
-                ? 'Your partner joined and is finishing their setup.'
+                ? 'Your partner joined. Choosr is building choices from your selected area.'
                 : waiting
                 ? 'Your room is open. You can come back here or cancel it at any time.'
                 : 'This room is no longer active.'}
@@ -207,6 +232,14 @@ export function RoomStatusScreen({
                     mode: room.mode,
                   })
                 }
+              />
+            ) : partnerJoined && (room.mode === 'eat' || room.mode === 'do') ? (
+              <Button
+                label="Prepare choices"
+                loading={preparing}
+                onPress={() => {
+                  prepareChoices().catch(() => undefined);
+                }}
               />
             ) : waiting && room.accessCode ? (
               <Button

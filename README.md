@@ -44,11 +44,11 @@ No participant can inspect the other person's swipes or rankings before the
 result. The authoritative match is computed in PostgreSQL, not on either
 device.
 
-For Activity and Food rooms, Choosr accepts validated participant locations
-only when they are within 60 miles of each other, computes their midpoint, and
-stores one shared five-card deck. Activity discovery uses a strict Google
-Places primary-type allowlist and rejects lodging, campgrounds, associations,
-and other non-activity businesses.
+For Activity and Food rooms, the creator selects one validated location.
+Invitees reuse that search area without entering another ZIP, and Choosr stores
+one shared five-card deck. Activity discovery uses a strict Google Places
+primary-type allowlist and rejects lodging, campgrounds, associations, and
+other non-activity businesses.
 
 ## End-to-end architecture
 
@@ -125,13 +125,13 @@ and materialized only inside CI or the target server environment.
 
 ### Shared local Activity and Food rooms
 
-Location rooms are intentionally generated only after both participants join:
+Location rooms use the creator's search area for both participants:
 
 ```text
 Creator selects mode and location
   -> room and invitation are created
-  -> invitee joins and supplies a location
-  -> backend calculates the geographic midpoint
+  -> invitee joins without supplying a second location
+  -> backend loads the creator-owned room location
   -> Google Places is searched at 5, 10, then 20 miles as needed
   -> candidates are scored and reduced to five
   -> deck is shuffled once, persisted, and activated
@@ -141,18 +141,20 @@ Creator selects mode and location
 The search pipeline:
 
 - accepts a validated U.S. or Canadian city/ZIP suggestion;
-- keeps participant coordinates private and scoped to the room;
-- uses a spherical midpoint so one person is not favored;
+- keeps the creator coordinates private and scoped to the room;
 - uses a curated activity allowlist and excludes campgrounds, RV parks,
   associations, and other low-quality categories;
-- scores candidates using rating, review volume, photo availability, distance
-  to both people, and distance imbalance;
+- scores candidates using rating, review volume, photo availability, and
+  distance from the creator-selected search area;
 - limits repeated place categories to preserve variety;
 - caches provider photos in Supabase Storage so the API key is never returned
   to a mobile device;
 - stores one randomized five-card result so both devices see identical choices;
-- deletes temporary location rows when the room matches, completes, expires, or
-  is cancelled.
+- deletes the temporary location row as soon as the shared deck is finalized.
+
+Matched and completed rounds remain available in room history until each
+participant independently presses Done. One participant dismissing a result
+does not close it or hide it from the other participant.
 
 ### Custom rooms and media
 
@@ -266,7 +268,7 @@ src/
   types/                  domain, navigation, and generated database contracts
 supabase/
   functions/
-    build-deck/           midpoint discovery, ranking, and photo caching
+    build-deck/           creator-location discovery, ranking, and photo caching
     search-locations/     city/ZIP autocomplete
     dispatch-notifications/
     chat-session/         validated ciphertext-only Chat mutation gateway

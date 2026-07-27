@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const mockCancelDecisionRoom = jest.fn();
 const mockLoadDecisionRoom = jest.fn();
+const mockPrepareSharedLocationDeck = jest.fn();
 
 jest.mock('../src/hooks/useRoomSync', () => {
   const ReactModule = jest.requireActual<typeof React>('react');
@@ -19,6 +20,10 @@ jest.mock('../src/hooks/useRoomSync', () => {
 jest.mock('../src/services/sessionService', () => ({
   cancelDecisionRoom: (...args: unknown[]) => mockCancelDecisionRoom(...args),
   loadDecisionRoom: (...args: unknown[]) => mockLoadDecisionRoom(...args),
+}));
+jest.mock('../src/services/deckService', () => ({
+  prepareSharedLocationDeck: (...args: unknown[]) =>
+    mockPrepareSharedLocationDeck(...args),
 }));
 jest.mock('../src/services/roomFlow', () => ({
   roomErrorMessage: jest.fn(() => 'Room unavailable.'),
@@ -44,6 +49,7 @@ describe('Room Status', () => {
       participantCount: 1,
     });
     mockCancelDecisionRoom.mockResolvedValue(undefined);
+    mockPrepareSharedLocationDeck.mockResolvedValue('ready');
   });
 
   test('shows live waiting details and lets the participant cancel', async () => {
@@ -83,6 +89,53 @@ describe('Room Status', () => {
 
     expect(mockCancelDecisionRoom).toHaveBeenCalledWith('waiting-session');
     expect(goBack).toHaveBeenCalledTimes(1);
+
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  test('can resume a joined local room without asking for another ZIP', async () => {
+    mockLoadDecisionRoom.mockResolvedValue({
+      sessionId: 'waiting-session',
+      accessCode: 'N4BB4KML',
+      mode: 'do',
+      status: 'waiting',
+      roundNumber: 1,
+      expiresAt: '2026-07-26T12:00:00.000Z',
+      participantCount: 2,
+    });
+    const replace = jest.fn();
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <RoomStatusScreen
+            navigation={{ goBack: jest.fn(), replace } as never}
+            route={{
+              key: 'room-status',
+              name: 'RoomStatus',
+              params: { sessionId: 'waiting-session' },
+            }}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      renderer.root
+        .findByProps({ accessibilityLabel: 'Prepare choices' })
+        .props.onPress();
+    });
+
+    expect(mockPrepareSharedLocationDeck).toHaveBeenCalledWith({
+      sessionId: 'waiting-session',
+      mode: 'do',
+    });
+    expect(replace).toHaveBeenCalledWith('Swipe', {
+      sessionId: 'waiting-session',
+      roundNumber: 1,
+      mode: 'do',
+    });
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });

@@ -105,7 +105,11 @@ export function parseDeckRequest(value: unknown): DeckRequest {
     25000,
   );
   const maxResults = optionalNumber(body.maxResults, 'maxResults', 1, 20);
-  if (!postalCode && (latitude === undefined || longitude === undefined)) {
+  if (
+    !sessionId &&
+    !postalCode &&
+    (latitude === undefined || longitude === undefined)
+  ) {
     throw new DeckRequestError(
       'A valid latitude and longitude are required for local modes.',
     );

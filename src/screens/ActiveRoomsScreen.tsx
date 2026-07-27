@@ -13,6 +13,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
 import { modeById } from '../data/decisions';
+import { prepareSharedLocationDeck } from '../services/deckService';
 import {
   answerRoomInvitation,
   circleErrorMessage,
@@ -21,6 +22,7 @@ import {
   type PendingRoomInvitation,
 } from '../services/circleService';
 import {
+  loadDecisionDeck,
   loadRoomHistory,
   readCachedRoomHistory,
   type RoomHistoryItem,
@@ -31,6 +33,7 @@ import type { RootStackParamList } from '../types/navigation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ActiveRooms'>;
 type ActiveRoomRow =
+  | { kind: 'section'; id: string; title: string }
   | { kind: 'empty-active'; id: string }
   | { kind: 'invitation'; id: string; invitation: PendingRoomInvitation }
   | { kind: 'room'; id: string; room: RoomHistoryItem };
@@ -44,6 +47,7 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
   const [joiningInvitationId, setJoiningInvitationId] = useState<string | null>(
     null,
   );
+  const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const hasSnapshotRef = useRef(false);
 
@@ -106,17 +110,56 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     }, [load]),
   );
 
-  const open = (room: RoomHistoryItem) => {
-    if (room.status === 'waiting') {
-      navigation.navigate('RoomStatus', { sessionId: room.sessionId });
-      return;
-    }
-    if (room.status === 'active') {
-      navigation.navigate('Swipe', {
-        sessionId: room.sessionId,
-        roundNumber: room.roundNumber,
-        mode: room.mode,
-      });
+  const open = async (room: RoomHistoryItem) => {
+    if (openingRoomId) return;
+    setOpeningRoomId(room.sessionId);
+    setError(null);
+    try {
+      if (room.status === 'waiting') {
+        if (
+          room.participantCount === 2 &&
+          (room.mode === 'eat' || room.mode === 'do')
+        ) {
+          const status = await prepareSharedLocationDeck({
+            sessionId: room.sessionId,
+            mode: room.mode,
+          });
+          if (status !== 'ready') throw new Error('room_not_active');
+          navigation.navigate('Swipe', {
+            sessionId: room.sessionId,
+            roundNumber: room.roundNumber,
+            mode: room.mode,
+          });
+          return;
+        }
+        navigation.navigate('RoomStatus', { sessionId: room.sessionId });
+        return;
+      }
+      if (room.status === 'active') {
+        navigation.navigate('Swipe', {
+          sessionId: room.sessionId,
+          roundNumber: room.roundNumber,
+          mode: room.mode,
+        });
+        return;
+      }
+      if (room.status === 'matched' && room.matchedItemId) {
+        const deck = await loadDecisionDeck(room.sessionId, room.roundNumber);
+        const item = deck.find(choice => choice.id === room.matchedItemId);
+        if (!item) throw new Error('match_result_unavailable');
+        navigation.navigate('Match', { sessionId: room.sessionId, item });
+        return;
+      }
+      if (room.status === 'completed') {
+        navigation.navigate('NoMatch', {
+          sessionId: room.sessionId,
+          mode: room.mode,
+        });
+      }
+    } catch {
+      setError('That room result could not be loaded. Pull down to retry.');
+    } finally {
+      setOpeningRoomId(null);
     }
   };
 
@@ -133,12 +176,11 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
         ),
       );
       if (invitation.mode === 'eat' || invitation.mode === 'do') {
-        navigation.replace('LocalSetup', {
-          mode: invitation.mode,
+        const status = await prepareSharedLocationDeck({
           sessionId: room.sessionId,
-          roundNumber: room.roundNumber,
+          mode: invitation.mode,
         });
-        return;
+        if (status !== 'ready') throw new Error('room_not_active');
       }
       navigation.replace('Swipe', {
         sessionId: room.sessionId,
@@ -151,21 +193,43 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
     }
   };
 
+  const activeRooms = rooms.filter(
+    room => room.status === 'waiting' || room.status === 'active',
+  );
+  const completedRooms = rooms.filter(
+    room => room.status === 'matched' || room.status === 'completed',
+  );
   const rows: ActiveRoomRow[] = !hasSnapshot
     ? []
-    : rooms.length === 0 && invitations.length === 0
-    ? [{ kind: 'empty-active' as const, id: 'empty:active' }]
     : [
+        { kind: 'section' as const, id: 'section:active', title: 'ACTIVE' },
         ...invitations.map(invitation => ({
           kind: 'invitation' as const,
           id: `invitation:${invitation.invitationId}`,
           invitation,
         })),
-        ...rooms.map(room => ({
+        ...activeRooms.map(room => ({
           kind: 'room' as const,
           id: `room:${room.sessionId}`,
           room,
         })),
+        ...(activeRooms.length === 0 && invitations.length === 0
+          ? [{ kind: 'empty-active' as const, id: 'empty:active' }]
+          : []),
+        ...(completedRooms.length
+          ? [
+              {
+                kind: 'section' as const,
+                id: 'section:completed',
+                title: 'COMPLETED',
+              },
+              ...completedRooms.map(room => ({
+                kind: 'room' as const,
+                id: `room:${room.sessionId}`,
+                room,
+              })),
+            ]
+          : []),
       ];
 
   return (
@@ -175,7 +239,7 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
         <Button label="Close" variant="quiet" onPress={navigation.goBack} />
       </View>
       <Text style={styles.eyebrow}>YOUR ROOMS</Text>
-      <Text style={styles.title}>Invites and rooms, all in one place.</Text>
+      <Text style={styles.title}>Active rooms and completed picks.</Text>
       {loading && !hasSnapshot ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} size="large" />
@@ -203,6 +267,9 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
             ) : null
           }
           renderItem={({ item }) => {
+            if (item.kind === 'section') {
+              return <Text style={styles.sectionTitle}>{item.title}</Text>;
+            }
             if (item.kind === 'empty-active') {
               return (
                 <View style={styles.emptyCard}>
@@ -243,19 +310,31 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
             }
             const room = item.room;
             const resumable = room.status === 'active';
-            const viewable = room.status === 'waiting' || resumable;
+            const completed =
+              room.status === 'matched' || room.status === 'completed';
+            const viewable =
+              room.status === 'waiting' || resumable || completed;
             return (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${modeById[room.mode].title}. ${
                   room.status === 'waiting'
-                    ? 'Waiting for a partner. View room status.'
+                    ? room.participantCount === 2 &&
+                      (room.mode === 'eat' || room.mode === 'do')
+                      ? 'Partner joined. Prepare choices.'
+                      : 'Waiting for a partner. View room status.'
                     : resumable
                     ? 'Continue choosing.'
+                    : room.status === 'matched'
+                    ? 'Decision complete. View result.'
+                    : room.status === 'completed'
+                    ? 'Round complete. View result.'
                     : room.status
                 }`}
-                disabled={!viewable}
-                onPress={() => open(room)}
+                disabled={!viewable || openingRoomId !== null}
+                onPress={() => {
+                  open(room).catch(() => undefined);
+                }}
                 style={({ pressed }) => [
                   styles.card,
                   room.status === 'waiting' && styles.waitingCard,
@@ -269,7 +348,10 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                   </Text>
                   <Text style={styles.cardMeta}>
                     {room.status === 'waiting'
-                      ? room.accessCode
+                      ? room.participantCount === 2 &&
+                        (room.mode === 'eat' || room.mode === 'do')
+                        ? 'Partner joined · ready to build choices'
+                        : room.accessCode
                         ? `Waiting for a partner · ${room.accessCode}`
                         : 'Waiting for a partner · reconnect to share'
                       : resumable
@@ -277,13 +359,24 @@ export function ActiveRoomsScreen({ navigation }: Props): React.JSX.Element {
                           room.completedChoices,
                           room.totalChoices,
                         )} of ${room.totalChoices} choices finished`
+                      : room.status === 'matched'
+                      ? 'Your shared result is ready'
+                      : room.status === 'completed'
+                      ? 'No match this round'
                       : room.status.replace('-', ' ')}
                   </Text>
                 </View>
                 {viewable ? (
                   <View style={styles.roomAction}>
                     <Text style={styles.roomActionLabel}>
-                      {resumable ? 'Continue' : 'View status'}
+                      {resumable
+                        ? 'Continue'
+                        : completed
+                        ? 'View result'
+                        : room.participantCount === 2 &&
+                          (room.mode === 'eat' || room.mode === 'do')
+                        ? 'Prepare choices'
+                        : 'View status'}
                     </Text>
                     <Text style={styles.roomActionArrow}>›</Text>
                   </View>
@@ -318,6 +411,14 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1.3,
     marginTop: 7,
+  },
+  sectionTitle: {
+    color: colors.faint,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 1.6,
+    marginTop: 12,
+    marginBottom: 2,
   },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   list: { paddingTop: 20, paddingBottom: 30, gap: 9 },

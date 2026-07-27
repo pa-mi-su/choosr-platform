@@ -14,7 +14,7 @@ import { useRoomSync } from '../hooks/useRoomSync';
 import { getMatchResultAction } from '../services/matchResult';
 import { roomErrorMessage } from '../services/roomFlow';
 import {
-  cancelDecisionRoom,
+  acknowledgeDecisionRoom,
   loadDecisionRoom,
 } from '../services/sessionService';
 import { colors } from '../theme';
@@ -53,12 +53,12 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
     refresh: followClosure,
   });
 
-  const closeRoom = async (next: 'done' | 'choose-again') => {
+  const dismissResult = async (next: 'done' | 'choose-again') => {
     if (endingAction) return;
     setEndingAction(next);
     setActionError(null);
     try {
-      await cancelDecisionRoom(sessionId);
+      await acknowledgeDecisionRoom(sessionId);
       navigation.popToTop();
       if (next === 'choose-again') {
         navigation.navigate('ModeSelect');
@@ -118,14 +118,14 @@ export function MatchScreen({ navigation, route }: Props): React.JSX.Element {
           variant="secondary"
           loading={endingAction === 'choose-again'}
           disabled={endingAction !== null}
-          onPress={() => closeRoom('choose-again')}
+          onPress={() => dismissResult('choose-again')}
         />
         <Button
           label="Done"
           variant="quiet"
           loading={endingAction === 'done'}
           disabled={endingAction !== null}
-          onPress={() => closeRoom('done')}
+          onPress={() => dismissResult('done')}
         />
       </View>
     </Screen>

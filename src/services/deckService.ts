@@ -29,9 +29,6 @@ async function throwDeckFunctionError(error: unknown): Promise<never> {
 export async function prepareSharedLocationDeck(input: {
   sessionId: string;
   mode: 'eat' | 'do';
-  latitude: number;
-  longitude: number;
-  locationLabel: string;
 }): Promise<SharedLocationDeckStatus> {
   await ensureAnonymousSession();
   const { data, error } = await withRequestTimeout(

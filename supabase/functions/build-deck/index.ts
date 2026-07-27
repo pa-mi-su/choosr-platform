@@ -1,10 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
 
 import { authenticatedUserId } from './auth.ts';
-import {
-  MAX_PARTICIPANT_DISTANCE_MILES,
-  participantLocationsAreCloseEnough,
-} from './geo.ts';
 import { jsonResponse } from './http.ts';
 import { buildPlacesDeck } from './providers/placesProvider.ts';
 import {
@@ -63,62 +59,48 @@ Deno.serve(async request => {
       if (!supabaseUrl || !serviceKey) {
         throw new Error('Room preparation service is not configured.');
       }
-      if (
-        body.latitude === undefined ||
-        body.longitude === undefined ||
-        !body.locationLabel
-      ) {
-        throw new DeckRequestError(
-          'A validated location is required to prepare this room.',
-        );
-      }
       const service = createClient(supabaseUrl, serviceKey, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
-      const { data: locations, error: locationError } = await service.rpc(
-        'record_session_location',
+      const { data: contexts, error: contextError } = await service.rpc(
+        'get_location_deck_context',
         {
           p_session_id: body.sessionId,
           p_user_id: userId,
-          p_latitude: body.latitude,
-          p_longitude: body.longitude,
-          p_location_label: body.locationLabel,
         },
       );
-      if (locationError) {
-        if (locationError.message.includes('participant_locations_too_far')) {
-          return jsonResponse(
-            {
-              error: `Choosr is designed for people close enough to meet. Choose locations within ${MAX_PARTICIPANT_DISTANCE_MILES} miles of each other.`,
-            },
-            422,
-          );
-        }
-        throw locationError;
+      if (contextError) throw contextError;
+      const context = Array.isArray(contexts) ? contexts[0] : undefined;
+      if (context?.mode !== body.mode) {
+        throw new DeckRequestError('Room mode does not match the request.');
       }
-      if (!Array.isArray(locations) || locations.length < 2) {
+      if (context?.preparation_status === 'ready') {
         return jsonResponse({
           mode: body.mode,
-          status: 'waiting-for-location',
+          status: 'ready',
           items: [],
         });
       }
-
-      const participantLocations = locations.map(location => ({
-        latitude: Number(location.latitude),
-        longitude: Number(location.longitude),
-      }));
-      if (!participantLocationsAreCloseEnough(participantLocations)) {
-        return jsonResponse(
-          {
-            error: `Choosr is designed for people close enough to meet. Choose locations within ${MAX_PARTICIPANT_DISTANCE_MILES} miles of each other.`,
-          },
-          422,
-        );
+      if (
+        context?.preparation_status !== 'needs-build' ||
+        !Number.isFinite(context.latitude) ||
+        !Number.isFinite(context.longitude)
+      ) {
+        throw new Error('The room creator location is unavailable.');
       }
+      const participantLocations = [
+        {
+          latitude: Number(context.latitude),
+          longitude: Number(context.longitude),
+        },
+      ];
       const items = shuffleOnce(
         await buildPlacesDeck({
           ...body,
+          mode: context.mode,
+          latitude: participantLocations[0].latitude,
+          longitude: participantLocations[0].longitude,
+          locationLabel: context.location_label,
           participantLocations,
         }),
       );
