@@ -7,6 +7,7 @@ const mockReadCachedRoomHistory = jest.fn();
 const mockLoadPendingRoomInvitations = jest.fn();
 const mockReadCachedCircleSnapshot = jest.fn();
 const mockAnswerRoomInvitation = jest.fn();
+const mockDismissRoomInvitation = jest.fn();
 const mockPrepareSharedLocationDeck = jest.fn();
 const mockLoadDecisionDeck = jest.fn();
 
@@ -33,10 +34,15 @@ jest.mock('../src/services/circleService', () => ({
   answerRoomInvitation: (...args: unknown[]) =>
     mockAnswerRoomInvitation(...args),
   circleErrorMessage: jest.fn(() => 'Invitation unavailable.'),
+  dismissRoomInvitation: (...args: unknown[]) =>
+    mockDismissRoomInvitation(...args),
   loadPendingRoomInvitations: (...args: unknown[]) =>
     mockLoadPendingRoomInvitations(...args),
   readCachedCircleSnapshot: (...args: unknown[]) =>
     mockReadCachedCircleSnapshot(...args),
+}));
+jest.mock('../src/services/notificationService', () => ({
+  subscribeToNotificationState: jest.fn(() => ({ remove: jest.fn() })),
 }));
 
 import { ActiveRoomsScreen } from '../src/screens/ActiveRoomsScreen';
@@ -66,6 +72,7 @@ describe('Active Rooms invitations', () => {
       sessionId: 'session-1',
       roundNumber: 1,
     });
+    mockDismissRoomInvitation.mockResolvedValue(undefined);
     mockPrepareSharedLocationDeck.mockResolvedValue('ready');
     mockLoadDecisionDeck.mockResolvedValue([]);
   });
@@ -103,6 +110,39 @@ describe('Active Rooms invitations', () => {
       roundNumber: 1,
       mode: 'custom',
     });
+
+    await ReactTestRenderer.act(async () => renderer.unmount());
+  });
+
+  test('lets Android recipients dismiss a stale or unwanted invitation', async () => {
+    let renderer!: ReactTestRenderer.ReactTestRenderer;
+    await ReactTestRenderer.act(async () => {
+      renderer = ReactTestRenderer.create(
+        <SafeAreaProvider initialMetrics={metrics}>
+          <ActiveRoomsScreen
+            navigation={
+              {
+                goBack: jest.fn(),
+                navigate: jest.fn(),
+                replace: jest.fn(),
+              } as never
+            }
+            route={{ key: 'rooms', name: 'ActiveRooms' } as never}
+          />
+        </SafeAreaProvider>,
+      );
+    });
+
+    await ReactTestRenderer.act(async () => {
+      renderer.root
+        .findByProps({ accessibilityLabel: 'Dismiss' })
+        .props.onPress();
+    });
+
+    expect(mockDismissRoomInvitation).toHaveBeenCalledWith('invite-1');
+    expect(
+      renderer.root.findAllByProps({ children: 'ROOM INVITE' }),
+    ).toHaveLength(0);
 
     await ReactTestRenderer.act(async () => renderer.unmount());
   });

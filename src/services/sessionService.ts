@@ -486,22 +486,12 @@ export async function cancelDecisionRoom(sessionId: string): Promise<void> {
 export async function acknowledgeDecisionRoom(
   sessionId: string,
 ): Promise<void> {
-  const authenticatedSession = await ensureAnonymousSession();
+  await ensureAnonymousSession();
   const { error } = await supabase.rpc('acknowledge_room_completion', {
     p_session_id: sessionId,
   });
   if (error) {
     throw error;
-  }
-  const snapshot = await readOfflineSnapshot<RoomHistorySnapshot>(
-    ROOM_HISTORY_CACHE_KEY,
-    ROOM_HISTORY_CACHE_MAX_AGE_MS,
-  );
-  if (snapshot?.userId === authenticatedSession.user.id) {
-    await writeOfflineSnapshot(ROOM_HISTORY_CACHE_KEY, {
-      ...snapshot,
-      rooms: snapshot.rooms.filter(room => room.sessionId !== sessionId),
-    });
   }
 }
 

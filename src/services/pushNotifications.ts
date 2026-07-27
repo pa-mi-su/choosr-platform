@@ -35,7 +35,10 @@ const ANDROID_NOTIFICATION_PERMISSION =
 const DISPATCH_RETRY_DELAYS_MS = [0, 400, 1200] as const;
 const IOS_APNS_RETRY_DELAYS_MS = [0, 250, 750, 1500, 3000] as const;
 const TOKEN_SYNC_RETRY_DELAYS_MS = [0, 500, 1500] as const;
-const PUSH_CHANNEL_ID = 'choosr-invitations';
+// Android channels are immutable after creation. A versioned channel prevents
+// an older silent channel configuration from making new production alerts
+// vibration-only.
+const PUSH_CHANNEL_ID = 'choosr-alerts-v2';
 
 let pendingTokenSynchronization: Promise<void> | undefined;
 
@@ -301,19 +304,16 @@ async function displayForegroundNotification(
       (entry): entry is [string, string] => typeof entry[1] === 'string',
     ),
   );
-  const channelId =
-    Platform.OS === 'android'
-      ? await notifee.createChannel({
-          id: PUSH_CHANNEL_ID,
-          name: 'Choosr invitations',
-          importance: AndroidImportance.HIGH,
-        })
+  const channelId = await ensureAndroidAlertChannel();
+  const stableNotificationId =
+    typeof data.notification_id === 'string'
+      ? data.notification_id
+      : message.messageId
+      ? `remote-${message.messageId}`.slice(0, 64)
       : undefined;
 
   await notifee.displayNotification({
-    ...(message.messageId
-      ? { id: `remote-${message.messageId}`.slice(0, 64) }
-      : {}),
+    ...(stableNotificationId ? { id: stableNotificationId } : {}),
     title,
     body,
     data,
@@ -334,6 +334,19 @@ async function displayForegroundNotification(
         list: true,
       },
     },
+  });
+}
+
+async function ensureAndroidAlertChannel(): Promise<string | undefined> {
+  if (Platform.OS !== 'android') return undefined;
+  return notifee.createChannel({
+    id: PUSH_CHANNEL_ID,
+    name: 'Choosr alerts',
+    description: 'Room invitations, Circle requests, and private chat alerts',
+    importance: AndroidImportance.HIGH,
+    sound: 'default',
+    vibration: true,
+    vibrationPattern: [300, 500],
   });
 }
 
@@ -398,6 +411,9 @@ export function registerPushListeners(input: {
   onForeground: (message: RemoteMessage) => void;
 }): () => void {
   const messaging = getMessaging();
+  ensureAndroidAlertChannel().catch(error =>
+    logPushFailure('android-channel', error),
+  );
   const unsubscribeOpen = onNotificationOpenedApp(messaging, input.onOpen);
   const unsubscribeMessage = onMessage(messaging, message => {
     input.onForeground(message);

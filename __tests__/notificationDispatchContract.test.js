@@ -11,6 +11,23 @@ describe('notification dispatch contract', () => {
     expect(source).toContain("'apns-push-type': 'alert'");
     expect(source).toContain("'apns-priority': '10'");
     expect(source).toContain("sound: 'default'");
+    expect(source).toContain("'apns-expiration'");
+    expect(source).toContain("'apns-collapse-id'");
+  });
+
+  test('bounds Android delivery and uses one audible high-priority channel', () => {
+    expect(source).toContain("ttl: `${secondsRemaining}s`");
+    expect(source).toContain("channel_id: 'choosr-alerts-v2'");
+    expect(source).toContain("sound: 'default'");
+    expect(source).toContain('default_vibrate_timings: true');
+    expect(source).toContain('tag: notificationTag');
+  });
+
+  test('revalidates claimed jobs immediately before provider delivery', () => {
+    expect(source).toContain("'notification_job_is_deliverable'");
+    expect(source).toContain("'discard_notification_job'");
+    expect(source).toContain("'event_no_longer_current'");
+    expect(source).toContain("'delivery_window_expired'");
   });
 
   test('keeps private chat push copy generic', () => {

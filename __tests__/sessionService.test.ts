@@ -122,7 +122,7 @@ describe('acknowledgeDecisionRoom', () => {
     });
   });
 
-  it('dismisses a completed result only for the current participant', async () => {
+  it('records that the current participant viewed a completed result', async () => {
     mockRpc.mockResolvedValue({ error: null });
 
     await expect(acknowledgeDecisionRoom('session-1')).resolves.toBeUndefined();
