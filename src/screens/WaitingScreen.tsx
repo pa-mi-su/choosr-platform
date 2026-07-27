@@ -6,7 +6,10 @@ import { Brand, Button, Screen } from '../components/UI';
 import { buildPreviewDeck, modeById } from '../data/decisions';
 import { useRoomSync } from '../hooks/useRoomSync';
 import { roomErrorMessage } from '../services/roomFlow';
-import { buildRoomInvite } from '../services/roomInvite';
+import {
+  buildNativeSharePayload,
+  buildRoomInvite,
+} from '../services/roomInvite';
 import {
   circleErrorMessage,
   inviteCirclePerson,
@@ -175,11 +178,9 @@ export function WaitingScreen({ navigation, route }: Props): React.JSX.Element {
         ? { decisionPrompt: route.params.customPrompt }
         : {}),
     });
-    Share.share({
-      title: 'Join my Choosr room',
-      message: invite.message,
-      url: invite.url,
-    }).catch(() => undefined);
+    Share.share(
+      buildNativeSharePayload('Choosr · Room invitation', invite),
+    ).catch(() => undefined);
   };
   return (
     <Screen testID="waiting-screen" style={styles.screen}>

@@ -7,6 +7,16 @@ export type RoomInvite = {
 
 export type CircleInvite = RoomInvite;
 
+export function buildNativeSharePayload(
+  title: string,
+  content: Pick<RoomInvite, 'message'>,
+) {
+  // Supplying the same link through both `message` and iOS's `url` field
+  // renders two separate raw-link bubbles in Messages. Keep one complete,
+  // cross-platform message so the invitation is branded and appears once.
+  return { title, message: content.message };
+}
+
 export function buildRoomInvite(input: {
   inviteToken: string;
   accessCode: string;
@@ -18,7 +28,11 @@ export function buildRoomInvite(input: {
 
   return {
     url,
-    message: `Join my Choosr room to ${input.decisionPrompt}.\n\nTap to join: ${url}\n\nOr open Choosr and enter code: ${input.accessCode}`,
+    message:
+      `CHOOSR · ROOM INVITATION\n\n` +
+      `Let's ${input.decisionPrompt}.\n\n` +
+      `Open the room:\n${url}\n\n` +
+      `Or enter room code: ${input.accessCode}`,
   };
 }
 
@@ -33,6 +47,9 @@ export function buildCircleInvite(input: {
   )}`;
   return {
     url,
-    message: `${input.displayName} invited you to connect on Choosr. Tap to join their Circle: ${url}`,
+    message:
+      `CHOOSR · CIRCLE INVITATION\n\n` +
+      `${input.displayName} wants to connect with you.\n\n` +
+      `Join their Choosr Circle and start choosing together:\n${url}`,
   };
 }

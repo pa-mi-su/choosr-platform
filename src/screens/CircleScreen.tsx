@@ -33,7 +33,10 @@ import {
   type PendingRoomInvitation,
   type CircleSnapshot,
 } from '../services/circleService';
-import { buildCircleInvite } from '../services/roomInvite';
+import {
+  buildCircleInvite,
+  buildNativeSharePayload,
+} from '../services/roomInvite';
 import { prepareSharedLocationDeck } from '../services/deckService';
 import { chooseAndUploadProfilePhoto } from '../services/profilePhotoService';
 import { logPhotoFailure } from '../services/photoUploadService';
@@ -154,11 +157,9 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
         inviteToken: credentials.inviteToken,
         displayName: profile.displayName,
       });
-      await Share.share({
-        title: 'Connect on Choosr',
-        message: invite.message,
-        url: invite.url,
-      });
+      await Share.share(
+        buildNativeSharePayload('Choosr · Circle invitation', invite),
+      );
     });
 
   const changeProfilePhoto = () =>
