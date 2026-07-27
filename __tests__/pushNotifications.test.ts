@@ -64,7 +64,12 @@ describe('push notification reliability', () => {
     jest.clearAllMocks();
     mockRpc.mockImplementation(name =>
       Promise.resolve({
-        data: name === 'has_registered_push_token' ? true : undefined,
+        data:
+          name === 'has_registered_push_token'
+            ? true
+            : name === 'push_token_status'
+            ? 'active'
+            : undefined,
         error: null,
       }),
     );
@@ -175,15 +180,15 @@ describe('push notification reliability', () => {
     unsubscribe();
   });
 
-  test('registers the current Firebase token without destructive rotation', async () => {
+  test('waits for APNs before registering the current Firebase token without destructive rotation', async () => {
     await expect(refreshPushRegistration()).resolves.toEqual({
       permission: 'enabled',
       delivery: 'ready',
     });
 
     expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(1);
+    expect(getAPNSToken).toHaveBeenCalledTimes(1);
     expect(getToken).toHaveBeenCalledTimes(1);
-    expect(getAPNSToken).not.toHaveBeenCalled();
     expect(deleteToken).not.toHaveBeenCalled();
     expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
       p_platform: 'ios',
@@ -195,8 +200,40 @@ describe('push notification reliability', () => {
       delivery: 'ready',
     });
     expect(registerDeviceForRemoteMessages).toHaveBeenCalledTimes(2);
+    expect(getAPNSToken).toHaveBeenCalledTimes(2);
     expect(getToken).toHaveBeenCalledTimes(2);
     expect(deleteToken).not.toHaveBeenCalled();
+  });
+
+  test('rotates only a token the provider has explicitly invalidated', async () => {
+    let statusChecks = 0;
+    mockRpc.mockImplementation(name =>
+      Promise.resolve({
+        data:
+          name === 'has_registered_push_token'
+            ? true
+            : name === 'push_token_status'
+            ? ++statusChecks === 1
+              ? 'invalidated'
+              : 'active'
+            : undefined,
+        error: null,
+      }),
+    );
+    (getToken as jest.Mock)
+      .mockResolvedValueOnce('provider-rejected-firebase-token')
+      .mockResolvedValueOnce('replacement-firebase-token-long-enough');
+
+    await expect(refreshPushRegistration()).resolves.toEqual({
+      permission: 'enabled',
+      delivery: 'ready',
+    });
+
+    expect(deleteToken).toHaveBeenCalledTimes(1);
+    expect(mockRpc).toHaveBeenCalledWith('register_push_token', {
+      p_platform: 'ios',
+      p_token: 'replacement-firebase-token-long-enough',
+    });
   });
 
   test('always asks iOS to register for remote messages instead of trusting cached native state', async () => {
@@ -245,6 +282,32 @@ describe('push notification reliability', () => {
     }
   });
 
+  test('waits through a cold-launch APNs callback before requesting FCM token', async () => {
+    const timeoutSpy = jest
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((callback: (...args: never[]) => void) => {
+        callback();
+        return 0 as unknown as ReturnType<typeof setTimeout>;
+      });
+    (getAPNSToken as jest.Mock)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce('ready-apns-token');
+
+    try {
+      await expect(refreshPushRegistration()).resolves.toEqual({
+        permission: 'enabled',
+        delivery: 'ready',
+      });
+
+      expect(getAPNSToken).toHaveBeenCalledTimes(3);
+      expect(getToken).toHaveBeenCalledTimes(1);
+      expect(deleteToken).not.toHaveBeenCalled();
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
   test('retries a missing server endpoint without deleting the iOS token', async () => {
     let healthChecks = 0;
     mockRpc.mockImplementation(name =>
@@ -252,6 +315,8 @@ describe('push notification reliability', () => {
         data:
           name === 'has_registered_push_token'
             ? ++healthChecks >= 2
+            : name === 'push_token_status'
+            ? 'active'
             : undefined,
         error: null,
       }),
@@ -271,7 +336,12 @@ describe('push notification reliability', () => {
   test('separates enabled OS permission from an unavailable server endpoint', async () => {
     mockRpc.mockImplementation(name =>
       Promise.resolve({
-        data: name === 'has_registered_push_token' ? false : undefined,
+        data:
+          name === 'has_registered_push_token'
+            ? false
+            : name === 'push_token_status'
+            ? 'active'
+            : undefined,
         error: null,
       }),
     );
@@ -347,5 +417,13 @@ describe('push notification reliability', () => {
       'register_push_token',
       expect.anything(),
     );
+    expect(mockRpc).toHaveBeenCalledWith('report_push_registration', {
+      p_platform: 'ios',
+      p_status: 'unavailable',
+      p_stage: 'permission',
+      p_code: 'permission_disabled',
+      p_app_version: '1.0.0',
+      p_build_number: '1',
+    });
   });
 });

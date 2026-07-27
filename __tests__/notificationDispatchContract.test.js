@@ -17,4 +17,12 @@ describe('notification dispatch contract', () => {
     expect(source).toContain("title: 'New private Choosr message'");
     expect(source).toContain("body: 'Open Choosr to view it privately.'");
   });
+
+  test('retains invalid endpoint diagnostics instead of deleting the token', () => {
+    expect(source).toContain("last_delivery_error: result.ok ? null");
+    expect(source).toContain(
+      'invalidated_at: result.invalidToken ? attemptedAt : null',
+    );
+    expect(source).not.toContain(".from('device_push_tokens')\n                .delete()");
+  });
 });

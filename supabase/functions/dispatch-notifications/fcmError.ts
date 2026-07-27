@@ -32,6 +32,8 @@ export function normalizeFcmFailure(
   const code = fcmCode ?? statusCode ?? 'UNKNOWN';
   return {
     code: `FCM_${status}_${code}`,
-    invalidToken: status === 404 || fcmCode === 'UNREGISTERED',
+    // A generic HTTP 404 can be caused by the project, endpoint, or API route.
+    // Only FCM's canonical per-token code proves this installation is invalid.
+    invalidToken: fcmCode === 'UNREGISTERED',
   };
 }

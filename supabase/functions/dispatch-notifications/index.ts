@@ -143,10 +143,7 @@ async function sendMessage(input: {
   );
   if (response.ok) return { ok: true, invalidToken: false };
 
-  const failure = normalizeFcmFailure(
-    response.status,
-    await response.text(),
-  );
+  const failure = normalizeFcmFailure(response.status, await response.text());
   return {
     ok: false,
     invalidToken: failure.invalidToken,
@@ -199,15 +196,28 @@ Deno.serve(async request => {
         .is('read_at', null)
         .is('deleted_at', null);
       if (unreadError) throw unreadError;
-      const { data: devices, error: deviceError } = await supabase
+      const { data: knownDevices, error: deviceError } = await supabase
         .from('device_push_tokens')
-        .select('token')
+        .select('id, token, invalidated_at, last_delivery_error')
         .eq('user_id', job.recipient_user_id);
       if (deviceError) throw deviceError;
+      const devices =
+        knownDevices?.filter(device => device.invalidated_at === null) ?? [];
       if (!devices?.length) {
+        const retainedProviderErrors = [
+          ...new Set(
+            (knownDevices ?? [])
+              .map(device => device.last_delivery_error)
+              .filter((code): code is string => Boolean(code)),
+          ),
+        ];
         await supabase.rpc('fail_notification_job', {
           p_id: job.id,
-          p_error: 'Recipient has no registered device.',
+          p_error: retainedProviderErrors.length
+            ? `Recipient has no active device: ${retainedProviderErrors.join(
+                ' | ',
+              )}`
+            : 'Recipient has no registered device.',
         });
         failed += 1;
         recipientsWithoutDevices += 1;
@@ -225,16 +235,23 @@ Deno.serve(async request => {
           }),
         ),
       );
-      await Promise.all(
-        devices.map((device, index) =>
-          results[index].invalidToken
-            ? supabase
-                .from('device_push_tokens')
-                .delete()
-                .eq('token', device.token)
-            : Promise.resolve(),
-        ),
+      const attemptedAt = new Date().toISOString();
+      const deviceUpdates = await Promise.all(
+        devices.map((device, index) => {
+          const result = results[index];
+          return supabase
+            .from('device_push_tokens')
+            .update({
+              last_delivery_attempt_at: attemptedAt,
+              last_delivery_succeeded_at: result.ok ? attemptedAt : undefined,
+              last_delivery_error: result.ok ? null : result.error ?? 'UNKNOWN',
+              invalidated_at: result.invalidToken ? attemptedAt : null,
+            })
+            .eq('id', device.id);
+        }),
       );
+      const updateError = deviceUpdates.find(update => update.error)?.error;
+      if (updateError) throw updateError;
       invalidTokensRemoved += results.filter(
         result => result.invalidToken,
       ).length;
