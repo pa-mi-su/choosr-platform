@@ -278,7 +278,7 @@ export type Database = {
       };
       send_connection_request: {
         Args: { p_handle: string };
-        Returns: string;
+        Returns: string | null;
       };
       respond_connection: {
         Args: { p_connection_id: string; p_accept: boolean };
@@ -294,6 +294,19 @@ export type Database = {
       };
       redeem_circle_invite: {
         Args: { p_invite_token: string };
+        Returns: string | null;
+      };
+      report_user: {
+        Args: {
+          p_reported_user_id: string;
+          p_reason:
+            | 'spam'
+            | 'harassment'
+            | 'unsafe_content'
+            | 'impersonation'
+            | 'other';
+          p_details?: string | null;
+        };
         Returns: string;
       };
       list_circle: {

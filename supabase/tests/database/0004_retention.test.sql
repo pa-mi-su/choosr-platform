@@ -26,15 +26,15 @@ select results_eq(
 
 insert into auth.users (id, aud, role, is_anonymous, created_at, updated_at)
 values
-  ('40000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', true, now() - interval '45 days', now() - interval '45 days'),
-  ('40000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', true, now() - interval '45 days', now() - interval '45 days'),
-  ('40000000-0000-0000-0000-000000000003', 'authenticated', 'authenticated', true, now() - interval '45 days', now() - interval '45 days'),
-  ('40000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated', false, now() - interval '45 days', now() - interval '45 days');
+  ('40000000-0000-0000-0000-000000000001', 'authenticated', 'authenticated', true, now() - interval '120 days', now() - interval '120 days'),
+  ('40000000-0000-0000-0000-000000000002', 'authenticated', 'authenticated', true, now() - interval '120 days', now() - interval '120 days'),
+  ('40000000-0000-0000-0000-000000000003', 'authenticated', 'authenticated', true, now() - interval '120 days', now() - interval '120 days'),
+  ('40000000-0000-0000-0000-000000000004', 'authenticated', 'authenticated', false, now() - interval '120 days', now() - interval '120 days');
 
 insert into private.anonymous_user_activity (auth_user_id, last_active_at)
 values
   ('40000000-0000-0000-0000-000000000002', now()),
-  ('40000000-0000-0000-0000-000000000003', now() - interval '45 days');
+  ('40000000-0000-0000-0000-000000000003', now() - interval '120 days');
 
 insert into public.sessions (
   id, access_code, invite_token_hash, host_user_id, mode, status, expires_at
@@ -54,7 +54,7 @@ values (
   '41000000-0000-0000-0000-000000000003',
   '40000000-0000-0000-0000-000000000003',
   'host',
-  now() - interval '45 days'
+  now() - interval '120 days'
 );
 
 select is(
@@ -88,9 +88,9 @@ select is(
 );
 
 select throws_ok(
-  $$ select public.cleanup_stale_anonymous_users(interval '6 days') $$,
+  $$ select public.cleanup_stale_anonymous_users(interval '29 days') $$,
   '22023',
-  'anonymous_retention_must_be_at_least_7_days',
+  'anonymous_retention_must_be_at_least_30_days',
   'unsafe retention windows are rejected'
 );
 

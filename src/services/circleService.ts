@@ -177,12 +177,13 @@ export async function loadCircle(): Promise<CirclePerson[]> {
 
 export async function requestConnection(handle: string): Promise<void> {
   await ensureAnonymousSession();
-  const { error } = await supabase.rpc('send_connection_request', {
+  const { data, error } = await supabase.rpc('send_connection_request', {
     p_handle: normalizeHandle(handle),
   });
   if (error) {
     throw error;
   }
+  if (!data) throw new Error('connection_request_unavailable');
   await dispatchPendingNotifications();
 }
 
@@ -209,6 +210,19 @@ export async function removeCircleConnection(
   if (error) throw error;
 }
 
+export async function reportCircleUser(
+  userId: string,
+  reason: 'spam' | 'harassment' | 'unsafe_content' | 'impersonation' | 'other',
+): Promise<void> {
+  await ensureAnonymousSession();
+  const { error } = await supabase.rpc('report_user', {
+    p_reported_user_id: userId,
+    p_reason: reason,
+    p_details: null,
+  });
+  if (error) throw error;
+}
+
 export async function createCircleInvite(): Promise<{
   inviteToken: string;
   expiresAt: string;
@@ -230,12 +244,13 @@ export async function createCircleInvite(): Promise<{
 
 export async function redeemCircleInvite(inviteToken: string): Promise<void> {
   await ensureAnonymousSession();
-  const { error } = await supabase.rpc('redeem_circle_invite', {
+  const { data, error } = await supabase.rpc('redeem_circle_invite', {
     p_invite_token: inviteToken,
   });
   if (error) {
     throw error;
   }
+  if (!data) throw new Error('circle_invite_unavailable');
 }
 
 export async function inviteCirclePerson(
@@ -347,6 +362,8 @@ export function circleErrorMessage(error: unknown): string {
     return 'That person is already in your Circle.';
   if (message.includes('connection_unavailable'))
     return 'That Circle connection is no longer available.';
+  if (message.includes('connection_request_unavailable'))
+    return 'That person could not be added. Check the Choosr name and try again later.';
   if (message.includes('cannot_connect_to_self'))
     return 'Choose somebody other than yourself.';
   if (message.includes('circle_invite_expired'))
@@ -355,6 +372,8 @@ export function circleErrorMessage(error: unknown): string {
     return 'That Circle invitation was already used.';
   if (message.includes('circle_invite_not_found'))
     return 'That Circle invitation is not valid.';
+  if (message.includes('circle_invite_unavailable'))
+    return 'That Circle invitation is no longer available.';
   if (message.includes('room_') || message.includes('invitation_'))
     return 'That invitation is no longer available.';
   if (message.includes('photo_')) return photoFailureMessage(error, 5);

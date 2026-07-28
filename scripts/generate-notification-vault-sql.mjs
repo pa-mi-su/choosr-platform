@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 const outputPath = process.argv[2];
 const projectUrl = process.env.SUPABASE_URL;
 const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+const storageCleanupToken = process.env.STORAGE_CLEANUP_TOKEN;
 
 if (!outputPath) throw new Error('An output SQL path is required.');
 if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(projectUrl ?? '')) {
@@ -12,11 +13,15 @@ if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(projectUrl ?? '')) {
 if (!publishableKey?.startsWith('sb_publishable_')) {
   throw new Error('SUPABASE_PUBLISHABLE_KEY is missing or invalid.');
 }
+if (!storageCleanupToken || storageCleanupToken.length < 64) {
+  throw new Error('STORAGE_CLEANUP_TOKEN must contain at least 64 characters.');
+}
 
 const sqlLiteral = value => `'${value.replaceAll("'", "''")}'`;
 const secrets = [
   ['choosr_project_url', projectUrl],
   ['choosr_publishable_key', publishableKey],
+  ['choosr_storage_cleanup_token', storageCleanupToken],
 ];
 
 const statements = secrets
