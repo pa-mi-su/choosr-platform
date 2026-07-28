@@ -6,6 +6,12 @@ require('react-native-gesture-handler/jestSetup');
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest'),
 );
+jest.mock('react-native-keychain', () => ({
+  ACCESSIBLE: { WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WhenUnlockedThisDeviceOnly' },
+  getGenericPassword: jest.fn(() => Promise.resolve(false)),
+  resetGenericPassword: jest.fn(() => Promise.resolve(true)),
+  setGenericPassword: jest.fn(() => Promise.resolve(true)),
+}));
 jest.mock('react-native-worklets', () =>
   require('react-native-worklets/src/mock'),
 );

@@ -70,6 +70,8 @@ const supabasePublishableKey =
 const appVersion = process.env.CHOOSR_VERSION_NAME || '1.0.0';
 const buildNumber =
   process.env.CHOOSR_VERSION_CODE || process.env.GITHUB_RUN_NUMBER || '1';
+const phoneRecoveryEnabled =
+  (values.PHONE_RECOVERY_ENABLED || 'false').toLowerCase() === 'true';
 
 const isHostedSupabaseUrl = /^https:\/\/[a-z0-9-]+\.supabase\.co$/.test(
   supabaseUrl,
@@ -116,6 +118,7 @@ const generated =
   `  environment: ${JSON.stringify(environment)},\n` +
   `  appVersion: ${JSON.stringify(appVersion)},\n` +
   `  buildNumber: ${JSON.stringify(buildNumber)},\n` +
+  `  phoneRecoveryEnabled: ${JSON.stringify(phoneRecoveryEnabled)},\n` +
   `  supabaseUrl: ${JSON.stringify(supabaseUrl)},\n` +
   `  supabasePublishableKey: ${JSON.stringify(supabasePublishableKey)},\n` +
   `});\n`;

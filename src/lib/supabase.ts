@@ -1,10 +1,10 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, processLock } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
 import { env } from '../config/generatedEnv';
 import { createTimedFetch } from '../services/requestTimeout';
+import { secureAuthStorage } from '../services/secureAuthStorage';
 import type { Database } from '../types/database';
 
 const SUPABASE_HTTP_TIMEOUT_MS = 20_000;
@@ -15,7 +15,7 @@ export const supabase = createClient<Database>(
   env.supabasePublishableKey,
   {
     auth: {
-      ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
+      ...(Platform.OS !== 'web' ? { storage: secureAuthStorage } : {}),
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: false,

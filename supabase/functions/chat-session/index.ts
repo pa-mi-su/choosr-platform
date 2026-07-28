@@ -4,6 +4,8 @@ import {
   type ChatRequestBody,
   validateChatRequest,
 } from './validation.ts';
+import { authenticatedUserId } from '../build-deck/auth.ts';
+import { enforceEdgeRateLimits } from '../_shared/security.ts';
 
 const jsonHeaders = {
   'Content-Type': 'application/json',
@@ -32,6 +34,35 @@ Deno.serve(async request => {
   if (!authorization?.startsWith('Bearer ')) {
     return response({ error: 'Authentication required.' }, 401);
   }
+
+  let userId: string | undefined;
+  try {
+    userId = await authenticatedUserId(authorization);
+    if (!userId) {
+      return response({ error: 'Invalid authentication token.' }, 401);
+    }
+    const rateLimit = await enforceEdgeRateLimits({
+      request,
+      userId,
+      user: { action: 'chat_session_user', limit: 120, windowSeconds: 600 },
+      ip: { action: 'chat_session_ip', limit: 300, windowSeconds: 600 },
+    });
+    if (!rateLimit.accountAllowed) {
+      return response({ error: 'Account is unavailable.' }, 403);
+    }
+    if (!rateLimit.allowed) {
+      return response({ error: 'Too many attempts. Try again later.' }, 429);
+    }
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'chat_security_boundary_failed',
+        code: error instanceof Error ? error.name : 'unknown',
+      }),
+    );
+    return response({ error: 'Chat service is unavailable.' }, 503);
+  }
+
   const contentLength = Number(request.headers.get('content-length') ?? 0);
   if (contentLength > 24576) {
     return response({ error: 'Request is too large.' }, 413);

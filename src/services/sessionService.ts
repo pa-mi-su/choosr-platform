@@ -193,7 +193,7 @@ export async function joinDecisionRoom(input: {
   }
   const room = data[0];
   if (!room) {
-    throw new Error('Supabase did not return the joined room.');
+    throw new Error('room_unavailable');
   }
   return {
     sessionId: room.session_id,

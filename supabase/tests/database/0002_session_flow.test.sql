@@ -71,14 +71,13 @@ select is(
 
 set local request.jwt.claim.sub = '10000000-0000-0000-0000-000000000003';
 
-select throws_ok(
-  format(
-    'select * from public.join_session(%L, null)',
-    (select access_code from test_room)
+select is(
+  (
+    select count(*)
+    from public.join_session((select access_code from test_room), null)
   ),
-  'P0001',
-  'room_unavailable',
-  'a third participant is rejected'
+  0::bigint,
+  'a third participant receives no room details'
 );
 select is(
   (select count(*) from public.participants),

@@ -1,5 +1,11 @@
-import { isAuthenticated } from '../build-deck/auth.ts';
+import { authenticatedUserId } from '../build-deck/auth.ts';
 import { fetchWithTimeout, jsonResponse } from '../build-deck/http.ts';
+import {
+  cacheKey,
+  enforceEdgeRateLimits,
+  getCachedJson,
+  putCachedJson,
+} from '../_shared/security.ts';
 
 type GeoapifyLocation = {
   place_id?: string;
@@ -68,12 +74,14 @@ Deno.serve(async request => {
   if (!authorization?.startsWith('Bearer ')) {
     return jsonResponse({ error: 'Authentication required.' }, 401);
   }
+  let userId: string | undefined;
   try {
-    if (!(await isAuthenticated(authorization))) {
-      return jsonResponse({ error: 'Invalid authentication token.' }, 401);
-    }
+    userId = await authenticatedUserId(authorization);
   } catch {
     return jsonResponse({ error: 'Authentication service unavailable.' }, 503);
+  }
+  if (!userId) {
+    return jsonResponse({ error: 'Invalid authentication token.' }, 401);
   }
 
   let query: string;
@@ -90,12 +98,50 @@ Deno.serve(async request => {
     );
   }
 
+  let service;
+  try {
+    const rateLimit = await enforceEdgeRateLimits({
+      request,
+      userId,
+      user: { action: 'location_search_user', limit: 30, windowSeconds: 600 },
+      ip: { action: 'location_search_ip', limit: 90, windowSeconds: 600 },
+    });
+    if (!rateLimit.accountAllowed) {
+      return jsonResponse({ error: 'Account is unavailable.' }, 403);
+    }
+    if (!rateLimit.allowed) {
+      return jsonResponse(
+        { error: 'Too many searches. Try again in a few minutes.' },
+        429,
+      );
+    }
+    service = rateLimit.service;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'location_security_boundary_failed',
+        code: error instanceof Error ? error.name : 'unknown',
+      }),
+    );
+    return jsonResponse({ error: 'Location search is unavailable.' }, 503);
+  }
+
   const apiKey = Deno.env.get('GEOAPIFY_API_KEY');
   if (!apiKey) {
     return jsonResponse({ error: 'Location search is unavailable.' }, 503);
   }
 
   try {
+    const normalizedQuery = query
+      .toLocaleLowerCase('en-US')
+      .replace(/\s+/g, ' ');
+    const responseCacheKey = await cacheKey('location-v1', normalizedQuery);
+    const cached = await getCachedJson<{ locations: LocationSuggestion[] }>(
+      service,
+      responseCacheKey,
+    );
+    if (cached) return jsonResponse(cached);
+
     const parameters = new URLSearchParams({
       text: query,
       format: 'json',
@@ -124,7 +170,9 @@ Deno.serve(async request => {
         return true;
       })
       .slice(0, 5);
-    return jsonResponse({ locations });
+    const result = { locations };
+    await putCachedJson(service, responseCacheKey, result, 3600);
+    return jsonResponse(result);
   } catch (error) {
     console.error(
       JSON.stringify({

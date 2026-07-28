@@ -1,5 +1,3 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.110.7';
-
 import { authenticatedUserId } from './auth.ts';
 import { jsonResponse } from './http.ts';
 import { buildPlacesDeck } from './providers/placesProvider.ts';
@@ -8,6 +6,10 @@ import {
   parseDeckRequest,
   type DeckRequest,
 } from './types.ts';
+import {
+  enforceEdgeRateLimits,
+  SecurityConfigurationError,
+} from '../_shared/security.ts';
 
 function shuffleOnce<T>(values: T[]): T[] {
   const shuffled = [...values];
@@ -41,6 +43,34 @@ Deno.serve(async request => {
     return jsonResponse({ error: 'Invalid authentication token.' }, 401);
   }
 
+  let service;
+  try {
+    const rateLimit = await enforceEdgeRateLimits({
+      request,
+      userId,
+      user: { action: 'build_deck_user', limit: 12, windowSeconds: 600 },
+      ip: { action: 'build_deck_ip', limit: 40, windowSeconds: 600 },
+    });
+    if (!rateLimit.accountAllowed) {
+      return jsonResponse({ error: 'Account is unavailable.' }, 403);
+    }
+    if (!rateLimit.allowed) {
+      return jsonResponse(
+        { error: 'Too many searches. Try again in a few minutes.' },
+        429,
+      );
+    }
+    service = rateLimit.service;
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'deck_security_boundary_failed',
+        code: error instanceof Error ? error.name : 'unknown',
+      }),
+    );
+    return jsonResponse({ error: 'Search is temporarily unavailable.' }, 503);
+  }
+
   let body: DeckRequest;
   try {
     body = parseDeckRequest(await request.json());
@@ -54,14 +84,6 @@ Deno.serve(async request => {
 
   try {
     if (body.sessionId) {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL');
-      const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-      if (!supabaseUrl || !serviceKey) {
-        throw new Error('Room preparation service is not configured.');
-      }
-      const service = createClient(supabaseUrl, serviceKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      });
       const { data: contexts, error: contextError } = await service.rpc(
         'get_location_deck_context',
         {
@@ -128,10 +150,21 @@ Deno.serve(async request => {
     }
     return jsonResponse({ mode: body.mode, items });
   } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'deck_creation_failed',
+        code:
+          error instanceof SecurityConfigurationError
+            ? 'configuration'
+            : error instanceof DeckRequestError
+            ? 'invalid_request'
+            : error instanceof Error
+            ? error.name
+            : 'unknown',
+      }),
+    );
     return jsonResponse(
-      {
-        error: error instanceof Error ? error.message : 'Deck creation failed.',
-      },
+      { error: 'Could not prepare choices. Please try again.' },
       503,
     );
   }

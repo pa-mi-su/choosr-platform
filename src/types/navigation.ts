@@ -10,6 +10,7 @@ export type RootStackParamList = {
   ChatLinkJoin: { v?: string; t?: string; k?: string } | undefined;
   ChatRoom: undefined;
   About: undefined;
+  AccountRecovery: undefined;
   Notifications: undefined;
   ActiveRooms: undefined;
   RoomStatus: { sessionId: string };
