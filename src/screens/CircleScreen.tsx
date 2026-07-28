@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Brand, Button, Screen } from '../components/UI';
+import { env } from '../config/generatedEnv';
 import { ProfileAvatar } from '../components/ProfileAvatar';
 import { modeById } from '../data/decisions';
 import {
@@ -24,6 +25,7 @@ import {
   loadCircleSnapshot,
   normalizeHandle,
   readCachedCircleSnapshot,
+  reportCircleUser,
   requestConnection,
   removeCircleConnection,
   redeemCircleInvite,
@@ -218,6 +220,27 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
     );
   };
 
+  const confirmReport = (person: CirclePerson) => {
+    Alert.alert(
+      `Report ${person.displayName}?`,
+      'Choose the closest reason. Choosr records the report privately for review.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Spam',
+          onPress: () =>
+            run(() => reportCircleUser(person.personUserId, 'spam')),
+        },
+        {
+          text: 'Harassment or unsafe',
+          style: 'destructive',
+          onPress: () =>
+            run(() => reportCircleUser(person.personUserId, 'harassment')),
+        },
+      ],
+    );
+  };
+
   const close = () => {
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -311,6 +334,24 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
                 </Text>
               </Pressable>
             </View>
+            {env.phoneRecoveryEnabled ? (
+              <View style={styles.protectPanel}>
+                <View style={styles.protectCopy}>
+                  <Text style={styles.alertTitle}>Keep this Choosr</Text>
+                  <Text style={styles.alertText}>
+                    Recover your name, Circle, and room history on a new phone.
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Protect or recover my Choosr"
+                  onPress={() => navigation.navigate('AccountRecovery')}
+                  style={styles.alertButton}
+                >
+                  <Text style={styles.alertButtonText}>Protect</Text>
+                </Pressable>
+              </View>
+            ) : null}
 
             {pushEnabled === false ? (
               <View style={styles.alertPanel}>
@@ -416,6 +457,14 @@ export function CircleScreen({ navigation, route }: Props): React.JSX.Element {
                       <View style={styles.personActions}>
                         <Pressable
                           accessibilityRole="button"
+                          accessibilityLabel={`Report ${person.displayName}`}
+                          onPress={() => confirmReport(person)}
+                          style={styles.removePersonButton}
+                        >
+                          <Text style={styles.removePersonText}>Report</Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
                           accessibilityLabel={`Remove ${person.displayName} from your Circle`}
                           onPress={() => confirmRemove(person)}
                           style={styles.removePersonButton}
@@ -513,6 +562,17 @@ const styles = StyleSheet.create({
     padding: 15,
     marginTop: 24,
   },
+  protectPanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 18,
+    padding: 14,
+    marginTop: 10,
+  },
+  protectCopy: { flex: 1, paddingRight: 10 },
   photoButton: {
     borderWidth: 1,
     borderColor: colors.border,

@@ -23,6 +23,7 @@ import { CustomSetupScreen } from '../screens/CustomSetupScreen';
 import { ActiveRoomsScreen } from '../screens/ActiveRoomsScreen';
 import { RoomStatusScreen } from '../screens/RoomStatusScreen';
 import { AboutScreen } from '../screens/AboutScreen';
+import { AccountRecoveryScreen } from '../screens/AccountRecoveryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 export function AppNavigator(): React.JSX.Element {
@@ -54,6 +55,7 @@ export function AppNavigator(): React.JSX.Element {
         options={{ gestureEnabled: false }}
       />
       <Stack.Screen name="About" component={AboutScreen} />
+      <Stack.Screen name="AccountRecovery" component={AccountRecoveryScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="ActiveRooms" component={ActiveRoomsScreen} />
       <Stack.Screen name="RoomStatus" component={RoomStatusScreen} />
